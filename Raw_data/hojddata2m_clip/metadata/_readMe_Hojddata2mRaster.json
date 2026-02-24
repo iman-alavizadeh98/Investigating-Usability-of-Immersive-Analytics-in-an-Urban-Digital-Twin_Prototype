@@ -1,0 +1,25 @@
+{
+  "get_ui_name": "Höjddata, Grid 2+ 2019, Elevation data, Grid 2+",
+  "data_provider": "Lantmäteriet",
+  "delivered_to_get": "2019-12-12",
+  "data_properties": [
+    {
+      "data_format": "raster",
+      "file_format": "tiff",
+      "num_bands": 1,
+      "pixel_size": 2,
+      "compression": "lzw"
+    }
+  ],
+  "license": "FUK (Forskning, utbildning och kulturverksamhet)",
+  "contact": {
+    "mail": "gis-support@slu.se",
+    "twitter": "https://twitter.com/support_get"
+  },
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::3006"
+    }
+  }
+}

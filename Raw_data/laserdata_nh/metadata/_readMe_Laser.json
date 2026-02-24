@@ -1,0 +1,26 @@
+{
+  "get_ui_name": "Laserdata NH 2019 - Lidardata",
+  "data_provider": "Lantmäteriet",
+  "delivered_to_get": "2019-12-12",
+  "data_properties": [
+    {
+      "data_format": "point cloud",
+      "file_format": "laz"
+    },
+    {
+      "data_format": "vector",
+      "file_format": "geojson"
+    }
+  ],
+  "license": "FUK (Forskning, utbildning och kulturverksamhet)",
+  "contact": {
+    "mail": "gis-support@slu.se",
+    "twitter": "https://twitter.com/support_get"
+  },
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::3006"
+    }
+  }
+}

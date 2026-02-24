@@ -1,0 +1,65 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "id": "63950_3200_25",
+    "klasstatistik": [
+     {
+      "klass": 1,
+      "antalPunkter": 4137424
+     },
+     {
+      "klass": 2,
+      "antalPunkter": 4939488
+     },
+     {
+      "klass": 9,
+      "antalPunkter": 5358
+     },
+     {
+      "klass": 11,
+      "antalPunkter": 8393
+     }
+    ],
+    "klassificeringsniva": 3,
+    "kommentar": null,
+    "senastAndrad": "2015-02-26"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       320000,
+       6395000
+      ],
+      [
+       322500,
+       6395000
+      ],
+      [
+       322500,
+       6397500
+      ],
+      [
+       320000,
+       6397500
+      ],
+      [
+       320000,
+       6395000
+      ]
+     ]
+    ]
+   }
+  }
+ ],
+ "crs": {
+  "type": "name",
+  "properties": {
+   "name": "urn:ogc:def:crs:EPSG::3006"
+  }
+ }
+}

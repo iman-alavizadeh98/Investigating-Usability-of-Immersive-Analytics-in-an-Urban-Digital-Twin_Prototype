@@ -1,0 +1,22 @@
+{
+  "get_ui_name": "Byggnad, Building",
+  "data_provider": "Lantmäteriet",
+  "delivered_to_get": "2025-05-16",
+  "data_properties": [
+    {
+      "data_format": "vector",
+      "file_format": "geopackage"
+    }
+  ],
+  "license": "FUK (Forskning, utbildning och kulturverksamhet)",
+  "contact": {
+    "mail": "gis-support@slu.se",
+    "twitter": "https://twitter.com/support_get"
+  },
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::3006"
+    }
+  }
+}
