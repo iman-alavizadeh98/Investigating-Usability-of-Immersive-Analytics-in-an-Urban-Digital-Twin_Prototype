@@ -1,0 +1,8 @@
+# Keep raw GIS data untouched
+Raw_data/** -text
+*.tif -text
+*.tfw -text
+*.prj -text
+*.las -text
+*.laz -text
+*.xml -text
