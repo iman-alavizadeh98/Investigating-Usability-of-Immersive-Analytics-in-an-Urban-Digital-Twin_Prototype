@@ -1,0 +1,47 @@
+{
+  "crs_epsg": 3006,
+  "bbox": {
+    "xmin": 320169.5,
+    "ymin": 6398927.0,
+    "xmax": 321169.5,
+    "ymax": 6399927.0
+  },
+  "origin_sweref99tm": {
+    "easting": 320669.5,
+    "northing": 6399427.0
+  },
+  "dem": {
+    "elev_min": -0.7489811182022095,
+    "elev_max": 69.12937927246094,
+    "resolution_m": [
+      2.0,
+      2.0
+    ],
+    "shape_px": [
+      501,
+      501
+    ]
+  },
+  "outputs": {
+    "heightmap_png": "heightmap_1km.png",
+    "buildings_geojson": "buildings_with_heights_1km.geojson",
+    "ortho_png": "ortho_texture_1km.png"
+  },
+  "unity_axes": "SWEREF X->Unity X, SWEREF Y->Unity Z, height->Unity Y",
+  "ortho": {
+    "texture_px": [
+      2048,
+      2048
+    ],
+    "bands": 3,
+    "dtype": "uint8",
+    "source_tiles": [
+      "639_32_50_2009.tif",
+      "639_32_7500_2018.tif"
+    ],
+    "mosaic_native_px": [
+      2000,
+      2000
+    ]
+  }
+}
