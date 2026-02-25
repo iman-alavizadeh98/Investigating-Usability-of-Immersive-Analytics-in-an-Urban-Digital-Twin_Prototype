@@ -1,2 +1,5 @@
 # Ignoring ortoRGB files
-Raw_data/ortoRgb_allRes025050/venv/
+Raw_data/ortoRgb_allRes025050
+
+#ignore venv files
+venv/
