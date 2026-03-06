@@ -1,5 +1,34 @@
-# Ignoring ortoRGB files
+# =========================
+# RAW GIS DATA
+# =========================
 Raw_data/ortoRgb_allRes025050/
 
-#ignore venv files
+# =========================
+# PYTHON
+# =========================
 venv/
+__pycache__/
+*.pyc
+
+# =========================
+# UNITY GENERATED FILES
+# =========================
+Portotype/Unity/GISTesting/Library/
+Portotype/Unity/GISTesting/Logs/
+Portotype/Unity/GISTesting/Temp/
+Portotype/Unity/GISTesting/UserSettings/
+
+# =========================
+# UNITY IDE FILES
+# =========================
+*.csproj
+*.sln
+*.slnx
+*.user
+*.userprefs
+
+# =========================
+# OS FILES
+# =========================
+.DS_Store
+Thumbs.db
