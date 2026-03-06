@@ -1,7 +1,7 @@
 # =========================
 # RAW GIS DATA
 # =========================
-Portotype/Raw_data/ortoRgb_allRes025050/
+Raw_data/ortoRgb_allRes025050/
 
 # =========================
 # PYTHON
@@ -13,10 +13,10 @@ __pycache__/
 # =========================
 # UNITY GENERATED FILES
 # =========================
-Portotype/Unity/GISTesting/Library/
-Portotype/Unity/GISTesting/Logs/
-Portotype/Unity/GISTesting/Temp/
-Portotype/Unity/GISTesting/UserSettings/
+Unity/GISTesting/Library/
+Unity/GISTesting/Logs/
+Unity/GISTesting/Temp/
+Unity/GISTesting/UserSettings/
 
 # =========================
 # UNITY IDE FILES
@@ -28,7 +28,7 @@ Portotype/Unity/GISTesting/UserSettings/
 *.userprefs
 
 # =========================
-# OS FILES
+# OS
 # =========================
 .DS_Store
 Thumbs.db
