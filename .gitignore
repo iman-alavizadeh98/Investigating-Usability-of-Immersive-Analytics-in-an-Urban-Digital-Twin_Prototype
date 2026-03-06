@@ -26,6 +26,8 @@ Unity/GISTesting/UserSettings/
 *.slnx
 *.user
 *.userprefs
+.vs/
+*.vsconfig
 
 # =========================
 # OS
