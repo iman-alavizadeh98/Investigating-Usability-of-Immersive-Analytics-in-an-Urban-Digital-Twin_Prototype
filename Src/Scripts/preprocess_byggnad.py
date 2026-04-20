@@ -29,7 +29,11 @@ from shapely.ops import unary_union
 # JSON ENCODER FOR NUMPY TYPES
 # ============================================================================
 class NumpyEncoder(json.JSONEncoder):
-    """Handle numpy and pandas types in JSON serialization."""
+    """
+    Handle numpy and pandas types in JSON serialization.
+    Convert pandas timestamps and numpy scalar types into JSON-serializable values
+
+    """
     def default(self, obj):
         if isinstance(obj, (pd.Timestamp, pd.Timedelta)):
             return obj.isoformat()
@@ -46,7 +50,7 @@ TARGET_CRS = "EPSG:3006"
 EXPLODE_MULTIPOLYGONS = True
 ASSUMED_HEIGHT_M = 10.0
 
-# Schema harmonization mapping
+# Schema for translating Swedish column names to English
 RENAME_DICT = {
     "objektidentitet": "object_id",
     "versiongiltigfran": "valid_from",
@@ -70,9 +74,9 @@ RENAME_DICT = {
 }
 
 # ============================================================================
-# STAGE A: DATA INGESTION
+# DATA IMPORT
 # ============================================================================
-def stage_a_load_buildings(path: str) -> tuple:
+def import_raw_buildings(path: str) -> tuple:
     """
     Load source GeoPackage exactly as delivered.
     Preserve raw dataframe and record ingestion metadata.
@@ -81,7 +85,7 @@ def stage_a_load_buildings(path: str) -> tuple:
       (buildings_raw: GeoDataFrame, ingestion_report: dict)
     """
     print("\n" + "="*70)
-    print("STAGE A: DATA INGESTION")
+    print("DATA IMPORT")
     print("="*70)
     
     if not os.path.exists(path):
@@ -100,35 +104,37 @@ def stage_a_load_buildings(path: str) -> tuple:
         "column_names": buildings_raw.columns.tolist(),
         "geometry_types": buildings_raw.geometry.type.unique().tolist(),
         "geometry_type_counts": buildings_raw.geometry.type.value_counts().to_dict(),
+        "dataset_info": str(buildings_raw.info()),
+        "sample_rows": buildings_raw.head(5).to_dict(orient="records"),
     }
     
-    print(f"✓ Loaded {len(buildings_raw)} features")
-    print(f"✓ CRS: {buildings_raw.crs}")
-    print(f"✓ Columns: {len(buildings_raw.columns)}")
-    print(f"✓ Geometry types: {ingestion_report['geometry_types']}")
+    print(f" Loaded {len(buildings_raw)} features")
+    print(f" CRS: {buildings_raw.crs}")
+    print(f" Columns: {len(buildings_raw.columns)}")
+    print(f" Geometry types: {ingestion_report['geometry_types']}")
     
     return buildings_raw, ingestion_report
 
 
 # ============================================================================
-# STAGE B: SCHEMA HARMONIZATION
+# DATASET TRANSLATION TO ENGLISH
 # ============================================================================
-def stage_b_harmonize_schema(gdf: gpd.GeoDataFrame) -> tuple:
+def translate_columns_to_english(gdf: gpd.GeoDataFrame) -> tuple:
     """
     Rename Swedish columns to English.
     Preserve mapping and original column names.
     
     Returns:
-      (buildings_harmonized: GeoDataFrame, schema_mapping: dict)
+      (buildings_harmonized: GeoDataFrame, rename_metadata: dict)
     """
     print("\n" + "="*70)
-    print("STAGE B: SCHEMA HARMONIZATION")
+    print("DATASET TRANSLATION TO ENGLISH")
     print("="*70)
     
     # Identify which columns will be renamed
     available_renames = {k: v for k, v in RENAME_DICT.items() if k in gdf.columns}
     
-    schema_mapping = {
+    rename_metadata = {
         "timestamp": datetime.now().isoformat(),
         "total_columns": len(gdf.columns),
         "renamed_columns": available_renames,
@@ -138,17 +144,17 @@ def stage_b_harmonize_schema(gdf: gpd.GeoDataFrame) -> tuple:
     print(f"Renaming {len(available_renames)} columns to English...")
     gdf = gdf.rename(columns=available_renames)
     
-    print(f"✓ Schema harmonized")
-    print(f"✓ Renamed columns: {len(available_renames)}")
-    print(f"✓ Unrenamed columns: {len(schema_mapping['unrenamed_columns'])}")
+    print(f" Dataset translated to English")
+    print(f" Renamed columns: {len(available_renames)}")
+    print(f" Unrenamed columns: {len(rename_metadata['unrenamed_columns'])}")
     
-    return gdf, schema_mapping
+    return gdf, rename_metadata
 
 
 # ============================================================================
-# STAGE C: DATA QUALITY ASSESSMENT
+# DATA QUALITY ASSESSMENT
 # ============================================================================
-def stage_c_assess_quality(gdf: gpd.GeoDataFrame) -> dict:
+def assess_data_quality(gdf: gpd.GeoDataFrame) -> dict:
     """
     Assess data quality before any transformations.
     Check: missingness, uniqueness, domain consistency, geometry quality.
@@ -157,7 +163,7 @@ def stage_c_assess_quality(gdf: gpd.GeoDataFrame) -> dict:
       quality_report: dict
     """
     print("\n" + "="*70)
-    print("STAGE C: DATA QUALITY ASSESSMENT")
+    print("DATA QUALITY ASSESSMENT")
     print("="*70)
     
     quality_report = {
@@ -210,9 +216,9 @@ def stage_c_assess_quality(gdf: gpd.GeoDataFrame) -> dict:
 
 
 # ============================================================================
-# STAGE D: GEOMETRY VALIDATION AND REPAIR
+# GEOMETRY VALIDATION AND REPAIR
 # ============================================================================
-def stage_d_validate_and_repair(gdf: gpd.GeoDataFrame) -> tuple:
+def validate_and_repair_geometries(gdf: gpd.GeoDataFrame) -> tuple:
     """
     Validate geometries and repair if necessary.
     Use buffer(0) to rebuild invalid polygons.
@@ -221,7 +227,7 @@ def stage_d_validate_and_repair(gdf: gpd.GeoDataFrame) -> tuple:
       (buildings_validated: GeoDataFrame, repair_report: dict)
     """
     print("\n" + "="*70)
-    print("STAGE D: GEOMETRY VALIDATION AND REPAIR")
+    print("GEOMETRY VALIDATION AND REPAIR")
     print("="*70)
     
     invalid_before = (~gdf.geometry.is_valid).sum()
@@ -247,9 +253,9 @@ def stage_d_validate_and_repair(gdf: gpd.GeoDataFrame) -> tuple:
 
 
 # ============================================================================
-# STAGE E: GEOMETRY NORMALIZATION
+# GEOMETRY AND CRS NORMALIZATION
 # ============================================================================
-def stage_e_normalize_geometry(gdf: gpd.GeoDataFrame) -> tuple:
+def normalize_geometry_and_crs(gdf: gpd.GeoDataFrame) -> tuple:
     """
     Normalize CRS and geometry representation.
     Optionally explode multipolygons with tracking.
@@ -258,7 +264,7 @@ def stage_e_normalize_geometry(gdf: gpd.GeoDataFrame) -> tuple:
       (buildings_normalized: GeoDataFrame, normalization_report: dict)
     """
     print("\n" + "="*70)
-    print("STAGE E: GEOMETRY NORMALIZATION")
+    print("GEOMETRY and CRS NORMALIZATION")
     print("="*70)
     
     normalization_report = {
@@ -279,6 +285,11 @@ def stage_e_normalize_geometry(gdf: gpd.GeoDataFrame) -> tuple:
     multipolygon_count = (gdf.geometry.type == "MultiPolygon").sum()
     normalization_report["multipolygon_count_before"] = int(multipolygon_count)
     
+
+    # Explode multipolygons if needed
+    # In my data I only have 4 multipolygons, so I will not explode them.
+    # but I will keep the code here for future reference.
+    '''
     if EXPLODE_MULTIPOLYGONS and multipolygon_count > 0:
         print(f"Exploding {multipolygon_count} multipolygons...")
         
@@ -294,14 +305,14 @@ def stage_e_normalize_geometry(gdf: gpd.GeoDataFrame) -> tuple:
     
     normalization_report["multipolygon_count_after"] = int((gdf.geometry.type == "MultiPolygon").sum())
     normalization_report["row_count_after_explode"] = len(gdf)
-    
+    '''
     return gdf, normalization_report
 
 
 # ============================================================================
-# STAGE F: SEMANTIC NORMALIZATION
+# SEMANTIC NORMALIZATION
 # ============================================================================
-def stage_f_normalize_semantics(gdf: gpd.GeoDataFrame) -> tuple:
+def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
     """
     Standardize categorical and boolean values.
     Preserve original values, add cleaned versions.
@@ -310,7 +321,7 @@ def stage_f_normalize_semantics(gdf: gpd.GeoDataFrame) -> tuple:
       (buildings_semantic: GeoDataFrame, semantic_report: dict)
     """
     print("\n" + "="*70)
-    print("STAGE F: SEMANTIC NORMALIZATION")
+    print("SEMANTIC NORMALIZATION")
     print("="*70)
     
     semantic_report = {
@@ -531,22 +542,22 @@ def main():
     
     try:
         # Stage A: Ingestion
-        buildings_raw, ingestion_report = stage_a_load_buildings(INPUT_GPKG)
+        buildings_raw, ingestion_report = import_raw_buildings(INPUT_GPKG)
         
         # Stage B: Schema Harmonization
-        buildings_schema, schema_mapping = stage_b_harmonize_schema(buildings_raw)
+        buildings_schema, schema_mapping = translate_columns_to_english(buildings_raw)
         
         # Stage C: Quality Assessment
-        quality_report = stage_c_assess_quality(buildings_schema)
+        quality_report = assess_data_quality(buildings_schema)
         
         # Stage D: Geometry Validation & Repair
-        buildings_valid, repair_report = stage_d_validate_and_repair(buildings_schema)
+        buildings_valid, repair_report = validate_and_repair_geometries(buildings_schema)
         
         # Stage E: Geometry Normalization
-        buildings_geom, normalization_report = stage_e_normalize_geometry(buildings_valid)
+        buildings_geom, normalization_report = normalize_geometry_and_crs(buildings_valid)
         
         # Stage F: Semantic Normalization
-        buildings_sem, semantic_report = stage_f_normalize_semantics(buildings_geom)
+        buildings_sem, semantic_report = normalize_building_semantics(buildings_geom)
         
         # Stage G: Feature Derivation
         buildings_final, derivation_report = stage_g_derive_features(buildings_sem)
