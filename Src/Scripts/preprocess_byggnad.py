@@ -60,7 +60,7 @@ RENAME_DICT = {
     "objektversion": "object_version",
     "objekttypnr": "object_type_id",
     "objekttyp": "object_type",
-    "insamlingslage": "capture_method",
+    "insamlingslage": "survey_position",
     "byggnadsnamn1": "building_name",
     "byggnadsnamn2": "building_name_alt",
     "byggnadsnamn3": "building_name_third",
@@ -121,8 +121,7 @@ def import_raw_buildings(path: str) -> tuple:
 # ============================================================================
 def translate_columns_to_english(gdf: gpd.GeoDataFrame) -> tuple:
     """
-    Rename Swedish columns to English.
-    Preserve mapping and original column names.
+    Translate all Swedish columns to English using RENAME_DICT.
     
     Returns:
       (buildings_harmonized: GeoDataFrame, rename_metadata: dict)
@@ -131,22 +130,25 @@ def translate_columns_to_english(gdf: gpd.GeoDataFrame) -> tuple:
     print("DATASET TRANSLATION TO ENGLISH")
     print("="*70)
     
-    # Identify which columns will be renamed
-    available_renames = {k: v for k, v in RENAME_DICT.items() if k in gdf.columns}
+    # Apply all translations from RENAME_DICT
+    print(f"Translating {len(gdf.columns)} columns to English...")
+    gdf = gdf.rename(columns=RENAME_DICT)
+    
+    # Identify which columns were translated
+    translated = [col for col in RENAME_DICT.values() if col in gdf.columns]
+    remaining_swedish = [col for col in gdf.columns if col in RENAME_DICT.keys()]
+    unrenamed = [col for col in gdf.columns if col not in RENAME_DICT.values() and col not in RENAME_DICT.keys()]
     
     rename_metadata = {
         "timestamp": datetime.now().isoformat(),
         "total_columns": len(gdf.columns),
-        "renamed_columns": available_renames,
-        "unrenamed_columns": [col for col in gdf.columns if col not in available_renames],
+        "translated_columns": len(translated),
+        "unrenamed_columns": unrenamed,
     }
     
-    print(f"Renaming {len(available_renames)} columns to English...")
-    gdf = gdf.rename(columns=available_renames)
-    
-    print(f" Dataset translated to English")
-    print(f" Renamed columns: {len(available_renames)}")
-    print(f" Unrenamed columns: {len(rename_metadata['unrenamed_columns'])}")
+    print(f"Translated {len(translated)} columns")
+    if unrenamed:
+        print(f"{len(unrenamed)} columns remain in Swedish: {unrenamed}")
     
     return gdf, rename_metadata
 
@@ -220,8 +222,12 @@ def assess_data_quality(gdf: gpd.GeoDataFrame) -> dict:
 # ============================================================================
 def validate_and_repair_geometries(gdf: gpd.GeoDataFrame) -> tuple:
     """
-    Validate geometries and repair if necessary.
-    Use buffer(0) to rebuild invalid polygons.
+    Validate geometries and normalize ALL geometries using buffer(0).
+    
+    This unconditionally rebuilds all geometries for:
+    - Consistent normalization across dataset
+    - Simplification of multipart geometries where valid
+    - Resolution of topological issues that may not be detected by is_valid()
     
     Returns:
       (buildings_validated: GeoDataFrame, repair_report: dict)
@@ -231,22 +237,34 @@ def validate_and_repair_geometries(gdf: gpd.GeoDataFrame) -> tuple:
     print("="*70)
     
     invalid_before = (~gdf.geometry.is_valid).sum()
-    print(f"Invalid geometries before repair: {invalid_before}")
+    multipolygon_before = (gdf.geometry.type == "MultiPolygon").sum()
     
-    # Apply repair only if needed
-    if invalid_before > 0:
-        print("Applying buffer(0) repair...")
-        gdf["geometry"] = gdf["geometry"].buffer(0)
+    print(f"Before buffer(0) rebuild:")
+    print(f"  Invalid geometries: {invalid_before}")
+    print(f"  MultiPolygons: {multipolygon_before}")
+    print(f"  Polygons: {(gdf.geometry.type == 'Polygon').sum()}")
+    
+    # Apply buffer(0) to ALL geometries for consistent normalization
+    print("\nApplying buffer(0) to rebuild all geometries...")
+    gdf["geometry"] = gdf["geometry"].buffer(0)
     
     invalid_after = (~gdf.geometry.is_valid).sum()
-    print(f"Invalid geometries after repair: {invalid_after}")
+    multipolygon_after = (gdf.geometry.type == "MultiPolygon").sum()
+    
+    print(f"\nAfter buffer(0) rebuild:")
+    print(f"  Invalid geometries: {invalid_after}")
+    print(f"  MultiPolygons: {multipolygon_after}")
+    print(f"  Polygons: {(gdf.geometry.type == 'Polygon').sum()}")
     
     repair_report = {
         "timestamp": datetime.now().isoformat(),
         "invalid_before": int(invalid_before),
         "invalid_after": int(invalid_after),
-        "repair_applied": invalid_before > 0,
-        "repair_method": "buffer(0)" if invalid_before > 0 else "none",
+        "multipolygon_before": int(multipolygon_before),
+        "multipolygon_after": int(multipolygon_after),
+        "repair_applied": True,
+        "repair_method": "buffer(0) - unconditional rebuild",
+        "repair_rationale": "Normalize all geometries, simplify multiparts, ensure consistency",
     }
     
     return gdf, repair_report
@@ -314,8 +332,8 @@ def normalize_geometry_and_crs(gdf: gpd.GeoDataFrame) -> tuple:
 # ============================================================================
 def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
     """
-    Standardize categorical and boolean values.
-    Preserve original values, add cleaned versions.
+    Standardize all categorical, boolean, and text values to English.
+    Converts all Swedish values to their English equivalents.
     
     Returns:
       (buildings_semantic: GeoDataFrame, semantic_report: dict)
@@ -329,26 +347,119 @@ def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
         "transformations": [],
     }
     
-    # ── Standardize is_main_building ──
+    # ── Translate object_type (Building category) ──
+    object_type_map = {
+        "Bostad": "Housing",
+        "Ekonomibyggnad": "Agricultural/Utility Building",
+        "Industri": "Industrial",
+        "Komplementbyggnad": "Complementary Building",
+        "Samhällsfunktion": "Public Service",
+        "Verksamhet": "Business/Commercial",
+        "Övrig byggnad": "Other Building",
+    }
+    if "object_type" in gdf.columns:
+        gdf["object_type"] = gdf["object_type"].map(object_type_map).fillna(gdf["object_type"])
+        semantic_report["transformations"].append({
+            "field": "object_type",
+            "translation_count": gdf["object_type"].notna().sum(),
+            "translation_map": object_type_map,
+        })
+        print(f"✓ Translated object_type to English ({len(object_type_map)} mappings)")
+    
+    # ── Translate survey_position (Capture method) ──
+    survey_position_map = {
+        "Fasad": "Facade",
+        "Takkant": "Roof edge",
+        "Illustrativt läge": "Illustrative position",
+        "Ospecificerad": "Unspecified",
+    }
+    if "survey_position" in gdf.columns:
+        gdf["survey_position"] = gdf["survey_position"].map(survey_position_map).fillna(gdf["survey_position"])
+        semantic_report["transformations"].append({
+            "field": "survey_position",
+            "translation_count": gdf["survey_position"].notna().sum(),
+            "translation_map": survey_position_map,
+        })
+        print(f"✓ Translated survey_position to English ({len(survey_position_map)} mappings)")
+    
+    # ── Translate is_main_building (Yes/No to True/False) ──
     if "is_main_building" in gdf.columns:
-        original_unique = gdf["is_main_building"].unique()
-        # Coerce to boolean
-        gdf["is_main_building"] = gdf["is_main_building"].astype(bool, errors="ignore")
+        original_unique = gdf["is_main_building"].dropna().unique()
+        is_main_map = {
+            "Ja": True,
+            "Nej": False,
+        }
+        gdf["is_main_building"] = gdf["is_main_building"].map(is_main_map)
         semantic_report["transformations"].append({
             "field": "is_main_building",
-            "original_values": str(original_unique),
-            "target_type": "boolean",
+            "original_values": list(original_unique),
+            "translation_map": is_main_map,
         })
-        print("✓ Standardized is_main_building to boolean")
+        print(f"✓ Translated is_main_building to boolean (Ja→True, Nej→False)")
     
-    # ── Strip whitespace from text fields ──
+    # ── Translate usage fields (complex hierarchical values with Swedish terms) ──
+    # These contain format like "Category;Subcategory" with Swedish terms
+    usage_term_map = {
+        "Bostad": "Housing",
+        "Flerfamiljshus": "Multi-family house",
+        "Småhus friliggande": "Single-family house detached",
+        "Småhus kedjehus": "Single-family house townhouse",
+        "Småhus med flera lägenheter": "Single-family house multi-unit",
+        "Småhus radhus": "Single-family house terraced",
+        "Ekonomibyggnad": "Agricultural/Utility Building",
+        "Industri": "Industrial",
+        "Tillverkning": "Manufacturing",
+        "Komplementbyggnad": "Complementary Building",
+        "Samhällsfunktion": "Public Service",
+        "Badhus": "Swimming pool",
+        "Brandstation": "Fire station",
+        "Busstation": "Bus station",
+        "Djursjukhus": "Animal hospital",
+        "Högskola": "University",
+        "Ishall": "Ice hall",
+        "Järnvägsstation": "Railway station",
+        "Kommunhus": "Municipality office",
+        "Kriminalvårdsanstalt": "Prison",
+        "Kulturbyggnad": "Cultural building",
+        "Multiarena": "Multi-arena",
+        "Polisstation": "Police station",
+        "Samfund": "Community center",
+        "Skola": "School",
+        "Sporthall": "Sports hall",
+        "Universitet": "University",
+        "Vårdcentral": "Health center",
+        "Verksamhet": "Business/Commercial",
+        "Ospecificerad": "Unspecified",
+    }
+    
+    usage_fields = ["primary_usage", "secondary_usage", "tertiary_usage"]
+    for field in usage_fields:
+        if field in gdf.columns:
+            def translate_usage(val):
+                if pd.isna(val) or val == "":
+                    return val
+                # Split by semicolon and translate each part
+                parts = str(val).split(";")
+                translated_parts = [usage_term_map.get(part.strip(), part.strip()) for part in parts]
+                return ";".join(translated_parts)
+            
+            gdf[field] = gdf[field].apply(translate_usage)
+            semantic_report["transformations"].append({
+                "field": field,
+                "method": "hierarchical translation (Category;Subcategory)",
+                "terms_mapped": len(usage_term_map),
+            })
+            print(f"✓ Translated {field} values to English")
+    
+    # ── Strip whitespace from all text fields ──
     text_fields = ["building_name", "building_name_alt", "building_name_third",
                    "primary_usage", "secondary_usage", "tertiary_usage"]
     for field in text_fields:
         if field in gdf.columns:
             gdf[field] = gdf[field].str.strip() if gdf[field].dtype == "object" else gdf[field]
     
-    print(f"✓ Stripped whitespace from {len(text_fields)} text fields")
+    print(f"✓ Stripped whitespace from text fields")
+    print(f"✓ All semantic values normalized to English")
     
     return gdf, semantic_report
 
