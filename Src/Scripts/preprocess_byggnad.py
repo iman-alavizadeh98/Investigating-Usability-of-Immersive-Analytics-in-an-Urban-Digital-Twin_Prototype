@@ -30,15 +30,17 @@ from shapely.ops import unary_union
 # ============================================================================
 class NumpyEncoder(json.JSONEncoder):
     """
-    Handle numpy and pandas types in JSON serialization.
-    Convert pandas timestamps and numpy scalar types into JSON-serializable values
-
+    Handle numpy, pandas, and Shapely types in JSON serialization.
+    Convert pandas timestamps, numpy scalar types, and geometries into JSON-serializable values.
     """
     def default(self, obj):
         if isinstance(obj, (pd.Timestamp, pd.Timedelta)):
             return obj.isoformat()
         if hasattr(obj, 'item'):  # numpy scalars
             return obj.item()
+        # Handle Shapely geometries - convert to GeoJSON
+        if hasattr(obj, '__geo_interface__'):
+            return obj.__geo_interface__
         return super().default(obj)
 
 # ============================================================================
@@ -467,7 +469,7 @@ def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
 # ============================================================================
 # FEATURE DERIVATION
 # ============================================================================
-def stage_g_derive_features(gdf: gpd.GeoDataFrame) -> tuple:
+def compute_geospatial_metrics(gdf: gpd.GeoDataFrame) -> tuple:
     """
     Create derived attributes useful for analysis and visualization.
     Includes: area, perimeter, centroid, representative_point, bbox, vertex_count.
@@ -476,7 +478,7 @@ def stage_g_derive_features(gdf: gpd.GeoDataFrame) -> tuple:
       (buildings_enriched: GeoDataFrame, derivation_report: dict)
     """
     print("\n" + "="*70)
-    print("STAGE G: FEATURE DERIVATION")
+    print("FEATURE DERIVATION")
     print("="*70)
     
     derivation_report = {
@@ -528,15 +530,15 @@ def stage_g_derive_features(gdf: gpd.GeoDataFrame) -> tuple:
     gdf["internal_id"] = [f"bld_{i:06d}" for i in range(len(gdf))]
     derivation_report["derived_fields"].append("internal_id")
     
-    print(f"✓ Derived {len(derivation_report['derived_fields'])} fields")
+    print(f"Derived {len(derivation_report['derived_fields'])} fields")
     
     return gdf, derivation_report
 
 
 # ============================================================================
-# STAGE H: EXPORT AND PROVENANCE
+# EXPORT AND PROVENANCE
 # ============================================================================
-def stage_h_export_outputs(
+def export_processed_data(
     gdf: gpd.GeoDataFrame,
     ingestion_report: dict,
     quality_report: dict,
@@ -552,7 +554,7 @@ def stage_h_export_outputs(
     Save: GeoPackage, GeoJSON, quality report, schema mapping, preprocessing metadata.
     """
     print("\n" + "="*70)
-    print("STAGE H: EXPORT AND PROVENANCE")
+    print("EXPORT AND PROVENANCE")
     print("="*70)
     
     os.makedirs(output_dir, exist_ok=True)
@@ -588,13 +590,13 @@ def stage_h_export_outputs(
         "timestamp": datetime.now().isoformat(),
         "pipeline_version": "1.0",
         "stages": {
-            "A_ingestion": ingestion_report,
-            "B_schema_harmonization": schema_mapping,
-            "C_quality_assessment": quality_report,
-            "D_geometry_validation": repair_report,
-            "E_geometry_normalization": normalization_report,
-            "F_semantic_normalization": semantic_report,
-            "G_feature_derivation": derivation_report,
+            "ingestion": ingestion_report,
+            "column_translation": schema_mapping,
+            "quality_assessment": quality_report,
+            "geometry_validation": repair_report,
+            "geometry_and_crs_normalization": normalization_report,
+            "semantic_normalization": semantic_report,
+            "geospatial_metrics": derivation_report,
         },
         "final_row_count": len(gdf),
         "final_columns": gdf.columns.tolist(),
@@ -633,7 +635,7 @@ def stage_h_export_outputs(
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2, cls=NumpyEncoder)
     
-    print(f"\n✓ All outputs exported to: {output_dir}")
+    print(f"\   All outputs exported to: {output_dir}")
     print(f"  - byggnad_processed.gpkg")
     print(f"  - byggnad_processed.geojson")
     print(f"  - preprocessing_quality_report.json")
@@ -647,34 +649,34 @@ def stage_h_export_outputs(
 def main():
     """Run the complete thesis-grade preprocessing pipeline."""
     print("\n" + "="*70)
-    print("BYGGNAD PREPROCESSING PIPELINE - THESIS-GRADE")
+    print("BYGGNAD PREPROCESSING PIPELINE")
     print("="*70)
     print(f"Start time: {datetime.now().isoformat()}")
     
     try:
-        # Stage A: Ingestion
+        # Ingestion
         buildings_raw, ingestion_report = import_raw_buildings(INPUT_GPKG)
         
-        # Stage B: Schema Harmonization
+        # Column Translation
         buildings_schema, schema_mapping = translate_columns_to_english(buildings_raw)
         
-        # Stage C: Quality Assessment
+        # Quality Assessment
         quality_report = assess_data_quality(buildings_schema)
         
-        # Stage D: Geometry Validation & Repair
+        # Geometry Validation & Repair
         buildings_valid, repair_report = validate_and_repair_geometries(buildings_schema)
         
-        # Stage E: Geometry Normalization
+        # Geometry and CRS Normalization
         buildings_geom, normalization_report = normalize_geometry_and_crs(buildings_valid)
         
-        # Stage F: Semantic Normalization
+        # Semantic Normalization
         buildings_sem, semantic_report = normalize_building_semantics(buildings_geom)
         
-        # Stage G: Feature Derivation
-        buildings_final, derivation_report = stage_g_derive_features(buildings_sem)
+        # Geospatial Metrics
+        buildings_final, derivation_report = compute_geospatial_metrics(buildings_sem)
         
-        # Stage H: Export & Provenance
-        stage_h_export_outputs(
+        # Export and Provenance
+        export_processed_data(
             buildings_final,
             ingestion_report,
             quality_report,
@@ -694,7 +696,7 @@ def main():
         print("\nReady for next stage: Mesh generation")
         
     except Exception as e:
-        print(f"\n❌ PIPELINE FAILED: {e}")
+        print(f"\nPIPELINE FAILED: {e}")
         raise
 
 
