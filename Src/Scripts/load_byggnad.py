@@ -55,20 +55,40 @@ print("Columns after renaming:")
 print(buildings.info())
 
 
+# ── VALIDATE & REPAIR ───────
+print("── VALIDATE & REPAIR ────────────────────────────")
 
+'''
+Apply zero-distance buffer to rebuild geometries
+and fix potential topology issues.
+It seems to be a common technique to repair invalid geometries in Shapely.
+From what I understand, in the pipline that shaply engine has, when you use the
+the buffer func, it has to reconstruct all the polygons.
+So if there is a polygon with a problem it give error or will be built in a way that it will be valid.
+'''
 
+invalid_before = (~buildings.geometry.is_valid).sum()
+print(f"\nInvalid geometries before repair: {invalid_before}")
+print("\nValidating geometries...")
+buildings["geometry"] = buildings["geometry"].buffer(0)
+invalid_after = (~buildings.geometry.is_valid).sum()
+print(f"Invalid geometries after repair: {invalid_after}")
+
+# Check for empty geometries
+empty_count = buildings.geometry.is_empty.sum()
+print(f"Empty geometries: {empty_count}")
+
+#check for missing geometries
+missing_geom_count = buildings.geometry.isna().sum()
+print(f"Missing geometries: {missing_geom_count}")
+
+# Check geometry types
+print(buildings.geometry.geom_type.value_counts())
 
 
 
 
 '''
-# ── VALIDATE & REPAIR ───────
-print("── VALIDATE & REPAIR ────────────────────────────")
-print("\nValidating geometries...")
-buildings["geometry"] = buildings["geometry"].buffer(0)  # Fix invalid geometries (I didn't got the buffer thing, but it seems a regular data clean up for geospatial data.)
-print(f"Invalid geometries: {(~buildings.geometry.is_valid).sum()}")
-
-
 # ── EXPLODE MULTIPOLYGONS ───────
 print("── EXPLODE MULTIPOLYGONS ─────────────────────")
 print("\nHANDLING MULTIPOLYGONS...")
