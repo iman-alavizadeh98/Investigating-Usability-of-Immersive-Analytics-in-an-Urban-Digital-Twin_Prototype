@@ -364,7 +364,7 @@ def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
             "translation_count": gdf["object_type"].notna().sum(),
             "translation_map": object_type_map,
         })
-        print(f"✓ Translated object_type to English ({len(object_type_map)} mappings)")
+        print(f"Translated object_type to English ({len(object_type_map)} mappings)")
     
     # ── Translate survey_position (Capture method) ──
     survey_position_map = {
@@ -380,7 +380,7 @@ def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
             "translation_count": gdf["survey_position"].notna().sum(),
             "translation_map": survey_position_map,
         })
-        print(f"✓ Translated survey_position to English ({len(survey_position_map)} mappings)")
+        print(f"Translated survey_position to English ({len(survey_position_map)} mappings)")
     
     # ── Translate is_main_building (Yes/No to True/False) ──
     if "is_main_building" in gdf.columns:
@@ -395,7 +395,7 @@ def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
             "original_values": list(original_unique),
             "translation_map": is_main_map,
         })
-        print(f"✓ Translated is_main_building to boolean (Ja→True, Nej→False)")
+        print(f"Translated is_main_building to boolean (Ja→True, Nej→False)")
     
     # ── Translate usage fields (complex hierarchical values with Swedish terms) ──
     # These contain format like "Category;Subcategory" with Swedish terms
@@ -449,7 +449,7 @@ def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
                 "method": "hierarchical translation (Category;Subcategory)",
                 "terms_mapped": len(usage_term_map),
             })
-            print(f"✓ Translated {field} values to English")
+            print(f"Translated {field} values to English")
     
     # ── Strip whitespace from all text fields ──
     text_fields = ["building_name", "building_name_alt", "building_name_third",
@@ -458,14 +458,14 @@ def normalize_building_semantics(gdf: gpd.GeoDataFrame) -> tuple:
         if field in gdf.columns:
             gdf[field] = gdf[field].str.strip() if gdf[field].dtype == "object" else gdf[field]
     
-    print(f"✓ Stripped whitespace from text fields")
-    print(f"✓ All semantic values normalized to English")
+    print(f"Stripped whitespace from text fields")
+    print(f"All semantic values normalized to English")
     
     return gdf, semantic_report
 
 
 # ============================================================================
-# STAGE G: FEATURE DERIVATION
+# FEATURE DERIVATION
 # ============================================================================
 def stage_g_derive_features(gdf: gpd.GeoDataFrame) -> tuple:
     """
