@@ -1,0 +1,88 @@
+{
+  "_comment": "Swedish → English field name translations for Gothenburg Digital Twin datasets",
+  "metadata": {
+    "generated": "2026-04-23",
+    "source": "Phase 1 dataset profiling",
+    "data_language": "Swedish",
+    "target_language": "English"
+  },
+  "buildings": {
+    "objektidentitet": "object_id",
+    "versiongiltigfran": "version_valid_from",
+    "lagesosakerhetplan": "position_uncertainty_plan_m",
+    "lagesosakerhethojd": "position_uncertainty_height_m",
+    "ursprunglig_organisation": "original_organisation",
+    "objektversion": "object_version",
+    "objekttypnr": "object_type_number",
+    "objekttyp": "object_type",
+    "insamlingslage": "collection_level",
+    "byggnadsnamn1": "building_name_primary",
+    "byggnadsnamn2": "building_name_secondary",
+    "byggnadsnamn3": "building_name_tertiary",
+    "husnummer": "house_number",
+    "huvudbyggnad": "main_building_flag",
+    "andamal1": "primary_purpose",
+    "andamal2": "secondary_purpose",
+    "andamal3": "tertiary_purpose",
+    "andamal4": "quaternary_purpose",
+    "andamal5": "quinary_purpose"
+  },
+  "population_age_groups": {
+    "Rutstorl": "grid_cell_size_m",
+    "Ruta": "grid_cell_id",
+    "Alder_0_6": "age_0_6",
+    "Alder_7_15": "age_7_15",
+    "Alder_16_1": "age_16_19",
+    "Alder_20_2": "age_20_24",
+    "Alder_25_4": "age_25_44",
+    "Alder_45_6": "age_45_64",
+    "Alder_65": "age_65_plus",
+    "Totalt": "total_population"
+  },
+  "population_education": {
+    "Rutstorl": "grid_cell_size_m",
+    "Ruta": "grid_cell_id",
+    "Forgymn": "pre_gymnasium",
+    "Gymnasial": "gymnasium",
+    "Eftergymn2": "post_gymnasium_level2",
+    "Eftergymn3": "post_gymnasium_level3",
+    "UppgSakn": "information_missing",
+    "Totbef": "total_population"
+  },
+  "employment": {
+    "Rutstorl": "grid_cell_size_m",
+    "Ruta": "grid_cell_id"
+  },
+  "income": {
+    "Rutstorl": "grid_cell_size_m",
+    "Ruta": "grid_cell_id"
+  },
+  "place_names": {
+    "objektidentitet": "object_id",
+    "versionsgiltig": "version_valid_from",
+    "landskod": "country_code",
+    "namn": "place_name",
+    "objekttyp": "object_type"
+  },
+  "demographic_areas": {
+    "Desom": "deso_id",
+    "Kommun": "municipality_code"
+  },
+  "roads": {
+    "vagnamn": "road_name",
+    "vagtyp": "road_type",
+    "funktionell": "functional_class"
+  },
+  "property_mark": {
+    "fastighet": "property_id",
+    "marktyp": "land_type"
+  },
+  "common_fields": {
+    "geometry": "geometry",
+    "objektidentitet": "object_id",
+    "versiongiltigfran": "version_valid_from",
+    "objekttypnr": "object_type_number",
+    "objekttyp": "object_type",
+    "ursprunglig_organisation": "original_organisation"
+  }
+}
