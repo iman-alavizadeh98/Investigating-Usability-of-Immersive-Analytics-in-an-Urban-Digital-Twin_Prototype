@@ -15,10 +15,15 @@ __pycache__/
 # =========================
 # UNITY GENERATED FILES
 # =========================
+Unity/
 Unity/GISTesting/Library/
 Unity/GISTesting/Logs/
 Unity/GISTesting/Temp/
 Unity/GISTesting/UserSettings/
+Unity/GISTesting/Assets/Models/
+Unity/GISTesting/Assets/Models.meta
+Unity/GISTesting/Assets/Scenes/
+Unity/DigitalTwinPerview/
 
 # =========================
 # UNITY IDE FILES
