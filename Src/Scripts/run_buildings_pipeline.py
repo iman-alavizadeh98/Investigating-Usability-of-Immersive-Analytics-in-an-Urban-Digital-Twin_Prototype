@@ -66,7 +66,8 @@ def main():
     print("BUILDINGS PIPELINE COMPLETE")
     print("=" * 80)
     print(f"Status: {report.get('status')}")
-    print(f"Buildings processed: {pipeline.validation_report.get('total_buildings', 'N/A'):,}")
+    buildings_count = pipeline.validation_report.get('total_buildings', 0)
+    print(f"Buildings processed: {buildings_count:,}")
     print(f"Output directory: {args.output}")
     
     if report.get("status") == "failed":
