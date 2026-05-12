@@ -15,6 +15,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from datetime import datetime
 
 # Add Src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -42,7 +43,7 @@ def main():
     parser.add_argument(
         "--output",
         default="Processed_data",
-        help="Output directory for processed data"
+        help="Output directory for processed data (will create dated subfolder)"
     )
     parser.add_argument(
         "--profile",
@@ -52,14 +53,18 @@ def main():
     
     args = parser.parse_args()
     
+    # Generate dated folder names
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    processed_dir = Path(args.output) / f"buildings_{timestamp}"
+    
     # Run pipeline
     config = {
         "input_gpkg": args.input,
-        "output_dir": args.output,
+        "output_dir": str(processed_dir),
     }
     
     pipeline = BuildingsPipeline(config=config)
-    report = pipeline.run(output_dir=Path(args.output))
+    report = pipeline.run(output_dir=processed_dir)
     
     # Print report
     print("\n" + "=" * 80)
@@ -82,9 +87,12 @@ def main():
             "Buildings (Byggnad) - Processed"
         )
         
-        output_dir = Path(args.output)
-        profile_md = output_dir / "buildings_profile.md"
-        profile_html = output_dir / "buildings_profile.html"
+        # Create reports folder with dated subfolder
+        reports_dir = Path("reports") / f"buildings_{timestamp}"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        
+        profile_md = reports_dir / "buildings_profile.md"
+        profile_html = reports_dir / "buildings_profile.html"
         
         profiler.save_markdown(profile_md)
         profiler.save_html(profile_html)
