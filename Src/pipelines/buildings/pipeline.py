@@ -11,6 +11,7 @@ import pandas as pd
 import logging
 from typing import Dict, Any
 import json
+import numpy as np
 
 from pipelines.base import BasePipeline
 from .config import (
@@ -22,6 +23,18 @@ from .config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle numpy/pandas types."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 
 class BuildingsPipeline(BasePipeline):
@@ -72,7 +85,7 @@ class BuildingsPipeline(BasePipeline):
             report["issues"].append(f"CRS mismatch: expected EPSG:3006, got {self.data.crs}")
         
         # Check null geometries
-        null_geom = self.data.geometry.is_null.sum()
+        null_geom = self.data.geometry.isnull().sum()
         if null_geom > 0:
             report["issues"].append(f"Null geometries: {null_geom}")
         
@@ -182,7 +195,7 @@ class BuildingsPipeline(BasePipeline):
         
         metadata_file = output_dir / "buildings_metadata.json"
         with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
+            json.dump(metadata, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
         self.logger.info(f"Exported metadata to {metadata_file}")
         
         # Export summary statistics
@@ -190,7 +203,7 @@ class BuildingsPipeline(BasePipeline):
             "total_buildings": len(self.data),
             "columns": len(self.data.columns),
             "crs": str(self.data.crs),
-            "geometry_valid": (~self.data.geometry.is_null & self.data.geometry.is_valid).sum(),
+            "geometry_valid": (~self.data.geometry.isnull() & self.data.geometry.is_valid).sum(),
             "fields_translated": len(self.field_translations),
         }
         
@@ -206,5 +219,5 @@ class BuildingsPipeline(BasePipeline):
         
         summary_file = output_dir / "buildings_summary.json"
         with open(summary_file, "w", encoding="utf-8") as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False)
+            json.dump(summary, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
         self.logger.info(f"Exported summary to {summary_file}")

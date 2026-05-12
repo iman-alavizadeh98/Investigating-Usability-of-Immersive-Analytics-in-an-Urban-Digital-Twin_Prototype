@@ -60,11 +60,14 @@ class DataFrameProfiler:
         
         for col in self.gdf.columns:
             if col == "geometry" and self.is_geodataframe:
+                null_count = self.gdf[col].isna().sum()
                 profiles.append({
                     "name": col,
                     "dtype": "geometry",
                     "non_null_count": self.gdf[col].notna().sum(),
-                    "null_count": self.gdf[col].isna().sum(),
+                    "null_count": null_count,
+                    "null_percentage": round(null_count / len(self.gdf) * 100, 1),
+                    "unique_values": self.gdf[col].notna().sum(),
                     "geometry_types": self.gdf[col].geom_type.unique().tolist()
                 })
                 continue
@@ -89,9 +92,10 @@ class DataFrameProfiler:
                     "mean": float(series.mean())
                 })
             elif series.dtype == "object":
+                value_counts = series.value_counts()
                 profile.update({
                     "sample_value": str(series.iloc[0]) if len(series) > 0 else None,
-                    "most_common": str(series.value_counts().index[0]) if len(series) > 0 else None
+                    "most_common": str(value_counts.index[0]) if len(value_counts) > 0 else None
                 })
             
             profiles.append(profile)
