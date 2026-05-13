@@ -166,6 +166,21 @@ Additional outputs:
 - `Processed_data/buildings_profile.md` → Markdown table (schema + stats)
 - `Processed_data/buildings_profile.html` → Interactive HTML profile
 
+### With Postprocess Snapshot
+
+```bash
+python Src/scripts/run_buildings_pipeline.py --postprocess
+```
+
+Additional outputs (separate folder):
+- `Processed_data/buildings_YYYY-MM-DD_postprocess/buildings_processed_postprocess.gpkg`
+- `Processed_data/buildings_YYYY-MM-DD_postprocess/buildings_postprocess_report.json`
+- `Processed_data/buildings_YYYY-MM-DD_postprocess/buildings_postprocess_report.md`
+
+If combined with `--profile`, a separate report folder is also created:
+- `reports/buildings_YYYY-MM-DD_postprocess/buildings_profile.md`
+- `reports/buildings_YYYY-MM-DD_postprocess/buildings_profile.html`
+
 ### Custom Paths
 
 ```bash

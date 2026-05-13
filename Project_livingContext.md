@@ -19,6 +19,7 @@ Current status:
 - the buildings dataset pipeline is the main concrete dataset implementation;
 - Swedish fields are translated into English aliases in processed data;
 - validation and profiling are part of the workflow;
+- an optional postprocess snapshot step can be generated for deduplicated outputs;
 - mesh generation exists as a separate layer from schema standardization;
 - spatial joins and analytics payload preparation are part of the downstream chain;
 - legacy phase docs still exist, but they should be treated as older snapshots unless a newer code/doc update says otherwise.
@@ -172,6 +173,9 @@ Typical outputs from the buildings pipeline include:
 - [Processed_data/buildings_profile.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_profile.md)
 - [Processed_data/buildings_profile.html](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_profile.html)
 
+Optional outputs when `--postprocess` is enabled:
+- postprocess snapshot data, reports, and profiles are written to a sibling dated folder with a `_postprocess` suffix.
+
 Downstream outputs may include:
 - [Processed_data/building_meshes/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/building_meshes)
 - [Processed_data/spatial_joins/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/spatial_joins)
@@ -231,6 +235,8 @@ Keep this log short and dated. Record only changes that affect how future agents
 |------|--------|--------|
 | 2026-05-12 | Reframed living context around modular architecture and legacy phase docs | Makes the current pipeline-first structure the primary source of truth |
 | 2026-05-12 | Created living context section for the buildings pipeline | Gives future agents a stable, update-friendly reference |
+| 2026-05-13 | Expanded DataFrameProfiler reporting and column meaning support | Produces richer HTML/Markdown profiles with duplicates and missing-value summaries |
+| 2026-05-13 | Added optional postprocess snapshot outputs | Provides deduplicated outputs with a deletion report when requested |
 | YYYY-MM-DD | [Change] | [Impact] |
 
 ## Open Questions
