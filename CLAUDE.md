@@ -7,6 +7,18 @@ The project is a **city-scale digital twin of Gothenburg** used as a platform fo
 
 Do **not** use this file for thesis prose, literature review writing, citation formatting, or general academic drafting unless a task explicitly asks for development-facing technical documentation.
 
+Always read [Project_livingContext.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Project_livingContext.md) before making changes. Treat it as the live project snapshot, and add any project-relevant change you make there so future agents can update their context without re-reading the whole repository.
+
+## Canonical References
+
+Use these files first when deciding what is current:
+
+- [docs/MODULAR_ARCHITECTURE.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/MODULAR_ARCHITECTURE.md) for the current repo-wide architecture
+- [Project_livingContext.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Project_livingContext.md) for the live working context and changelog
+- [CLAUDE.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/CLAUDE.md) for development policy and task behavior
+
+Treat the phase-based summary documents as historical context unless a newer code path or dated note explicitly overrides them.
+
 ---
 
 ## Development Scope
@@ -233,12 +245,8 @@ Adapt as needed, but keep a similar separation:
 
 ```text
 project-root/
-├─ data/
-│  ├─ raw/
-│  ├─ external/
-│  ├─ interim/
-│  ├─ processed/
-│  └─ metadata/
+├─ Raw_data/
+├─ Processed_data/
 ├─ docs/
 │  ├─ architecture/
 │  ├─ setup/
@@ -252,29 +260,20 @@ project-root/
 │  ├─ integration/
 │  ├─ performance/
 │  └─ evaluation-support/
-├─ scripts/
-│  ├─ ingest/
-│  ├─ preprocess/
-│  ├─ validate/
-│  ├─ export/
-│  └─ analysis/
-├─ src/
-│  ├─ core/
-│  ├─ data/
-│  ├─ runtime/
-│  ├─ ui/
-│  ├─ analytics/
-│  ├─ logging/
-│  └─ utils/
-├─ engine/
-│  └─ [Unity_or_other_runtime_project]
+├─ Src/
+│  ├─ pipelines/
+│  ├─ mesh_generation/
+│  ├─ utils/
+│  └─ Scripts/
+├─ Unity/
+│  └─ [Unity_runtime_projects]
 ├─ tests/
 ├─ configs/
 ├─ notebooks/
 └─ CLAUDE.md
 ```
 
-If the actual stack differs, preserve the same intent.
+If the actual stack differs, preserve the same intent. In this repo, prefer the existing `Src/`, `Raw_data/`, `Processed_data/`, `Unity/`, `docs/`, and `reports/` layout over generic `src/`-style examples.
 
 ---
 
@@ -557,6 +556,7 @@ A development task is done when:
 When acting as a coding assistant on this project:
 
 - focus on implementation, debugging, structure, and technical documentation;
+- always consult [Project_livingContext.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Project_livingContext.md) before changing code or docs;
 - keep academic discussion out unless explicitly requested;
 - prefer actionable outputs over abstract advice;
 - suggest concrete folder locations for new files;
@@ -568,4 +568,5 @@ When acting as a coding assistant on this project:
 - handle Swedish source text cautiously and be alert to possible typos, spelling variation, and inconsistent field naming;
 - build on the current prototype and available data first;
 - if the data is insufficient, say exactly what is missing instead of inventing details.
+- after any project-relevant change, update [Project_livingContext.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Project_livingContext.md) with the change and, when relevant, add a short changelog entry.
 
