@@ -40,6 +40,7 @@ class GeneratorConfig:
     assumed_height_m: float = 10.0
     terrain_offset_m: float = 0.5
     material_color: tuple = (1.0, 1.0, 1.0)  # White
+    crs: str = "EPSG:3006"  # Authoritative CRS
 
 
 class MeshGenerator:
@@ -104,6 +105,7 @@ class MeshGenerator:
         logger.info("=" * 80)
         logger.info(f"MESH GENERATION: {self.strategy.get_strategy_name()}")
         logger.info(f"Input buildings: {len(self.buildings_gdf):,}")
+        logger.info(f"CRS: {self.config.crs}")
         logger.info("=" * 80)
         
         # Step 1: Partition
@@ -206,44 +208,66 @@ class MeshGenerator:
         buildings: gpd.GeoDataFrame,
         output_dir: Path
     ) -> Optional[Dict[str, Any]]:
-        """Build mesh for a group of buildings."""
+        """Build mesh for a group of buildings with proper height sourcing and metadata."""
         try:
+            # Compute local origin from group bounds (subtract this from all vertices)
+            origin_x = float(group.bounds[0])
+            origin_y = float(group.bounds[1])
+            origin_z = self.config.terrain_offset_m
+            
             # Combine all building geometries
             all_vertices = []
             all_faces = []
             vertex_offset = 0
             building_count = 0
+            building_ids = []
+            height_sources = {}  # Track distribution: {"lidar_hag_p95": 143, "fallback_default": 7}
             
             for _, row in buildings.iterrows():
                 geom = row.geometry
-                height_m = row.get("height_m", self.config.assumed_height_m)
                 
-                vertices, faces = self.builder.geometry_to_triangles(geom, height_m)
+                # EXPLICIT height field consumption from row
+                height_m = row.get("height_m", self.config.assumed_height_m)
+                height_source = row.get("height_source", "assumed_default")
+                building_id = row.get("object_id", f"unknown_{building_count}")
+                
+                # Generate triangles with local-origin rebasing
+                vertices, faces = self.builder.geometry_to_triangles(
+                    geom, 
+                    height_m,
+                    origin=(origin_x, origin_y)
+                )
                 
                 if vertices is not None and len(vertices) > 0:
                     all_vertices.append(vertices)
                     all_faces.append(faces + vertex_offset)
                     vertex_offset += len(vertices)
                     building_count += 1
+                    building_ids.append(building_id)
+                    
+                    # Track height source
+                    height_sources[height_source] = height_sources.get(height_source, 0) + 1
             
             if not all_vertices:
                 logger.warning(f"  ✗ No valid meshes generated for {group.group_name}")
                 return None
             
-            # Combine
-            import numpy as np
+            # Combine all vertices and faces
             combined_vertices = np.vstack(all_vertices)
             combined_faces = np.vstack(all_faces)
             
-            # Export
-            glb_filename = f"{group.group_id}.glb"
+            # Export to GLB
+            glb_filename = f"{group.group_id}_lod1.glb"
             glb_path = output_dir / glb_filename
             
+            # Export with normals
+            normals = self.builder.compute_normals(combined_vertices, combined_faces)
             success = self.builder.export_glb(
                 glb_path,
                 combined_vertices,
                 combined_faces,
-                group.group_id
+                group.group_id,
+                normals=normals
             )
             
             if not success:
@@ -253,21 +277,29 @@ class MeshGenerator:
             # Get file size
             file_size_mb = glb_path.stat().st_size / (1024 * 1024)
             
-            # Create metadata
+            # Create NEW semantic-rich metadata with all required fields
             metadata = {
                 "group_id": group.group_id,
                 "group_name": group.group_name,
-                "building_count": building_count,
-                "vertex_count": len(combined_vertices),
-                "triangle_count": len(combined_faces),
+                "lod_level": 1,
                 "glb_filename": glb_filename,
-                "file_size_mb": round(file_size_mb, 2),
-                "bounds": {
+                "crs": self.config.crs,
+                "origin": {
+                    "x": origin_x,
+                    "y": origin_y,
+                    "z": origin_z
+                },
+                "bounds_epsg3006": {
                     "west": float(group.bounds[0]),
                     "south": float(group.bounds[1]),
                     "east": float(group.bounds[2]),
                     "north": float(group.bounds[3])
-                }
+                },
+                "building_ids": building_ids,
+                "height_sources": height_sources,
+                "triangle_count": len(combined_faces),
+                "vertex_count": len(combined_vertices),
+                "file_size_mb": round(file_size_mb, 2)
             }
             
             return metadata
@@ -277,11 +309,12 @@ class MeshGenerator:
             return None
     
     def _save_manifest(self, manifests: List[Dict], output_dir: Path) -> Path:
-        """Save mesh manifest to JSON."""
+        """Save mesh manifest to JSON with semantic metadata."""
         manifest_data = {
             "timestamp": datetime.now().isoformat(),
             "strategy": self.strategy.get_strategy_name(),
             "strategy_description": self.strategy.get_strategy_description(),
+            "crs": self.config.crs,
             "total_groups": len(manifests),
             "total_vertices": sum(m.get("vertex_count", 0) for m in manifests),
             "total_triangles": sum(m.get("triangle_count", 0) for m in manifests),

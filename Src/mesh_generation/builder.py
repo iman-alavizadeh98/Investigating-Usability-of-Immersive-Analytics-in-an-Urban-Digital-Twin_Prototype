@@ -36,7 +36,8 @@ class MeshBuilder:
     def polygon_to_triangles(
         self,
         polygon: Polygon,
-        height_m: float
+        height_m: float,
+        origin: tuple = None
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Convert a 2D polygon to 3D triangulated prism (walls + flat roof).
@@ -44,10 +45,11 @@ class MeshBuilder:
         Args:
             polygon: 2D polygon (exterior ring + holes)
             height_m: Building height in meters
+            origin: Optional (x, y) tuple to subtract from all vertices for local-origin rebasing
         
         Returns:
             (vertices, faces)
-            - vertices: (N, 3) array of vertex coordinates [x, y, z]
+            - vertices: (N, 3) array of vertex coordinates [x, y, z], optionally rebased
             - faces: (M, 3) array of triangle indices
         """
         vertices_list = []
@@ -130,6 +132,12 @@ class MeshBuilder:
                 faces_list.append([v0_bot, v1_bot, v1_roof])
         
         vertices = np.array(vertices_list, dtype=np.float32)
+        
+        # Apply local-origin rebasing if provided
+        if origin is not None:
+            vertices[:, 0] -= origin[0]
+            vertices[:, 1] -= origin[1]
+        
         faces = np.array(faces_list, dtype=np.uint32)
         
         return vertices, faces
@@ -137,7 +145,8 @@ class MeshBuilder:
     def multipolygon_to_triangles(
         self,
         geom: MultiPolygon,
-        height_m: float
+        height_m: float,
+        origin: tuple = None
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Convert MultiPolygon to combined mesh."""
         all_vertices = []
@@ -146,7 +155,7 @@ class MeshBuilder:
         
         for polygon in geom.geoms:
             if isinstance(polygon, Polygon):
-                vertices, faces = self.polygon_to_triangles(polygon, height_m)
+                vertices, faces = self.polygon_to_triangles(polygon, height_m, origin=origin)
                 all_vertices.append(vertices)
                 all_faces.append(faces + vertex_offset)
                 vertex_offset += len(vertices)
@@ -161,9 +170,10 @@ class MeshBuilder:
     def geometry_to_triangles(
         self,
         geometry,
-        height_m: float
+        height_m: float,
+        origin: tuple = None
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-        """Convert any geometry to triangles."""
+        """Convert any geometry to triangles, optionally with local-origin rebasing."""
         
         if geometry.is_empty:
             return None, None
@@ -172,22 +182,55 @@ class MeshBuilder:
             geometry = make_valid(geometry)
         
         if isinstance(geometry, Polygon):
-            return self.polygon_to_triangles(geometry, height_m)
+            return self.polygon_to_triangles(geometry, height_m, origin=origin)
         elif isinstance(geometry, MultiPolygon):
-            return self.multipolygon_to_triangles(geometry, height_m)
+            return self.multipolygon_to_triangles(geometry, height_m, origin=origin)
         else:
             logger.warning(f"Unsupported geometry type: {type(geometry)}")
             return None, None
+    
+    def compute_normals(self, vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+        """
+        Compute per-vertex normals from face data.
+        
+        Args:
+            vertices: (N, 3) array of vertex positions
+            faces: (M, 3) array of face indices
+        
+        Returns:
+            normals: (N, 3) array of per-vertex normals
+        """
+        normals = np.zeros_like(vertices)
+        
+        for face in faces:
+            v0, v1, v2 = vertices[face]
+            edge1 = v1 - v0
+            edge2 = v2 - v0
+            face_normal = np.cross(edge1, edge2)
+            face_norm = np.linalg.norm(face_normal)
+            if face_norm > 1e-8:
+                face_normal = face_normal / face_norm
+            
+            normals[face] += face_normal
+        
+        # Normalize all vertex normals
+        for i in range(len(normals)):
+            norm = np.linalg.norm(normals[i])
+            if norm > 1e-8:
+                normals[i] = normals[i] / norm
+        
+        return normals.astype(np.float32)
     
     def export_glb(
         self,
         output_path: Path,
         vertices: np.ndarray,
         faces: np.ndarray,
-        building_id: str
+        building_id: str,
+        normals: np.ndarray = None
     ) -> bool:
         """
-        Export mesh to GLB (glTF binary) format.
+        Export mesh to GLB (glTF binary) format with optional normals.
         
         Uses pygltflib for simple mesh export.
         """
@@ -213,9 +256,17 @@ class MeshBuilder:
             gltf.materials.append(material)
             
             # Create mesh primitive
+            attributes_dict = {"POSITION": 0}
+            accessor_count = 1
+            
+            # Add normals if provided
+            if normals is not None:
+                attributes_dict["NORMAL"] = 1
+                accessor_count = 2
+            
             mesh_primitive = pygltflib.Primitive(
-                attributes=pygltflib.Attributes(POSITION=0),
-                indices=1,
+                attributes=pygltflib.Attributes(**attributes_dict),
+                indices=accessor_count,
                 material=0
             )
             
@@ -252,18 +303,39 @@ class MeshBuilder:
             )
             gltf.accessors.append(accessor_vertices)
             
+            # Normals buffer (if provided)
+            if normals is not None:
+                normals_bytes = normals.tobytes()
+                buffer_view_normals = pygltflib.BufferView(
+                    buffer=0,
+                    byteOffset=len(vertices_bytes),
+                    byteLength=len(normals_bytes),
+                    target=pygltflib.ARRAY_BUFFER
+                )
+                gltf.bufferViews.append(buffer_view_normals)
+                
+                accessor_normals = pygltflib.Accessor(
+                    bufferView=1,
+                    byteOffset=0,
+                    componentType=pygltflib.FLOAT,
+                    count=len(normals),
+                    type=pygltflib.VEC3
+                )
+                gltf.accessors.append(accessor_normals)
+            
             # Indices
             indices_bytes = faces.flatten().astype(np.uint32).tobytes()
+            buffer_view_idx_offset = 2 if normals is not None else 1
             buffer_view_indices = pygltflib.BufferView(
                 buffer=0,
-                byteOffset=len(vertices_bytes),
+                byteOffset=len(vertices_bytes) + (len(normals_bytes) if normals is not None else 0),
                 byteLength=len(indices_bytes),
                 target=pygltflib.ELEMENT_ARRAY_BUFFER
             )
             gltf.bufferViews.append(buffer_view_indices)
             
             accessor_indices = pygltflib.Accessor(
-                bufferView=1,
+                bufferView=buffer_view_idx_offset,
                 byteOffset=0,
                 componentType=pygltflib.UNSIGNED_INT,
                 count=faces.size,
@@ -272,7 +344,7 @@ class MeshBuilder:
             gltf.accessors.append(accessor_indices)
             
             # Create buffer
-            buffer_data = vertices_bytes + indices_bytes
+            buffer_data = vertices_bytes + (normals_bytes if normals is not None else b'') + indices_bytes
             buffer = pygltflib.Buffer(byteLength=len(buffer_data))
             gltf.buffers.append(buffer)
             

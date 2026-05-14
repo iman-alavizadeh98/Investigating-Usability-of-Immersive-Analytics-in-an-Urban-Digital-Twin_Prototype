@@ -79,6 +79,11 @@ class MeshStrategy(ABC):
         """
         Validate strategy configuration and data.
         
+        STRICT DETERMINISTIC OWNERSHIP POLICY:
+        - Each building MUST be assigned to exactly one group
+        - No duplicates, no missing buildings
+        - Deterministic per-run (same input → same assignment)
+        
         Returns:
             dict with validation report
         """
@@ -95,31 +100,40 @@ class MeshStrategy(ABC):
             report["validation_errors"].append("No groups created")
             return report
         
-        # Check coverage
-        all_building_indices = set()
+        # Check for duplicates FIRST - each building can only appear once
+        assignment_count = {}
         for group in self.groups:
-            all_building_indices.update(group.building_indices)
-            report["buildings_per_group"].append(len(group.building_indices))
+            for idx in group.building_indices:
+                assignment_count[idx] = assignment_count.get(idx, 0) + 1
+                report["buildings_per_group"].append(len(group.building_indices))
         
-        total_assigned = len(all_building_indices)
+        # Find duplicate assignments
+        duplicates = [idx for idx, count in assignment_count.items() if count > 1]
+        if duplicates:
+            report["validation_errors"].append(
+                f"STRICT: {len(duplicates)} building(s) assigned to multiple groups: {duplicates[:10]}"
+            )
+        
+        # Check coverage - all buildings must be assigned exactly once
+        all_assigned = set(assignment_count.keys())
+        total_assigned = len(all_assigned)
         report["coverage_percentage"] = (
             total_assigned / len(self.buildings_gdf) * 100
             if self.buildings_gdf is not None else 0
         )
         
-        missing_buildings = set(range(len(self.buildings_gdf))) - all_building_indices
+        missing_buildings = set(range(len(self.buildings_gdf))) - all_assigned
         if missing_buildings:
             report["validation_errors"].append(
-                f"Missing {len(missing_buildings)} buildings "
-                f"({len(missing_buildings)/len(self.buildings_gdf)*100:.1f}%)"
+                f"STRICT: {len(missing_buildings)} building(s) not assigned: {list(missing_buildings)[:10]}"
             )
         
-        # Check for duplicates (building in multiple groups)
+        # Cross-check: total assignments must equal total buildings
         total_assigned_count = sum(len(g.building_indices) for g in self.groups)
-        if total_assigned_count != total_assigned:
+        if total_assigned_count != len(self.buildings_gdf):
             report["validation_errors"].append(
-                f"Buildings assigned multiple times "
-                f"({total_assigned_count - total_assigned} duplicates)"
+                f"STRICT: Assignment count mismatch - "
+                f"assigned {total_assigned_count}, total buildings {len(self.buildings_gdf)}"
             )
         
         return report

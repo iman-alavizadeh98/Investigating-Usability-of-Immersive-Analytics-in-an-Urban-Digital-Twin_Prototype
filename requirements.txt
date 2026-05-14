@@ -7,3 +7,5 @@ pyproj>=3.4
 numpy>=1.24
 laspy>=2.1
 pygltflib>=0.6
+pdal>=2.4
+scipy>=1.11

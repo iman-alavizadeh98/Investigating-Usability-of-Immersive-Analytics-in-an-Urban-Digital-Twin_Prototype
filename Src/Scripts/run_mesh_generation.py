@@ -36,8 +36,8 @@ def main():
     )
     parser.add_argument(
         "--input",
-        default="Processed_data/byggnad_processed.gpkg",
-        help="Path to input GeoPackage"
+        default=None,
+        help="Path to input GeoPackage with buildings (default: enriched buildings from LiDAR pipeline if available, else processed buildings)"
     )
     parser.add_argument(
         "--strategy",
@@ -70,6 +70,21 @@ def main():
     
     args = parser.parse_args()
     
+    # Determine input path: prefer enriched buildings with heights
+    if args.input is None:
+        enriched_path = Path("Processed_data/buildings_with_heights.gpkg")
+        fallback_path = Path("Processed_data/buildings_processed.gpkg")
+        
+        if enriched_path.exists():
+            args.input = str(enriched_path)
+            logger.info(f"Using enriched buildings (LiDAR heights): {enriched_path}")
+        elif fallback_path.exists():
+            args.input = str(fallback_path)
+            logger.warning(f"Enriched buildings not found; using processed buildings: {fallback_path}")
+        else:
+            logger.error(f"Neither {enriched_path} nor {fallback_path} found")
+            return 1
+    
     input_path = Path(args.input)
     output_dir = Path(args.output)
     
@@ -100,7 +115,8 @@ def main():
         strategy_config=strategy_config,
         assumed_height_m=10.0,
         terrain_offset_m=0.5,
-        material_color=(1.0, 1.0, 1.0)
+        material_color=(1.0, 1.0, 1.0),
+        crs="EPSG:3006"
     )
     
     generator = MeshGenerator(buildings_gdf, config)

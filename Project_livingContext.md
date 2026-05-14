@@ -12,7 +12,7 @@ The main intent is to preserve Swedish source semantics while creating processed
 
 ## Current Status
 
-The current work is centered on the modular pipeline system and its downstream mesh and analytics workflows.
+The current work is centered on the modular pipeline system and its downstream mesh and analytics workflows, with a new focus on LOD1 input enrichment via LiDAR height estimation.
 
 Current status:
 - the repo now has a modular pipeline architecture;
@@ -20,6 +20,7 @@ Current status:
 - Swedish fields are translated into English aliases in processed data;
 - validation and profiling are part of the workflow;
 - an optional postprocess snapshot step can be generated for deduplicated outputs;
+- a new LiDAR height estimation pipeline enriches buildings with accurate heights from laserdata_nh/ LAZ tiles (NEW);
 - mesh generation exists as a separate layer from schema standardization;
 - spatial joins and analytics payload preparation are part of the downstream chain;
 - legacy phase docs still exist, but they should be treated as older snapshots unless a newer code/doc update says otherwise.
@@ -38,9 +39,12 @@ Check these first when updating context or reasoning about the project:
 - [docs/BUILDINGS_PIPELINE.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/BUILDINGS_PIPELINE.md)
 - [Src/pipelines/buildings/pipeline.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/buildings/pipeline.py)
 - [Src/pipelines/buildings/config.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/buildings/config.py)
+- [Src/pipelines/lidar_heights/pipeline.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/lidar_heights/pipeline.py) (NEW)
+- [Src/pipelines/lidar_heights/config.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/lidar_heights/config.py) (NEW)
 - [Src/mesh_generation/generator.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/mesh_generation/generator.py)
 - [Src/mesh_generation/builder.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/mesh_generation/builder.py)
 - [Src/Scripts/run_buildings_pipeline.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/run_buildings_pipeline.py)
+- [Src/Scripts/run_lidar_height_pipeline.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/run_lidar_height_pipeline.py) (NEW)
 - [Src/Scripts/run_mesh_generation.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/run_mesh_generation.py)
 - [Src/Scripts/preprocess_spatial_joins.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/preprocess_spatial_joins.py)
 - [Src/Scripts/validate_meshes.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/validate_meshes.py)
@@ -117,6 +121,67 @@ Conceptual flow:
 - aggregate demographic values by building;
 - export JSON payloads for downstream use.
 
+### LiDAR Height Estimation Pipeline (NEW)
+
+The LiDAR height estimation pipeline in [Src/pipelines/lidar_heights/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/lidar_heights/) enriches processed buildings with accurate height estimates derived from point cloud data.
+
+**Purpose**: LOD1 input enrichment — add reliable `height_m` values to buildings so the mesh generator can produce accurate 3D models.
+
+**Workflow**:
+1. Load processed buildings (from buildings pipeline)
+2. Validate CRS (EPSG:3006) and tile coverage
+3. Batch-process by LiDAR tile:
+   - Preprocess LAZ with PDAL: outlier removal → ground classification (SMRF) → height-above-ground
+   - Extract per-building heights: compute ground_z (median), roof_hag (95th percentile), height_m
+   - Classify quality (high/medium/low) based on point density and coverage
+4. Export enriched buildings with height_m and quality flags
+
+**Input**: 
+- Processed buildings GeoPackage (must have `object_id` and geometry)
+- LiDAR LAZ tiles from Raw_data/laserdata_nh/
+
+**Output**:
+- `Processed_data/buildings_with_heights.gpkg` — enriched buildings with height_m, quality flags, point metadata
+- `Processed_data/buildings_with_heights.parquet` — same data in Parquet format
+- `Processed_data/building_height_qc.csv` — QC subset for validation
+
+**Key Design Constraints**:
+- Preserves all building IDs (no filtering)
+- Uses 10m fallback height for buildings with insufficient LiDAR coverage
+- Marks quality="low" when coverage is poor (enables downstream prioritization)
+- Batch-processes by tile to manage memory (~500MB–1GB per tile)
+- Uses PDAL for explicit preprocessing; every step is auditable
+- All heights remain in EPSG:3006; coordinates unchanged
+
+**Usage**:
+```bash
+# Run with defaults
+python Src/Scripts/run_lidar_height_pipeline.py
+
+# Run validation tests
+python Src/Scripts/run_lidar_height_pipeline.py --test
+
+# Custom paths
+python Src/Scripts/run_lidar_height_pipeline.py \
+  --input Processed_data/buildings_processed.gpkg \
+  --output-dir Processed_data \
+  --lidar-dir Raw_data/laserdata_nh
+```
+
+**Configuration** is defined in [Src/pipelines/lidar_heights/config.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/lidar_heights/config.py):
+- `TileIndexConfig`: tile directory and CRS
+- `PDALConfig`: outlier/ground classification/HAG parameters
+- `HeightExtractionConfig`: min_points threshold, percentile, quality cutoffs
+- `LiDARHeightPipelineConfig`: orchestration and reproducibility settings
+
+**Validation**:
+The pipeline includes embedded validation tests (--test mode) that check:
+1. Synthetic ground truth (5m building → height ≈ 5.0m)
+2. Fallback logic (insufficient points → low quality)
+3. CRS preservation (output maintains EPSG:3006)
+4. Building ID stability (no row count changes)
+5. Determinism (re-runs produce identical heights)
+
 ### Legacy Code
 
 The old phase-oriented scripts and handoff templates still exist and may still be useful for reference, but they are not the primary architecture language anymore.
@@ -175,6 +240,11 @@ Typical outputs from the buildings pipeline include:
 
 Optional outputs when `--postprocess` is enabled:
 - postprocess snapshot data, reports, and profiles are written to a sibling dated folder with a `_postprocess` suffix.
+
+Typical outputs from the LiDAR height pipeline include (NEW):
+- [Processed_data/buildings_with_heights.gpkg](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_with_heights.gpkg)
+- [Processed_data/buildings_with_heights.parquet](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_with_heights.parquet)
+- [Processed_data/building_height_qc.csv](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/building_height_qc.csv)
 
 Downstream outputs may include:
 - [Processed_data/building_meshes/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/building_meshes)
@@ -237,7 +307,8 @@ Keep this log short and dated. Record only changes that affect how future agents
 | 2026-05-12 | Created living context section for the buildings pipeline | Gives future agents a stable, update-friendly reference |
 | 2026-05-13 | Expanded DataFrameProfiler reporting and column meaning support | Produces richer HTML/Markdown profiles with duplicates and missing-value summaries |
 | 2026-05-13 | Added optional postprocess snapshot outputs | Provides deduplicated outputs with a deletion report when requested |
-| YYYY-MM-DD | [Change] | [Impact] |
+| 2026-05-14 | Created LiDAR height estimation pipeline for LOD1 input enrichment | Buildings now enrich with height_m from laserdata_nh/ LAZ tiles; mesh generator can produce accurate 3D models |
+| 2026-05-14 | Implemented mesh generation robustness improvements (Phase 3) | Mesh generator now tracks height sources, rebases coordinates locally, exports normals, preserves building IDs, and produces semantic-rich manifests with CRS/origin metadata |
 
 ## Open Questions
 
