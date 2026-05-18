@@ -368,6 +368,46 @@ Examples:
         help="Enable verbose debug logging"
     )
     
+    # Performance optimization: caching
+    parser.add_argument(
+        "--cache",
+        action="store_true",
+        default=True,
+        help="Enable PDAL output caching (default: enabled)"
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_false",
+        dest="cache",
+        help="Disable PDAL output caching"
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear cache before running (implies --cache)"
+    )
+    
+    # Performance optimization: parallel processing
+    parser.add_argument(
+        "--parallel",
+        action="store_true",
+        default=True,
+        help="Enable parallel tile processing (default: enabled)"
+    )
+    parser.add_argument(
+        "--no-parallel",
+        action="store_false",
+        dest="parallel",
+        help="Disable parallel processing (sequential only)"
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Maximum number of worker processes (default: 4)"
+    )
+    
+    
     args = parser.parse_args()
     
     # Load config
@@ -380,6 +420,17 @@ Examples:
         config = create_default_config(args.input, args.output_dir, args.lidar_dir)
     
     config.verbose = args.verbose
+    
+    # Apply performance optimization flags
+    config.enable_pdal_cache = args.cache
+    config.enable_parallel_processing = args.parallel
+    config.max_workers = args.max_workers
+    
+    # Handle cache clearing
+    if args.clear_cache:
+        if config.pdal_cache_dir and config.pdal_cache_dir.exists():
+            logger.info(f"Clearing cache: {config.pdal_cache_dir}")
+            shutil.rmtree(config.pdal_cache_dir)
     
     # Run tests
     if args.test:

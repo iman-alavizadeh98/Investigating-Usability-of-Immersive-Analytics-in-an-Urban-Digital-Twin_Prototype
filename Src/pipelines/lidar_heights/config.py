@@ -145,6 +145,20 @@ class LiDARHeightPipelineConfig:
     verbose: bool = True
     """Enable verbose logging."""
     
+    # Performance optimization: PDAL output caching
+    enable_pdal_cache: bool = True
+    """Enable caching of PDAL preprocessing outputs to speed up re-runs."""
+    
+    pdal_cache_dir: Optional[Path] = None
+    """Directory for PDAL cache (default: temp_directory/pdal_cache)."""
+    
+    # Performance optimization: parallel tile processing
+    enable_parallel_processing: bool = True
+    """Enable parallel tile processing across multiple CPU cores."""
+    
+    max_workers: int = 4
+    """Maximum number of worker processes for parallel tile processing."""
+    
     def __post_init__(self):
         """Validate and set defaults."""
         self.input_buildings_path = Path(self.input_buildings_path)
@@ -155,6 +169,12 @@ class LiDARHeightPipelineConfig:
             self.temp_directory = self.output_directory / "temp" / self.height_run_id
         else:
             self.temp_directory = Path(self.temp_directory)
+        
+        # Set default cache directory if not specified
+        if self.pdal_cache_dir is None and self.enable_pdal_cache:
+            self.pdal_cache_dir = self.temp_directory / "pdal_cache"
+        elif self.pdal_cache_dir is not None:
+            self.pdal_cache_dir = Path(self.pdal_cache_dir)
         
         # Propagate CRS to sub-configs
         self.tile_index_config.crs = self.crs

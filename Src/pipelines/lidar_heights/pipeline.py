@@ -4,13 +4,14 @@ import logging
 import shutil
 from pathlib import Path
 from typing import Dict, Optional
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import geopandas as gpd
 
 from pipelines.base import BasePipeline
 from .config import LiDARHeightPipelineConfig
 from .tile_index import TileIndex
-from .pdal_pipelines import PDALPipelineGenerator
+from .pdal_pipelines import PDALPipelineGenerator, PDALCacheManager
 from .height_estimation import HeightEstimator
 from .export import HeightExporter
 
@@ -165,8 +166,20 @@ class LiDARHeightPipeline(BasePipeline):
         
         logger.info(f"Temp directory: {self.config.temp_directory}")
         
+        # Initialize cache manager if enabled
+        cache_manager = None
+        if self.config.enable_pdal_cache and self.config.pdal_cache_dir:
+            cache_manager = PDALCacheManager(
+                self.config.pdal_cache_dir,
+                self.config.pdal_config
+            )
+            logger.info(f"PDAL caching enabled: {self.config.pdal_cache_dir}")
+        
         # Initialize processors
-        pdal_gen = PDALPipelineGenerator(self.config.pdal_config)
+        pdal_gen = PDALPipelineGenerator(
+            self.config.pdal_config,
+            cache_manager=cache_manager
+        )
         height_estimator = HeightEstimator(self.config.height_extraction_config)
         
         # Get building-to-tile mapping
@@ -174,59 +187,38 @@ class LiDARHeightPipeline(BasePipeline):
         
         logger.info(f"Processing {len(buildings_to_tiles)} tiles...")
         
-        # Process each tile
-        for tile_idx, (tile_name, building_indices) in enumerate(buildings_to_tiles.items(), 1):
-            logger.info(
-                f"[{tile_idx}/{len(buildings_to_tiles)}] Processing {tile_name} "
-                f"({len(building_indices)} buildings)..."
+        # Determine processing mode
+        use_parallel = (
+            self.config.enable_parallel_processing 
+            and len(buildings_to_tiles) > 1
+        )
+        
+        if use_parallel:
+            logger.info(f"Parallel mode: {self.config.max_workers} workers")
+            self._process_tiles_parallel(
+                buildings_to_tiles,
+                pdal_gen,
+                height_estimator,
+                cache_manager
             )
-            
-            try:
-                # Input LAZ file
-                input_laz = self.config.lidar_directory / tile_name
-                
-                if not input_laz.exists():
-                    logger.warning(f"LAZ file not found: {input_laz}")
-                    continue
-                
-                # Preprocess with PDAL
-                classified_laz = pdal_gen.preprocess_tile(
-                    input_laz,
-                    self.config.temp_directory
-                )
-                
-                # Get buildings for this tile
-                tile_buildings = self.buildings_gdf.iloc[building_indices]
-                
-                # Extract heights
-                tile_heights = height_estimator.extract_heights_for_buildings(
-                    tile_buildings,
-                    classified_laz,
-                    self.config.height_run_id
-                )
-                
-                self.enriched_heights.extend(tile_heights)
-                
-                # Clean up classified LAZ
-                try:
-                    classified_laz.unlink()
-                    logger.debug(f"  Cleaned up {classified_laz.name}")
-                except Exception as e:
-                    logger.warning(f"Failed to delete {classified_laz}: {e}")
-            
-            except Exception as e:
-                logger.error(f"Failed to process tile {tile_name}: {e}")
-                # Continue with other tiles; use fallback heights for this tile
-                tile_buildings = self.buildings_gdf.iloc[building_indices]
-                for _, building in tile_buildings.iterrows():
-                    fallback = height_estimator._create_fallback_height(
-                        building.get("object_id", "unknown"),
-                        self.config.height_run_id,
-                        reason=f"tile_processing_error: {str(e)}"
-                    )
-                    self.enriched_heights.append(fallback)
+        else:
+            logger.info("Sequential mode")
+            self._process_tiles_sequential(
+                buildings_to_tiles,
+                pdal_gen,
+                height_estimator,
+                cache_manager
+            )
         
         logger.info(f"Preprocessing complete: extracted {len(self.enriched_heights)} building heights")
+        
+        # Log cache statistics if caching was enabled
+        if cache_manager is not None:
+            cache_stats = cache_manager.get_stats()
+            logger.info(
+                f"PDAL cache statistics: {cache_stats['cache_hits']} hits, "
+                f"{cache_stats['cache_misses']} misses ({cache_stats['cache_hit_rate']})"
+            )
         
         # Deduplicate buildings (handle tile boundary cases)
         self._deduplicate_heights()
@@ -266,6 +258,278 @@ class LiDARHeightPipeline(BasePipeline):
                 logger.debug(f"  ... and {len(duplicate_ids) - 10} more")
         
         self.enriched_heights = deduplicated
+    
+    @staticmethod
+    def _process_tile_worker(
+        tile_name: str,
+        building_indices: list,
+        buildings_file: str,  # Path to buildings GeoPackage
+        lidar_dir: str,
+        temp_dir: str,
+        pdal_config_dict: Dict,
+        height_config_dict: Dict,
+        height_run_id: str,
+        cache_manager_config: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Process a single tile in a worker process (for parallel execution).
+        
+        Args:
+            tile_name: Name of LAZ tile
+            building_indices: Indices of buildings for this tile
+            buildings_file: Path to buildings GeoPackage
+            lidar_dir: Path to LiDAR directory (as string)
+            temp_dir: Path to temp directory (as string)
+            pdal_config_dict: PDAL config as dictionary
+            height_config_dict: Height extraction config as dictionary
+            height_run_id: Height run identifier
+            cache_manager_config: Optional cache configuration dict
+            
+        Returns:
+            Dict with tile_name, status, heights, and error info
+        """
+        import logging
+        from .pdal_pipelines import PDALPipelineGenerator, PDALCacheManager
+        from .height_estimation import HeightEstimator
+        from .config import PDALConfig, HeightExtractionConfig
+        
+        worker_logger = logging.getLogger(__name__)
+        
+        try:
+            # Read buildings from disk
+            buildings_gdf = gpd.read_file(buildings_file)
+            
+            # Recreate configs
+            pdal_cfg = PDALConfig(**pdal_config_dict)
+            height_cfg = HeightExtractionConfig(**height_config_dict)
+            
+            # Initialize cache manager if provided
+            cache_manager = None
+            if cache_manager_config:
+                cache_manager = PDALCacheManager(
+                    Path(cache_manager_config['cache_dir']),
+                    pdal_cfg
+                )
+            
+            # Initialize processors
+            pdal_gen = PDALPipelineGenerator(pdal_cfg, cache_manager=cache_manager)
+            height_estimator = HeightEstimator(height_cfg)
+            
+            # Get buildings for this tile
+            tile_buildings = buildings_gdf.iloc[building_indices]
+            
+            # Input LAZ file
+            input_laz = Path(lidar_dir) / tile_name
+            
+            if not input_laz.exists():
+                return {
+                    "tile_name": tile_name,
+                    "status": "skipped",
+                    "error": f"LAZ file not found: {input_laz}",
+                    "heights": []
+                }
+            
+            # Preprocess with PDAL
+            classified_laz = pdal_gen.preprocess_tile(
+                input_laz,
+                Path(temp_dir)
+            )
+            
+            # Extract heights
+            tile_heights = height_estimator.extract_heights_for_buildings(
+                tile_buildings,
+                classified_laz,
+                height_run_id
+            )
+            
+            # Clean up classified LAZ
+            try:
+                classified_laz.unlink()
+            except Exception as e:
+                worker_logger.warning(f"Failed to delete {classified_laz}: {e}")
+            
+            return {
+                "tile_name": tile_name,
+                "status": "success",
+                "heights": tile_heights,
+                "error": None
+            }
+            
+        except Exception as e:
+            worker_logger.error(f"Failed to process tile {tile_name}: {e}")
+            return {
+                "tile_name": tile_name,
+                "status": "error",
+                "error": str(e),
+                "heights": []
+            }
+    
+    def _process_tiles_sequential(
+        self,
+        buildings_to_tiles: Dict,
+        pdal_gen: "PDALPipelineGenerator",
+        height_estimator: "HeightEstimator",
+        cache_manager: Optional["PDALCacheManager"]
+    ) -> None:
+        """
+        Process tiles sequentially (original behavior).
+        
+        Args:
+            buildings_to_tiles: Mapping of tile names to building indices
+            pdal_gen: PDAL pipeline generator instance
+            height_estimator: Height estimator instance
+            cache_manager: Optional cache manager instance
+        """
+        total_tiles = len(buildings_to_tiles)
+        
+        for tile_idx, (tile_name, building_indices) in enumerate(buildings_to_tiles.items(), 1):
+            logger.info(
+                f"[{tile_idx}/{total_tiles}] Processing {tile_name} "
+                f"({len(building_indices)} buildings)..."
+            )
+            
+            try:
+                # Input LAZ file
+                input_laz = self.config.lidar_directory / tile_name
+                
+                if not input_laz.exists():
+                    logger.warning(f"LAZ file not found: {input_laz}")
+                    continue
+                
+                # Preprocess with PDAL
+                classified_laz = pdal_gen.preprocess_tile(
+                    input_laz,
+                    self.config.temp_directory
+                )
+                
+                # Get buildings for this tile
+                tile_buildings = self.buildings_gdf.iloc[building_indices]
+                
+                # Extract heights
+                tile_heights = height_estimator.extract_heights_for_buildings(
+                    tile_buildings,
+                    classified_laz,
+                    self.config.height_run_id
+                )
+                
+                self.enriched_heights.extend(tile_heights)
+                
+                # Clean up classified LAZ
+                try:
+                    classified_laz.unlink()
+                    logger.debug(f"  Cleaned up {classified_laz.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {classified_laz}: {e}")
+            
+            except Exception as e:
+                logger.error(f"Failed to process tile {tile_name}: {e}")
+                # Use fallback heights for this tile
+                tile_buildings = self.buildings_gdf.iloc[building_indices]
+                for _, building in tile_buildings.iterrows():
+                    fallback = height_estimator._create_fallback_height(
+                        building.get("object_id", "unknown"),
+                        self.config.height_run_id,
+                        reason=f"tile_processing_error: {str(e)}"
+                    )
+                    self.enriched_heights.append(fallback)
+    
+    def _process_tiles_parallel(
+        self,
+        buildings_to_tiles: Dict,
+        pdal_gen: "PDALPipelineGenerator",
+        height_estimator: "HeightEstimator",
+        cache_manager: Optional["PDALCacheManager"]
+    ) -> None:
+        """
+        Process tiles in parallel using ProcessPoolExecutor.
+        
+        Args:
+            buildings_to_tiles: Mapping of tile names to building indices
+            pdal_gen: PDAL pipeline generator instance (used for config)
+            height_estimator: Height estimator instance (used for config)
+            cache_manager: Optional cache manager instance
+        """
+        total_tiles = len(buildings_to_tiles)
+        
+        # Prepare cache config for worker processes
+        cache_config = None
+        if cache_manager is not None:
+            cache_config = {
+                'cache_dir': str(self.config.pdal_cache_dir)
+            }
+        
+        # Convert configs to dictionaries for serialization
+        pdal_config_dict = {
+            'outlier_method': self.config.pdal_config.outlier_method,
+            'outlier_multiplier': self.config.pdal_config.outlier_multiplier,
+            'smrf_slope': self.config.pdal_config.smrf_slope,
+            'smrf_window': self.config.pdal_config.smrf_window,
+            'smrf_threshold': self.config.pdal_config.smrf_threshold,
+            'hag_method': self.config.pdal_config.hag_method,
+            'compression': self.config.pdal_config.compression
+        }
+        
+        height_config_dict = {
+            'min_points': self.config.height_extraction_config.min_points,
+            'percentile_height': self.config.height_extraction_config.percentile_height,
+            'high_quality_min_points': self.config.height_extraction_config.high_quality_min_points,
+            'high_quality_min_coverage': self.config.height_extraction_config.high_quality_min_coverage,
+            'medium_quality_min_coverage': self.config.height_extraction_config.medium_quality_min_coverage,
+            'high_quality_max_variance': self.config.height_extraction_config.high_quality_max_variance
+        }
+        
+        logger.info(f"Starting parallel processing with {self.config.max_workers} workers...")
+        
+        # Submit all tile jobs to executor
+        with ProcessPoolExecutor(max_workers=self.config.max_workers) as executor:
+            # Create futures dict
+            futures = {}
+            
+            for tile_name, building_indices in buildings_to_tiles.items():
+                future = executor.submit(
+                    self._process_tile_worker,
+                    tile_name,
+                    building_indices,
+                    str(self.config.input_buildings_path),
+                    str(self.config.lidar_directory),
+                    str(self.config.temp_directory),
+                    pdal_config_dict,
+                    height_config_dict,
+                    self.config.height_run_id,
+                    cache_config
+                )
+                futures[future] = tile_name
+            
+            # Process results as they complete
+            completed = 0
+            for future in as_completed(futures):
+                completed += 1
+                tile_name = futures[future]
+                
+                try:
+                    result = future.result()
+                    
+                    logger.info(
+                        f"[{completed}/{total_tiles}] {tile_name}: {result['status']}"
+                    )
+                    
+                    if result['status'] == 'success':
+                        self.enriched_heights.extend(result['heights'])
+                    elif result['status'] == 'error':
+                        logger.error(f"  Error: {result['error']}")
+                        # Create fallback heights for buildings on this tile
+                        building_indices = buildings_to_tiles[tile_name]
+                        tile_buildings = self.buildings_gdf.iloc[building_indices]
+                        for _, building in tile_buildings.iterrows():
+                            fallback = height_estimator._create_fallback_height(
+                                building.get("object_id", "unknown"),
+                                self.config.height_run_id,
+                                reason=f"tile_processing_error: {result['error']}"
+                            )
+                            self.enriched_heights.append(fallback)
+                    
+                except Exception as e:
+                    logger.error(f"Failed to get result for {tile_name}: {e}")
     
     def export(self, output_dir: Optional[Path] = None) -> Dict:
         """

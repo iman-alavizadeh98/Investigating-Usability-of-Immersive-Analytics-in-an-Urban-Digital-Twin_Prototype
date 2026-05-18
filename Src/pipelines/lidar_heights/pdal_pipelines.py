@@ -1,7 +1,9 @@
 """PDAL pipeline generation and execution for LiDAR preprocessing."""
 
+import hashlib
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 import tempfile
@@ -13,17 +15,152 @@ from .config import PDALConfig
 logger = logging.getLogger(__name__)
 
 
+class PDALCacheManager:
+    """Manage caching of PDAL preprocessing outputs to speed up re-runs."""
+    
+    def __init__(self, cache_dir: Path, config: PDALConfig):
+        """
+        Initialize cache manager.
+        
+        Args:
+            cache_dir: Directory to store cached preprocessed LAZ files
+            config: PDALConfig with preprocessing parameters (used for cache invalidation)
+        """
+        self.cache_dir = cache_dir
+        self.config = config
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.hits = 0
+        self.misses = 0
+    
+    def _compute_file_hash(self, filepath: Path) -> str:
+        """
+        Compute MD5 hash of input LAZ file.
+        
+        Args:
+            filepath: Path to LAZ file
+            
+        Returns:
+            Hex string MD5 hash of file contents
+        """
+        md5 = hashlib.md5()
+        with open(filepath, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                md5.update(chunk)
+        return md5.hexdigest()
+    
+    def _get_config_fingerprint(self) -> str:
+        """
+        Create hash of PDAL config parameters for cache invalidation.
+        
+        If config changes, cache should be invalidated. This ensures that
+        changing parameters (outlier multiplier, SMRF settings, etc.) will
+        not use stale cached outputs.
+        
+        Returns:
+            Hex string MD5 hash of config parameters
+        """
+        config_str = (
+            f"outlier:{self.config.outlier_method}_{self.config.outlier_multiplier}|"
+            f"smrf:{self.config.smrf_slope}_{self.config.smrf_window}_{self.config.smrf_threshold}|"
+            f"hag:{self.config.hag_method}|"
+            f"compression:{self.config.compression}"
+        )
+        return hashlib.md5(config_str.encode()).hexdigest()
+    
+    def _get_cache_path(self, input_hash: str) -> Path:
+        """
+        Compute cache file path given input hash.
+        
+        Cache key format: {input_hash}_{config_hash}.laz
+        This ensures different configs use different cache entries.
+        
+        Args:
+            input_hash: MD5 hash of input LAZ file
+            
+        Returns:
+            Path to cache file
+        """
+        config_hash = self._get_config_fingerprint()
+        cache_filename = f"{input_hash}_{config_hash}.laz"
+        return self.cache_dir / cache_filename
+    
+    def get_cached_or_process(
+        self,
+        input_laz: Path,
+        pipeline_generator: 'PDALPipelineGenerator',
+        temp_dir: Path
+    ) -> Path:
+        """
+        Return cached preprocessed LAZ if available, else process with PDAL and cache.
+        
+        Args:
+            input_laz: Path to raw input LAZ file
+            pipeline_generator: PDALPipelineGenerator instance to execute pipeline if needed
+            temp_dir: Temporary directory for PDAL output
+            
+        Returns:
+            Path to preprocessed (classified) LAZ file - either from cache or newly generated
+        """
+        input_hash = self._compute_file_hash(input_laz)
+        cache_path = self._get_cache_path(input_hash)
+        
+        # Check if cached version exists
+        if cache_path.exists():
+            logger.info(f"  Cache HIT: {input_laz.name} → {cache_path.name}")
+            self.hits += 1
+            return cache_path
+        
+        # Cache miss: run PDAL pipeline
+        logger.info(f"  Cache MISS: {input_laz.name} → processing with PDAL")
+        self.misses += 1
+        
+        # Create temporary output for PDAL
+        output_name = f"{input_laz.stem}_classified.laz"
+        temp_output = temp_dir / output_name
+        
+        # Generate and execute pipeline
+        pipeline_dict = pipeline_generator.generate_laz_to_classified_laz(
+            input_laz,
+            temp_output
+        )
+        pipeline_generator.execute_pipeline(pipeline_dict, input_laz, temp_output, temp_dir)
+        
+        # Copy result to cache
+        shutil.copy2(temp_output, cache_path)
+        logger.info(f"  Cached: {cache_path.name}")
+        
+        return cache_path
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics.
+        
+        Returns:
+            Dict with hits, misses, and hit rate
+        """
+        total = self.hits + self.misses
+        hit_rate = (self.hits / total * 100) if total > 0 else 0
+        return {
+            "cache_hits": self.hits,
+            "cache_misses": self.misses,
+            "cache_total": total,
+            "cache_hit_rate": f"{hit_rate:.1f}%"
+        }
+
+
 class PDALPipelineGenerator:
     """Generate and execute PDAL processing pipelines for LiDAR preprocessing."""
     
-    def __init__(self, config: PDALConfig):
+    def __init__(self, config: PDALConfig, cache_manager: Optional[PDALCacheManager] = None):
         """
         Initialize pipeline generator.
         
         Args:
             config: PDALConfig with preprocessing parameters
+            cache_manager: Optional PDALCacheManager for caching preprocessed LAZ files
         """
         self.config = config
+        self.cache_manager = cache_manager
     
     def generate_laz_to_classified_laz(
         self,
@@ -129,9 +266,12 @@ class PDALPipelineGenerator:
         """
         Preprocess a single LiDAR tile from input to classified output.
         
+        Checks cache first; if available, returns cached preprocessed LAZ.
+        If not cached, runs PDAL pipeline and caches the result.
+        
         Args:
             input_laz: Path to raw LAZ input
-            temp_dir: Directory for temporary/output files
+            temp_dir: Directory for temporary/output files and cache
             
         Returns:
             Path to classified LAZ with ground classification and HAG
@@ -139,7 +279,15 @@ class PDALPipelineGenerator:
         Raises:
             RuntimeError: If preprocessing fails
         """
-        # Create output path in temp directory
+        # Check cache first if available
+        if self.cache_manager is not None:
+            return self.cache_manager.get_cached_or_process(
+                input_laz,
+                self,
+                temp_dir
+            )
+        
+        # No cache: run PDAL directly
         output_name = f"{input_laz.stem}_classified.laz"
         output_laz = temp_dir / output_name
         

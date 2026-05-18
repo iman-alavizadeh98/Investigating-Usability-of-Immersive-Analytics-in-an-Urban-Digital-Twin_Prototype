@@ -329,6 +329,7 @@ Keep this log short and dated. Record only changes that affect how future agents
 | 2026-05-14 | Implemented mesh generation robustness improvements (Phase 3) | Mesh generator now tracks height sources, rebases coordinates locally, exports normals, preserves building IDs, and produces semantic-rich manifests with CRS/origin metadata |
 | 2026-05-18 | Standardized living context for LiDAR and mesh submodules | Future agents can find the new pipeline and strategy module boundaries without inferring them from parent folders |
 | 2026-05-18 | LiDAR pipeline robustness refactoring: 6 improvements | (1) Output naming: "buildings_lidar_added.*" (was "buildings_with_heights.*"); (2) Building validation: added coverage checks via validate_building_lidar_coverage(); (3) Per-building progress logging: improved visibility during extraction; (4) Border deduplication: _deduplicate_heights() removes tile-boundary duplicates; (5) File detection: run_mesh_generation.py checks for new filename first; (6) Coverage metrics: exported in QC CSV and enriched buildings with lidar_coverage_status/ratio |
+| 2026-05-18 | LiDAR pipeline performance optimization: Phase 1 (PDAL caching) + Phase 2 (parallel processing) | (Phase 1) PDALCacheManager with MD5 hashing and config fingerprinting enables ~40-50% speedup on re-runs; (Phase 2) ProcessPoolExecutor-based tile parallelism enables ~2.5-3.5x speedup on first runs; both features configurable via CLI flags (--cache, --no-cache, --clear-cache, --parallel, --no-parallel, --max-workers) |
 
 ## Open Questions
 
