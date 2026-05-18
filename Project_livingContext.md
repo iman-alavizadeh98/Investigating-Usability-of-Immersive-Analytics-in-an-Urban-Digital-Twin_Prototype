@@ -151,17 +151,19 @@ The LiDAR height estimation pipeline in [Src/pipelines/lidar_heights/](w:/Invest
 - LiDAR LAZ tiles from Raw_data/laserdata_nh/
 
 **Output**:
-- `Processed_data/buildings_with_heights.gpkg` — enriched buildings with height_m, quality flags, point metadata
-- `Processed_data/buildings_with_heights.parquet` — same data in Parquet format
-- `Processed_data/building_height_qc.csv` — QC subset for validation
+- `Processed_data/buildings_lidar_added.gpkg` — enriched buildings with height_m, quality flags, point metadata
+- `Processed_data/buildings_lidar_added.parquet` — same data in Parquet format
+- `Processed_data/building_lidar_qc.csv` — QC subset for validation
 
 **Key Design Constraints**:
 - Preserves all building IDs (no filtering)
+- Deduplicates buildings that appear on tile boundaries (keeps first occurrence)
 - Uses 10m fallback height for buildings with insufficient LiDAR coverage
 - Marks quality="low" when coverage is poor (enables downstream prioritization)
 - Batch-processes by tile to manage memory (~500MB–1GB per tile)
 - Uses PDAL for explicit preprocessing; every step is auditable
 - All heights remain in EPSG:3006; coordinates unchanged
+- Includes coverage metrics: `lidar_coverage_status` (good/partial/none) and `lidar_coverage_ratio`
 
 **Usage**:
 ```bash
@@ -258,9 +260,9 @@ Optional outputs when `--postprocess` is enabled:
 - postprocess snapshot data, reports, and profiles are written to a sibling dated folder with a `_postprocess` suffix.
 
 Typical outputs from the LiDAR height pipeline include (NEW):
-- [Processed_data/buildings_with_heights.gpkg](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_with_heights.gpkg)
-- [Processed_data/buildings_with_heights.parquet](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_with_heights.parquet)
-- [Processed_data/building_height_qc.csv](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/building_height_qc.csv)
+- [Processed_data/buildings_lidar_added.gpkg](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_lidar_added.gpkg)
+- [Processed_data/buildings_lidar_added.parquet](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_lidar_added.parquet)
+- [Processed_data/building_lidar_qc.csv](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/building_lidar_qc.csv)
 
 Downstream outputs may include:
 - [Processed_data/building_meshes/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/building_meshes)
@@ -326,6 +328,7 @@ Keep this log short and dated. Record only changes that affect how future agents
 | 2026-05-14 | Created LiDAR height estimation pipeline for LOD1 input enrichment | Buildings now enrich with height_m from laserdata_nh/ LAZ tiles; mesh generator can produce accurate 3D models |
 | 2026-05-14 | Implemented mesh generation robustness improvements (Phase 3) | Mesh generator now tracks height sources, rebases coordinates locally, exports normals, preserves building IDs, and produces semantic-rich manifests with CRS/origin metadata |
 | 2026-05-18 | Standardized living context for LiDAR and mesh submodules | Future agents can find the new pipeline and strategy module boundaries without inferring them from parent folders |
+| 2026-05-18 | LiDAR pipeline robustness refactoring: 6 improvements | (1) Output naming: "buildings_lidar_added.*" (was "buildings_with_heights.*"); (2) Building validation: added coverage checks via validate_building_lidar_coverage(); (3) Per-building progress logging: improved visibility during extraction; (4) Border deduplication: _deduplicate_heights() removes tile-boundary duplicates; (5) File detection: run_mesh_generation.py checks for new filename first; (6) Coverage metrics: exported in QC CSV and enriched buildings with lidar_coverage_status/ratio |
 
 ## Open Questions
 

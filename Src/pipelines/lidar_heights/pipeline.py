@@ -227,6 +227,45 @@ class LiDARHeightPipeline(BasePipeline):
                     self.enriched_heights.append(fallback)
         
         logger.info(f"Preprocessing complete: extracted {len(self.enriched_heights)} building heights")
+        
+        # Deduplicate buildings (handle tile boundary cases)
+        self._deduplicate_heights()
+    
+    def _deduplicate_heights(self) -> None:
+        """
+        Remove duplicate buildings that may have been processed on tile boundaries.
+        
+        Keeps first occurrence and logs deduplication statistics.
+        """
+        if len(self.enriched_heights) == 0:
+            return
+        
+        original_count = len(self.enriched_heights)
+        seen_ids = set()
+        deduplicated = []
+        duplicate_ids = []
+        
+        for height_dict in self.enriched_heights:
+            building_id = height_dict.get("building_id")
+            
+            if building_id not in seen_ids:
+                deduplicated.append(height_dict)
+                seen_ids.add(building_id)
+            else:
+                duplicate_ids.append(building_id)
+        
+        removed_count = original_count - len(deduplicated)
+        
+        if removed_count > 0:
+            logger.info(
+                f"Deduplication: removed {removed_count}/{original_count} "
+                f"({100*removed_count/original_count:.1f}%) duplicates"
+            )
+            logger.debug(f"  Duplicate building IDs: {duplicate_ids[:10]}")
+            if len(duplicate_ids) > 10:
+                logger.debug(f"  ... and {len(duplicate_ids) - 10} more")
+        
+        self.enriched_heights = deduplicated
     
     def export(self, output_dir: Optional[Path] = None) -> Dict:
         """

@@ -88,12 +88,12 @@ class HeightExporter:
                 enriched_gdf.loc[enriched_gdf["height_m"].isna(), "height_m"] = config.height_extraction_config.fallback_height_m
         
         # 1. Export GeoPackage
-        gpkg_path = output_directory / "buildings_with_heights.gpkg"
+        gpkg_path = output_directory / "buildings_lidar_added.gpkg"
         logger.info(f"Writing GeoPackage to {gpkg_path.name}...")
         
         enriched_gdf.to_file(
             gpkg_path,
-            layer="buildings_with_heights",
+            layer="buildings_lidar_added",
             driver="GPKG",
             crs=config.crs
         )
@@ -101,7 +101,7 @@ class HeightExporter:
         logger.info(f"  GeoPackage: {len(enriched_gdf)} buildings, CRS={config.crs}")
         
         # 2. Export Parquet (convert geometry to WKT for storage)
-        parquet_path = output_directory / "buildings_with_heights.parquet"
+        parquet_path = output_directory / "buildings_lidar_added.parquet"
         logger.info(f"Writing Parquet to {parquet_path.name}...")
         
         parquet_df = enriched_gdf.copy()
@@ -117,7 +117,7 @@ class HeightExporter:
         logger.info(f"  Parquet: {len(parquet_df_export)} rows")
         
         # 3. Export QC CSV
-        qc_path = output_directory / "building_height_qc.csv"
+        qc_path = output_directory / "building_lidar_qc.csv"
         logger.info(f"Writing QC CSV to {qc_path.name}...")
         
         qc_cols = [
@@ -143,6 +143,19 @@ class HeightExporter:
         
         logger.info(f"  QC CSV: {len(qc_df)} rows")
         
+        # 4. Export Coverage Report
+        coverage_path = output_directory / "building_lidar_coverage_report.csv"
+        logger.info(f"Writing Coverage Report to {coverage_path.name}...")
+        
+        coverage_cols = [c for c in ["object_id", "height_m", "lidar_coverage_status", "lidar_coverage_ratio"] if c in enriched_gdf.columns]
+        if coverage_cols:
+            coverage_df = enriched_gdf[coverage_cols].copy()
+            coverage_df.to_csv(coverage_path, index=False)
+            logger.info(f"  Coverage Report: {len(coverage_df)} rows")
+        else:
+            logger.warning("  Coverage columns not found; skipping coverage report")
+            coverage_path = None
+        
         # Generate summary statistics
         summary = HeightExporter._compute_summary_stats(enriched_gdf, config)
         
@@ -152,6 +165,7 @@ class HeightExporter:
             "gpkg_path": str(gpkg_path),
             "parquet_path": str(parquet_path),
             "qc_csv_path": str(qc_path),
+            "coverage_report_path": str(coverage_path) if coverage_path else None,
             "summary": summary
         }
     

@@ -72,17 +72,21 @@ def main():
     
     # Determine input path: prefer enriched buildings with heights
     if args.input is None:
+        lidar_added_path = Path("Processed_data/buildings_lidar_added.gpkg")
         enriched_path = Path("Processed_data/buildings_with_heights.gpkg")
         fallback_path = Path("Processed_data/buildings_processed.gpkg")
         
-        if enriched_path.exists():
+        if lidar_added_path.exists():
+            args.input = str(lidar_added_path)
+            logger.info(f"Using LiDAR-enriched buildings: {lidar_added_path}")
+        elif enriched_path.exists():
             args.input = str(enriched_path)
-            logger.info(f"Using enriched buildings (LiDAR heights): {enriched_path}")
+            logger.info(f"Using enriched buildings (legacy naming): {enriched_path}")
         elif fallback_path.exists():
             args.input = str(fallback_path)
             logger.warning(f"Enriched buildings not found; using processed buildings: {fallback_path}")
         else:
-            logger.error(f"Neither {enriched_path} nor {fallback_path} found")
+            logger.error(f"No buildings file found (checked: {lidar_added_path}, {enriched_path}, {fallback_path})")
             return 1
     
     input_path = Path(args.input)

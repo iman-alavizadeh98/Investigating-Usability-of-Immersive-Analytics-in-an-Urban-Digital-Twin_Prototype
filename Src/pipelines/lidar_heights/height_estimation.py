@@ -64,15 +64,19 @@ class HeightEstimator:
         # Process each building
         for idx, (_, building_row) in enumerate(buildings_gdf.iterrows()):
             try:
+                # Progress logging every 100 buildings
+                if (idx + 1) % 100 == 0:
+                    building_id = building_row.get("object_id", f"unknown_{idx}")
+                    logger.info(
+                        f"  Processing building {idx + 1}/{len(buildings_gdf)} ({building_id})"
+                    )
+                
                 height_dict = self._extract_height_for_building(
                     building_row,
                     las,
                     height_run_id
                 )
                 heights.append(height_dict)
-                
-                if (idx + 1) % 100 == 0:
-                    logger.debug(f"  Processed {idx + 1}/{len(buildings_gdf)} buildings")
             
             except Exception as e:
                 logger.warning(
@@ -91,6 +95,74 @@ class HeightEstimator:
         logger.info(f"  Extracted heights for {len(heights)} buildings")
         
         return heights
+    
+    def validate_building_lidar_coverage(
+        self,
+        building_row,
+        las,
+        min_coverage_ratio: float = 0.5
+    ) -> Dict:
+        """
+        Validate that building has adequate LiDAR coverage.
+        
+        Args:
+            building_row: GeoSeries row from buildings GeoDataFrame
+            las: Loaded LAZ point cloud
+            min_coverage_ratio: Minimum coverage ratio for 'good' status
+            
+        Returns:
+            Dict with coverage assessment keys:
+            - has_coverage: bool
+            - point_count: int (points within building)
+            - coverage_ratio: float (0.0-1.0)
+            - coverage_status: str ("good" | "partial" | "none")
+        """
+        building_id = building_row.get("object_id", "unknown")
+        geometry = building_row.geometry
+        
+        # Find points within building footprint
+        buffer_dist = self.config.min_height_m
+        building_bounds = geometry.buffer(buffer_dist).bounds
+        
+        # Fast bounding box filter
+        x_mask = (las.x >= building_bounds[0]) & (las.x <= building_bounds[2])
+        y_mask = (las.y >= building_bounds[1]) & (las.y <= building_bounds[3])
+        bbox_mask = x_mask & y_mask
+        points_in_bbox = np.where(bbox_mask)[0]
+        
+        if len(points_in_bbox) == 0:
+            return {
+                "building_id": building_id,
+                "has_coverage": False,
+                "point_count": 0,
+                "coverage_ratio": 0.0,
+                "coverage_status": "none"
+            }
+        
+        # Filter by polygon intersection
+        candidate_points = las.xyz[points_in_bbox]
+        intersects = np.array([
+            geometry.contains(Point(p[:2])) 
+            for p in candidate_points
+        ])
+        
+        points_in_building = np.sum(intersects)
+        
+        # Estimate coverage ratio from nearby points
+        nearby_count = len(points_in_bbox)
+        coverage_ratio = points_in_building / max(nearby_count, 1)
+        
+        return {
+            "building_id": building_id,
+            "has_coverage": points_in_building >= self.config.min_points,
+            "point_count": points_in_building,
+            "coverage_ratio": float(coverage_ratio),
+            "coverage_status": (
+                "good" if coverage_ratio >= min_coverage_ratio and points_in_building >= self.config.min_points else
+                "partial" if coverage_ratio >= 0.2 else
+                "none"
+            )
+        }
     
     def _extract_height_for_building(
         self,
@@ -111,6 +183,19 @@ class HeightEstimator:
         """
         building_id = building_row.get("object_id", "unknown")
         geometry = building_row.geometry
+        
+        # Validate coverage before extraction
+        coverage = self.validate_building_lidar_coverage(building_row, las)
+        
+        # If no coverage, return fallback early
+        if not coverage["has_coverage"]:
+            fallback = self._create_fallback_height(
+                building_id,
+                height_run_id,
+                reason=f"insufficient_coverage: {coverage['coverage_status']}"
+            )
+            fallback.update(coverage)  # Add coverage info to fallback
+            return fallback
         
         # Find points within building footprint (with buffer for edge cases)
         buffer_dist = self.config.min_height_m  # Use min_height as buffer
@@ -232,6 +317,7 @@ class HeightEstimator:
             "non_ground_point_count": len(non_ground_points),
             "coverage_ratio": round(coverage_ratio, 3),
             "z_variance": round(z_variance, 3),
+            "lidar_coverage_status": "good",  # Has coverage if we reached here
             "height_run_id": height_run_id
         }
     
