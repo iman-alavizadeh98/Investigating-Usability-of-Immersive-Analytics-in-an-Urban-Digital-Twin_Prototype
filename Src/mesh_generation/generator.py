@@ -19,6 +19,7 @@ from typing import Dict, Any, List, Optional
 import json
 import logging
 import geopandas as gpd
+import numpy as np
 from datetime import datetime
 import pandas as pd
 
@@ -28,6 +29,7 @@ from .strategies.district import DistrictStrategy, DistrictConfig
 from .strategies.grid import GridStrategy, GridConfig
 from .strategies.quadtree import QuadtreeStrategy, QuadtreeConfig
 from .builder import MeshBuilder
+from .lod_generation import LODGenerator, LODGenerationError
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,12 @@ class GeneratorConfig:
     terrain_offset_m: float = 0.5
     material_color: tuple = (1.0, 1.0, 1.0)  # White
     crs: str = "EPSG:3006"  # Authoritative CRS
+    
+    # LOD generation settings
+    generate_lods: bool = True  # Generate LOD2 and LOD3
+    lod_decimation_library: str = "pyvista"  # "pyvista" or "trimesh"
+    lod_target_reductions: tuple = (0.5, 0.1)  # (LOD2=50%, LOD3=10%)
+    lod_decimation_quality: float = 0.7  # Decimation quality (0.0-1.0)
 
 
 class MeshGenerator:
@@ -65,6 +73,20 @@ class MeshGenerator:
         self.config = config or GeneratorConfig()
         self.strategy: MeshStrategy = None
         self.builder = MeshBuilder(self.config.__dict__)
+        
+        # Initialize LOD generator if LOD generation enabled
+        self.lod_generator = None
+        if self.config.generate_lods:
+            try:
+                self.lod_generator = LODGenerator(
+                    library=self.config.lod_decimation_library,
+                    quality=self.config.lod_decimation_quality
+                )
+                logger.info(f"LOD generation enabled: library={self.config.lod_decimation_library}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize LOD generator: {e}. LOD generation disabled.")
+                self.lod_generator = None
+        
         self._initialize_strategy()
     
     def _initialize_strategy(self):
@@ -208,7 +230,7 @@ class MeshGenerator:
         buildings: gpd.GeoDataFrame,
         output_dir: Path
     ) -> Optional[Dict[str, Any]]:
-        """Build mesh for a group of buildings with proper height sourcing and metadata."""
+        """Build mesh for a group of buildings with proper height sourcing and optional LOD generation."""
         try:
             # Compute local origin from group bounds (subtract this from all vertices)
             origin_x = float(group.bounds[0])
@@ -256,33 +278,63 @@ class MeshGenerator:
             combined_vertices = np.vstack(all_vertices)
             combined_faces = np.vstack(all_faces)
             
-            # Export to GLB
-            glb_filename = f"{group.group_id}_lod1.glb"
-            glb_path = output_dir / glb_filename
+            # ========== LOD GENERATION ==========
+            lod_export_results = {}
+            vertices_by_lod = {"lod1": (combined_vertices.copy(), combined_faces.copy())}
             
-            # Export with normals
-            normals = self.builder.compute_normals(combined_vertices, combined_faces)
-            success = self.builder.export_glb(
-                glb_path,
-                combined_vertices,
-                combined_faces,
+            if self.lod_generator:
+                try:
+                    logger.debug(f"  → Generating LOD2/LOD3...")
+                    lod_suite = self.lod_generator.generate_lod_suite(
+                        combined_vertices,
+                        combined_faces,
+                        target_reductions=self.config.lod_target_reductions
+                    )
+                    vertices_by_lod = lod_suite
+                except LODGenerationError as e:
+                    logger.warning(f"  ⚠ LOD generation failed: {e}. Proceeding with LOD1 only.")
+                    # Fall back to LOD1 only; lod_export_results will only have lod1
+            
+            # ========== EXPORT ALL LODS ==========
+            glb_dir = output_dir / "glb_files"
+            lod_export_results = self.builder.export_glb_suite(
+                glb_dir,
+                vertices_by_lod,
                 group.group_id,
-                normals=normals
+                compute_normals_per_lod=True
             )
             
-            if not success:
-                logger.warning(f"  ✗ Export failed for {group.group_name}")
+            # Check if LOD1 export succeeded
+            if "lod1" not in lod_export_results or not lod_export_results["lod1"]["success"]:
+                logger.warning(f"  ✗ LOD1 export failed for {group.group_name}")
                 return None
             
-            # Get file size
-            file_size_mb = glb_path.stat().st_size / (1024 * 1024)
+            # ========== BUILD METADATA ==========
+            # Get LOD1 stats (primary mesh)
+            lod1_stats = lod_export_results["lod1"]
+            file_size_mb = lod1_stats["file_size_mb"]
             
-            # Create NEW semantic-rich metadata with all required fields
+            # Build LOD levels list (will have at least lod1, possibly lod2/lod3)
+            lod_levels = list(sorted([k for k in lod_export_results.keys() if lod_export_results[k]["success"]]))
+            
+            # Build glb_files dictionary with all successful LODs
+            glb_files = {}
+            mesh_stats = {}
+            for lod_level in lod_levels:
+                result = lod_export_results[lod_level]
+                glb_files[lod_level] = result["filename"]
+                mesh_stats[lod_level] = {
+                    "vertices": result["vertex_count"],
+                    "faces": result["face_count"],
+                    "file_size_mb": result["file_size_mb"]
+                }
+            
+            # Create semantic-rich metadata with LOD support
             metadata = {
                 "group_id": group.group_id,
                 "group_name": group.group_name,
-                "lod_level": 1,
-                "glb_filename": glb_filename,
+                "lod_levels": lod_levels,  # e.g., [1, 2, 3] or [1] if LOD generation failed
+                "glb_files": glb_files,     # {"lod1": "filename", "lod2": "filename", ...}
                 "crs": self.config.crs,
                 "origin": {
                     "x": origin_x,
@@ -297,9 +349,11 @@ class MeshGenerator:
                 },
                 "building_ids": building_ids,
                 "height_sources": height_sources,
-                "triangle_count": len(combined_faces),
-                "vertex_count": len(combined_vertices),
-                "file_size_mb": round(file_size_mb, 2)
+                "mesh_stats": mesh_stats,
+                # Primary mesh stats (LOD1) for backward compatibility
+                "triangle_count": lod1_stats["face_count"],
+                "vertex_count": lod1_stats["vertex_count"],
+                "file_size_mb": file_size_mb
             }
             
             return metadata

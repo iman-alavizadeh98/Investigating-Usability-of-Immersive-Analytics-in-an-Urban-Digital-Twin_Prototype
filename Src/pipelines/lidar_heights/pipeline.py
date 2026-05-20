@@ -471,9 +471,12 @@ class LiDARHeightPipeline(BasePipeline):
         
         height_config_dict = {
             'min_points': self.config.height_extraction_config.min_points,
-            'percentile_height': self.config.height_extraction_config.percentile_height,
+            'percentile': self.config.height_extraction_config.percentile,
+            'min_height_m': self.config.height_extraction_config.min_height_m,
+            'fallback_height_m': self.config.height_extraction_config.fallback_height_m,
             'high_quality_min_points': self.config.height_extraction_config.high_quality_min_points,
             'high_quality_min_coverage': self.config.height_extraction_config.high_quality_min_coverage,
+            'medium_quality_min_points': self.config.height_extraction_config.medium_quality_min_points,
             'medium_quality_min_coverage': self.config.height_extraction_config.medium_quality_min_coverage,
             'high_quality_max_variance': self.config.height_extraction_config.high_quality_max_variance
         }

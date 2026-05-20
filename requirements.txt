@@ -9,3 +9,4 @@ laspy>=2.1
 pygltflib>=0.6
 pdal>=2.4
 scipy>=1.11
+pyvista>=0.43.0

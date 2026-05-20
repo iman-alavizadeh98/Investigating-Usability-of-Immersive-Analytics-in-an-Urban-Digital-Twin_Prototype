@@ -94,27 +94,30 @@ class HeightExporter:
         enriched_gdf.to_file(
             gpkg_path,
             layer="buildings_lidar_added",
-            driver="GPKG",
-            crs=config.crs
+            driver="GPKG"
         )
         
         logger.info(f"  GeoPackage: {len(enriched_gdf)} buildings, CRS={config.crs}")
         
         # 2. Export Parquet (convert geometry to WKT for storage)
         parquet_path = output_directory / "buildings_lidar_added.parquet"
-        logger.info(f"Writing Parquet to {parquet_path.name}...")
-        
-        parquet_df = enriched_gdf.copy()
-        parquet_df["geometry_wkt"] = parquet_df.geometry.to_wkt()
-        parquet_df_export = parquet_df.drop(columns=["geometry"])
-        
-        parquet_df_export.to_parquet(
-            parquet_path,
-            index=False,
-            engine="pyarrow"
-        )
-        
-        logger.info(f"  Parquet: {len(parquet_df_export)} rows")
+        try:
+            logger.info(f"Writing Parquet to {parquet_path.name}...")
+            
+            parquet_df = enriched_gdf.copy()
+            parquet_df["geometry_wkt"] = parquet_df.geometry.to_wkt()
+            parquet_df_export = parquet_df.drop(columns=["geometry"])
+            
+            parquet_df_export.to_parquet(
+                parquet_path,
+                index=False,
+                engine="pyarrow"
+            )
+            
+            logger.info(f"  Parquet: {len(parquet_df_export)} rows")
+        except ImportError as e:
+            logger.warning(f"Parquet export skipped: pyarrow not installed")
+            logger.warning("  (GeoPackage and QC CSV exported successfully)")
         
         # 3. Export QC CSV
         qc_path = output_directory / "building_lidar_qc.csv"

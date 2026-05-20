@@ -389,3 +389,78 @@ class MeshBuilder:
         except Exception as e:
             logger.error(f"Failed to export OBJ: {e}")
             return False
+    
+    def export_glb_suite(
+        self,
+        output_dir: Path,
+        vertices_lod: dict,
+        group_id: str,
+        compute_normals_per_lod: bool = True
+    ) -> dict:
+        """
+        Export LOD1, LOD2, and LOD3 to separate GLB files with shared metadata.
+        
+        Args:
+            output_dir: Directory to save GLB files
+            vertices_lod: dict with keys "lod1", "lod2", "lod3" 
+                         each containing (vertices, faces) tuple
+            group_id: Group/building identifier for naming
+            compute_normals_per_lod: If True, compute normals for each LOD level
+        
+        Returns:
+            dict with export results:
+            {
+                "lod1": {"filename": "...", "success": True, "file_size_mb": ...},
+                "lod2": {...},
+                "lod3": {...}
+            }
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        result = {}
+        
+        for lod_level in ["lod1", "lod2", "lod3"]:
+            if lod_level not in vertices_lod:
+                logger.warning(f"LOD level {lod_level} not provided; skipping")
+                continue
+            
+            vertices, faces = vertices_lod[lod_level]
+            
+            # Compute normals if requested
+            normals = None
+            if compute_normals_per_lod:
+                normals = self.compute_normals(vertices, faces)
+            
+            # Generate filename
+            glb_filename = f"{group_id}_{lod_level}.glb"
+            glb_path = output_dir / glb_filename
+            
+            # Export
+            success = self.export_glb(
+                glb_path,
+                vertices,
+                faces,
+                f"{group_id}_{lod_level}",
+                normals=normals
+            )
+            
+            if success:
+                file_size_mb = glb_path.stat().st_size / (1024 * 1024)
+                result[lod_level] = {
+                    "filename": glb_filename,
+                    "success": True,
+                    "file_size_mb": round(file_size_mb, 2),
+                    "vertex_count": len(vertices),
+                    "face_count": len(faces)
+                }
+                logger.debug(f"  ✓ {glb_filename} ({file_size_mb:.2f} MB)")
+            else:
+                result[lod_level] = {
+                    "filename": glb_filename,
+                    "success": False,
+                    "error": "GLB export failed"
+                }
+                logger.warning(f"  ✗ Failed to export {glb_filename}")
+        
+        return result

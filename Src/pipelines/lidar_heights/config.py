@@ -150,7 +150,7 @@ class LiDARHeightPipelineConfig:
     """Enable caching of PDAL preprocessing outputs to speed up re-runs."""
     
     pdal_cache_dir: Optional[Path] = None
-    """Directory for PDAL cache (default: temp_directory/pdal_cache)."""
+    """Directory for PDAL cache (default: output_directory/pdal_cache, persistent across runs)."""
     
     # Performance optimization: parallel tile processing
     enable_parallel_processing: bool = True
@@ -170,9 +170,9 @@ class LiDARHeightPipelineConfig:
         else:
             self.temp_directory = Path(self.temp_directory)
         
-        # Set default cache directory if not specified
+        # Set default cache directory if not specified (persistent across runs)
         if self.pdal_cache_dir is None and self.enable_pdal_cache:
-            self.pdal_cache_dir = self.temp_directory / "pdal_cache"
+            self.pdal_cache_dir = self.output_directory / "pdal_cache"
         elif self.pdal_cache_dir is not None:
             self.pdal_cache_dir = Path(self.pdal_cache_dir)
         
