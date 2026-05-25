@@ -161,17 +161,18 @@ class LODGenerator:
             target_reduction = max(0.01, min(0.99, target_reduction))
             reduction_factor = 1.0 - target_reduction
             
-            decimated = mesh.decimate(
-                reduction_factor,
-                n_iterations=7,
-                progress_bar=False,
-                preserve_border=True
-            )
+            # Use basic decimation (compatible with all pyvista versions)
+            decimated = mesh.decimate(reduction_factor, preserve_border=True)
             
             # Extract vertices and faces
             dec_vertices = decimated.points.astype(np.float32)
-            dec_faces = decimated.faces.reshape(-1, 4)[:, 1:]  # Remove count prefix
-            dec_faces = dec_faces.astype(np.uint32)
+            # Handle face array format - pyvista stores as [3, v0, v1, v2, 3, v0, v1, v2, ...]
+            faces_raw = decimated.faces
+            if len(faces_raw) > 0:
+                # Reshape to (-1, 4) to get [count, v0, v1, v2] then take columns 1,2,3
+                dec_faces = faces_raw.reshape(-1, 4)[:, 1:].astype(np.uint32)
+            else:
+                dec_faces = np.empty((0, 3), dtype=np.uint32)
             
             return dec_vertices, dec_faces
         
