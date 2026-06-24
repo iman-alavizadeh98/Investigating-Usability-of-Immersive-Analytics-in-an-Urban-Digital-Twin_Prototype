@@ -162,7 +162,7 @@ class LODGenerator:
             reduction_factor = 1.0 - target_reduction
             
             # Use basic decimation (compatible with all pyvista versions)
-            decimated = mesh.decimate(reduction_factor, preserve_border=True)
+            decimated = mesh.decimate(reduction_factor)
             
             # Extract vertices and faces
             dec_vertices = decimated.points.astype(np.float32)
