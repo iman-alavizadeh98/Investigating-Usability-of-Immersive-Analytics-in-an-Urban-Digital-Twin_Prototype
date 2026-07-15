@@ -68,7 +68,13 @@ def main():
         action="store_true",
         help="Generate and save data profile"
     )
-    
+    parser.add_argument(
+        "--formats",
+        default="glb,ply",
+        help="Comma-separated mesh export formats. 'glb' is always the primary "
+             "output; 'ply' adds Stanford PLY files alongside (default: glb,ply)"
+    )
+
     args = parser.parse_args()
     
     # Determine input path: prefer enriched buildings with heights
@@ -114,6 +120,14 @@ def main():
     elif args.strategy == "quadtree":
         strategy_config = {"max_buildings_per_cell": args.max_buildings}
     
+    # Parse export formats; always keep GLB as the primary output.
+    export_formats = tuple(
+        f.strip().lower() for f in args.formats.split(",") if f.strip()
+    )
+    if "glb" not in export_formats:
+        export_formats = ("glb",) + export_formats
+    logger.info(f"Export formats: {', '.join(export_formats)}")
+
     # Create generator
     config = GeneratorConfig(
         strategy=args.strategy,
@@ -121,7 +135,8 @@ def main():
         assumed_height_m=10.0,
         terrain_offset_m=0.5,
         material_color=(1.0, 1.0, 1.0),
-        crs="EPSG:3006"
+        crs="EPSG:3006",
+        export_formats=export_formats,
     )
     
     generator = MeshGenerator(buildings_gdf, config)

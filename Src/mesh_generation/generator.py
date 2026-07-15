@@ -43,7 +43,11 @@ class GeneratorConfig:
     terrain_offset_m: float = 0.5
     material_color: tuple = (1.0, 1.0, 1.0)  # White
     crs: str = "EPSG:3006"  # Authoritative CRS
-    
+
+    # Mesh export formats. "glb" is always the primary/authoritative output;
+    # additional formats (e.g. "ply") are written alongside as extra artifacts.
+    export_formats: tuple = ("glb", "ply")
+
     # LOD generation settings
     generate_lods: bool = True  # Generate LOD2 and LOD3
     lod_decimation_library: str = "pyvista"  # "pyvista" or "trimesh"
@@ -330,7 +334,8 @@ class MeshGenerator:
                 glb_dir,
                 vertices_by_lod,
                 group.group_id,
-                compute_normals_per_lod=True
+                compute_normals_per_lod=True,
+                export_formats=self.config.export_formats,
             )
             
             # Check if LOD1 export succeeded
@@ -346,12 +351,18 @@ class MeshGenerator:
             # Build LOD levels list (will have at least lod1, possibly lod2/lod3)
             lod_levels = list(sorted([k for k in lod_export_results.keys() if lod_export_results[k]["success"]]))
             
-            # Build glb_files dictionary with all successful LODs
+            # Build glb_files dictionary with all successful LODs.
+            # ply_files mirrors glb_files for any LOD that also produced a PLY
+            # (only present when "ply" is in config.export_formats).
             glb_files = {}
+            ply_files = {}
             mesh_stats = {}
             for lod_level in lod_levels:
                 result = lod_export_results[lod_level]
                 glb_files[lod_level] = result["filename"]
+                extra = result.get("extra_files", {})
+                if "ply" in extra:
+                    ply_files[lod_level] = extra["ply"]
                 mesh_stats[lod_level] = {
                     "vertices": result["vertex_count"],
                     "faces": result["face_count"],
@@ -364,6 +375,7 @@ class MeshGenerator:
                 "group_name": group.group_name,
                 "lod_levels": lod_levels,  # e.g., [1, 2, 3] or [1] if LOD generation failed
                 "glb_files": glb_files,     # {"lod1": "filename", "lod2": "filename", ...}
+                "ply_files": ply_files,     # {"lod1": "filename", ...}; empty if PLY not exported
                 "crs": self.config.crs,
                 "origin": {
                     "x": origin_x,
