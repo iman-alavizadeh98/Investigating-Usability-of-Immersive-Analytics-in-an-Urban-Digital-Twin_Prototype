@@ -1,0 +1,387 @@
+{
+  ".claude/settings.local.json": {
+    "mtime": 1784126828.318565,
+    "ast_hash": "262d086544ea8fa637a8f11c39eb4926",
+    "semantic_hash": "262d086544ea8fa637a8f11c39eb4926"
+  },
+  ".vscode/settings.json": {
+    "mtime": 1778949728.6216867,
+    "ast_hash": "4187c9ec9a7b623c0ac5d1ca338cb852",
+    "semantic_hash": "4187c9ec9a7b623c0ac5d1ca338cb852"
+  },
+  "Src/Scripts/generate_building_meshes.py": {
+    "mtime": 1776955362.137189,
+    "ast_hash": "3437066ebecfca83c7184c9e43e83b25",
+    "semantic_hash": "3437066ebecfca83c7184c9e43e83b25"
+  },
+  "Src/Scripts/load_byggnad.py": {
+    "mtime": 1776690188.8618226,
+    "ast_hash": "38bab1a72d9463b525e6fbba049e7979",
+    "semantic_hash": "38bab1a72d9463b525e6fbba049e7979"
+  },
+  "Src/Scripts/preprocess_byggnad.py": {
+    "mtime": 1776711761.6771405,
+    "ast_hash": "0fbec74e6050f9a4b2e156cb2bfa1a3f",
+    "semantic_hash": "0fbec74e6050f9a4b2e156cb2bfa1a3f"
+  },
+  "Src/Scripts/preprocess_spatial_joins.py": {
+    "mtime": 1776955362.1407907,
+    "ast_hash": "9de67abf0c7e8273fd6eb328ae7745c7",
+    "semantic_hash": "9de67abf0c7e8273fd6eb328ae7745c7"
+  },
+  "Src/Scripts/profile_dataframe.py": {
+    "mtime": 1778517444.515678,
+    "ast_hash": "076bb331bf854b2d5fbd3f2935a8a4eb",
+    "semantic_hash": "076bb331bf854b2d5fbd3f2935a8a4eb"
+  },
+  "Src/Scripts/profile_raw_datasets.py": {
+    "mtime": 1776954164.3103898,
+    "ast_hash": "3877fb3f36763e804acb05adb1b8da50",
+    "semantic_hash": "3877fb3f36763e804acb05adb1b8da50"
+  },
+  "Src/Scripts/run_buildings_pipeline.py": {
+    "mtime": 1778677382.0881586,
+    "ast_hash": "ca269d077774e7e7c9f93edc11111514",
+    "semantic_hash": "ca269d077774e7e7c9f93edc11111514"
+  },
+  "Src/Scripts/run_lidar_height_pipeline.py": {
+    "mtime": 1779141141.4559786,
+    "ast_hash": "5ea4160b991a3cf4920f9cef5771c7a4",
+    "semantic_hash": "5ea4160b991a3cf4920f9cef5771c7a4"
+  },
+  "Src/Scripts/run_mesh_generation.py": {
+    "mtime": 1782333939.21011,
+    "ast_hash": "d3c1c51e294ed13e840bfd49fbb8b9bc",
+    "semantic_hash": "d3c1c51e294ed13e840bfd49fbb8b9bc"
+  },
+  "Src/Scripts/validate_meshes.py": {
+    "mtime": 1776955362.1463726,
+    "ast_hash": "a332db4d94e5dd7c2785e85d23d3fe56",
+    "semantic_hash": "a332db4d94e5dd7c2785e85d23d3fe56"
+  },
+  "Src/mesh_generation/__init__.py": {
+    "mtime": 1778517056.9406555,
+    "ast_hash": "073a6215ace2eb050e72fc30f5ce27fd",
+    "semantic_hash": "073a6215ace2eb050e72fc30f5ce27fd"
+  },
+  "Src/mesh_generation/builder.py": {
+    "mtime": 1783309061.1056812,
+    "ast_hash": "77ae665a5c34716c3deb2c1b4ca48b39",
+    "semantic_hash": "77ae665a5c34716c3deb2c1b4ca48b39"
+  },
+  "Src/mesh_generation/generator.py": {
+    "mtime": 1783309818.356495,
+    "ast_hash": "fa990b8165fc3c8f29135bd1ead61e76",
+    "semantic_hash": "fa990b8165fc3c8f29135bd1ead61e76"
+  },
+  "Src/mesh_generation/lod_generation.py": {
+    "mtime": 1782308319.190139,
+    "ast_hash": "2223ddd950f9bae83e3a2e0feca2386a",
+    "semantic_hash": "2223ddd950f9bae83e3a2e0feca2386a"
+  },
+  "Src/mesh_generation/strategies/__init__.py": {
+    "mtime": 1778517056.9406555,
+    "ast_hash": "70a9f4f85ff62d219ae93b9e91c16592",
+    "semantic_hash": "70a9f4f85ff62d219ae93b9e91c16592"
+  },
+  "Src/mesh_generation/strategies/base.py": {
+    "mtime": 1782308306.8201678,
+    "ast_hash": "74f5f588913c63e4f60a6861dd35aa81",
+    "semantic_hash": "74f5f588913c63e4f60a6861dd35aa81"
+  },
+  "Src/mesh_generation/strategies/district.py": {
+    "mtime": 1778516990.15997,
+    "ast_hash": "de789344095a67e8971d50e7a2fcb261",
+    "semantic_hash": "de789344095a67e8971d50e7a2fcb261"
+  },
+  "Src/mesh_generation/strategies/grid.py": {
+    "mtime": 1782333926.2324045,
+    "ast_hash": "c28fb51db765a0232a0f50c5f6f2c2e4",
+    "semantic_hash": "c28fb51db765a0232a0f50c5f6f2c2e4"
+  },
+  "Src/mesh_generation/strategies/individual.py": {
+    "mtime": 1778516980.0523214,
+    "ast_hash": "8c1459f01ae6f25da31b5ac054ad49f0",
+    "semantic_hash": "8c1459f01ae6f25da31b5ac054ad49f0"
+  },
+  "Src/mesh_generation/strategies/quadtree.py": {
+    "mtime": 1778517007.750451,
+    "ast_hash": "f552acf49286fdf56845561c74497f83",
+    "semantic_hash": "f552acf49286fdf56845561c74497f83"
+  },
+  "Src/pipelines/__init__.py": {
+    "mtime": 1778517056.9406555,
+    "ast_hash": "c3a4b7de9910a8ad5bc912c8cbccc601",
+    "semantic_hash": "c3a4b7de9910a8ad5bc912c8cbccc601"
+  },
+  "Src/pipelines/base.py": {
+    "mtime": 1778516962.0027902,
+    "ast_hash": "c80d6297e56409f7a10b6a8905584610",
+    "semantic_hash": "c80d6297e56409f7a10b6a8905584610"
+  },
+  "Src/pipelines/buildings/__init__.py": {
+    "mtime": 1778519451.5777206,
+    "ast_hash": "52792d3de3748c8c5ee3468f93f6d974",
+    "semantic_hash": "52792d3de3748c8c5ee3468f93f6d974"
+  },
+  "Src/pipelines/buildings/config.py": {
+    "mtime": 1778519451.5711558,
+    "ast_hash": "c23090b6dce16f79b9f8831807ccb6c9",
+    "semantic_hash": "c23090b6dce16f79b9f8831807ccb6c9"
+  },
+  "Src/pipelines/buildings/pipeline.py": {
+    "mtime": 1778591972.6386454,
+    "ast_hash": "e47dab2e60b11763a26ea9805e792f5b",
+    "semantic_hash": "e47dab2e60b11763a26ea9805e792f5b"
+  },
+  "Src/pipelines/buildings/postprocess.py": {
+    "mtime": 1778676197.043875,
+    "ast_hash": "ce31b94e57137bd9c33b7d4ec25d782d",
+    "semantic_hash": "ce31b94e57137bd9c33b7d4ec25d782d"
+  },
+  "Src/pipelines/byggnad/__init__.py": {
+    "mtime": 1778517056.9501493,
+    "ast_hash": "e5046bc440a70ea57afcd543c67d764c",
+    "semantic_hash": "e5046bc440a70ea57afcd543c67d764c"
+  },
+  "Src/pipelines/lidar_heights/__init__.py": {
+    "mtime": 1778779858.656257,
+    "ast_hash": "79fde7accfc63c335c84e6e3c64b225a",
+    "semantic_hash": "79fde7accfc63c335c84e6e3c64b225a"
+  },
+  "Src/pipelines/lidar_heights/config.py": {
+    "mtime": 1779231450.3428888,
+    "ast_hash": "d95effa001116fe193ad5248996887e1",
+    "semantic_hash": "d95effa001116fe193ad5248996887e1"
+  },
+  "Src/pipelines/lidar_heights/export.py": {
+    "mtime": 1779258097.5410173,
+    "ast_hash": "b4c4c85363a757e50fceb5152358adf7",
+    "semantic_hash": "b4c4c85363a757e50fceb5152358adf7"
+  },
+  "Src/pipelines/lidar_heights/height_estimation.py": {
+    "mtime": 1779139611.7950454,
+    "ast_hash": "3e8b3fa472cdca8acef26f9a52ae3055",
+    "semantic_hash": "3e8b3fa472cdca8acef26f9a52ae3055"
+  },
+  "Src/pipelines/lidar_heights/pdal_pipelines.py": {
+    "mtime": 1779140976.35918,
+    "ast_hash": "17e7e56f5f279406ac3ad805e314a3fe",
+    "semantic_hash": "17e7e56f5f279406ac3ad805e314a3fe"
+  },
+  "Src/pipelines/lidar_heights/pipeline.py": {
+    "mtime": 1779143733.9335732,
+    "ast_hash": "ffca3f644f27d71974e4a0c1ffcd4acb",
+    "semantic_hash": "ffca3f644f27d71974e4a0c1ffcd4acb"
+  },
+  "Src/pipelines/lidar_heights/tile_index.py": {
+    "mtime": 1778779858.656257,
+    "ast_hash": "834b65170580d06ae67cdbda2280ac7c",
+    "semantic_hash": "834b65170580d06ae67cdbda2280ac7c"
+  },
+  "Src/utils/__init__.py": {
+    "mtime": 1778517056.9501493,
+    "ast_hash": "727bde8b4cdf419d83d41fd062efd784",
+    "semantic_hash": "727bde8b4cdf419d83d41fd062efd784"
+  },
+  "Src/utils/data_profiler.py": {
+    "mtime": 1778674707.7297864,
+    "ast_hash": "7884756afc64758827e9caa22b3815ae",
+    "semantic_hash": "7884756afc64758827e9caa22b3815ae"
+  },
+  "configs/field_translations.json": {
+    "mtime": 1776954164.3103898,
+    "ast_hash": "bcf5a029ef94340e58094db28689aefc",
+    "semantic_hash": "bcf5a029ef94340e58094db28689aefc"
+  },
+  "tests/_tmp_watertight_check.py": {
+    "mtime": 1783309015.1208036,
+    "ast_hash": "48c5489825fe1cf6765342754887c340",
+    "semantic_hash": "48c5489825fe1cf6765342754887c340"
+  },
+  "tests/test_mesh_robustness.py": {
+    "mtime": 1783309207.0259883,
+    "ast_hash": "5ad5600eb1657cc268e9c2e6a690f3eb",
+    "semantic_hash": "5ad5600eb1657cc268e9c2e6a690f3eb"
+  },
+  "CLAUDE.md": {
+    "mtime": 1778672886.6894305,
+    "ast_hash": "e1ef1f3af5cbb38d51f000b5b523d9f9",
+    "semantic_hash": "e1ef1f3af5cbb38d51f000b5b523d9f9"
+  },
+  "IMPLEMENTATION_COMPLETE.md": {
+    "mtime": 1778780553.3615606,
+    "ast_hash": "6b504229c4fd61f3863c03b515ea79ce",
+    "semantic_hash": "6b504229c4fd61f3863c03b515ea79ce"
+  },
+  "LIDAR_PIPELINE_ROBUSTNESS_REFACTOR.md": {
+    "mtime": 1779140026.0412068,
+    "ast_hash": "375b2821ab77bbf6c6771f6a212606ff",
+    "semantic_hash": "375b2821ab77bbf6c6771f6a212606ff"
+  },
+  "MESH_ROBUSTNESS_SUMMARY.md": {
+    "mtime": 1778780464.4786222,
+    "ast_hash": "8d15a9953cb717543969055dd9bd43b0",
+    "semantic_hash": "8d15a9953cb717543969055dd9bd43b0"
+  },
+  "PHASE2_3_4_COMPLETION_SUMMARY.md": {
+    "mtime": 1776968955.2023134,
+    "ast_hash": "8846b6c9fd45a9ff86584ee0e20e7a08",
+    "semantic_hash": "8846b6c9fd45a9ff86584ee0e20e7a08"
+  },
+  "Project_livingContext.md": {
+    "mtime": 1782333958.0841227,
+    "ast_hash": "1e82e62f8bfe00559f39f1fe50e09516",
+    "semantic_hash": "1e82e62f8bfe00559f39f1fe50e09516"
+  },
+  "README.md": {
+    "mtime": 1771947059.3223732,
+    "ast_hash": "bcb87ae2823189c85a2e1d64ff872137",
+    "semantic_hash": "bcb87ae2823189c85a2e1d64ff872137"
+  },
+  "docs/BUILDINGS_PIPELINE.md": {
+    "mtime": 1778676197.043875,
+    "ast_hash": "2084c3afbafd7cd250294464d1b8eccb",
+    "semantic_hash": "2084c3afbafd7cd250294464d1b8eccb"
+  },
+  "docs/Documentation System & Copilot Session.md": {
+    "mtime": 1772814347.7736266,
+    "ast_hash": "ca0f4c8caab094d2a1935e38539b6f2a",
+    "semantic_hash": "ca0f4c8caab094d2a1935e38539b6f2a"
+  },
+  "docs/LIDAR_HEIGHT_PIPELINE_SUMMARY.md": {
+    "mtime": 1778779858.7047343,
+    "ast_hash": "600813dbc4ec472fd97ab5b7e2586f01",
+    "semantic_hash": "600813dbc4ec472fd97ab5b7e2586f01"
+  },
+  "docs/LIDAR_PERFORMANCE_OPTIMIZATION.md": {
+    "mtime": 1779141256.358236,
+    "ast_hash": "5db24ff85a73ed46aaf5bbb0af5766f9",
+    "semantic_hash": "5db24ff85a73ed46aaf5bbb0af5766f9"
+  },
+  "docs/MODULAR_ARCHITECTURE.md": {
+    "mtime": 1778517444.5069532,
+    "ast_hash": "be33154292bb5c43c8787b0291caa3d2",
+    "semantic_hash": "be33154292bb5c43c8787b0291caa3d2"
+  },
+  "docs/PHASE4_FINAL_HANDOFF.md": {
+    "mtime": 1776961092.779276,
+    "ast_hash": "457c13f8b7b89342f5f59a8a17bfba51",
+    "semantic_hash": "457c13f8b7b89342f5f59a8a17bfba51"
+  },
+  "docs/Week Prototype Sprint Plan.md": {
+    "mtime": 1772814347.7736266,
+    "ast_hash": "d39eca5c1117c29567f6a6b8369984b1",
+    "semantic_hash": "d39eca5c1117c29567f6a6b8369984b1"
+  },
+  "docs/byggnad_ortnamn_pipeline.md": {
+    "mtime": 1776349341.7077687,
+    "ast_hash": "d34395949c5f3b8cf97d695178184ebe",
+    "semantic_hash": "d34395949c5f3b8cf97d695178184ebe"
+  },
+  "docs/copilot_sessions/2026-02-24_thesis_comprehensive_summary.md": {
+    "mtime": 1771952127.2281406,
+    "ast_hash": "8f310d892262bca4c2cf09ca8d23d32d",
+    "semantic_hash": "8f310d892262bca4c2cf09ca8d23d32d"
+  },
+  "docs/phase2_progress.md": {
+    "mtime": 1776955362.1463726,
+    "ast_hash": "8e6206a16edde0120d3ab2804e12091d",
+    "semantic_hash": "8e6206a16edde0120d3ab2804e12091d"
+  },
+  "docs/phase4_handoff_template.md": {
+    "mtime": 1776955362.16313,
+    "ast_hash": "1775337acb583a728cee6d29d8b1d08e",
+    "semantic_hash": "1775337acb583a728cee6d29d8b1d08e"
+  },
+  "docs/unity_import_guide.md": {
+    "mtime": 1776955185.2153537,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "reports/buildings_2026-05-13/buildings_profile.html": {
+    "mtime": 1778676886.566876,
+    "ast_hash": "8ab208d5e497cb5a55dad442b107726b",
+    "semantic_hash": "8ab208d5e497cb5a55dad442b107726b"
+  },
+  "reports/buildings_2026-05-13/buildings_profile.md": {
+    "mtime": 1778676884.5448308,
+    "ast_hash": "8abce1e24311f3df49cf29bc2f3d6154",
+    "semantic_hash": "8abce1e24311f3df49cf29bc2f3d6154"
+  },
+  "reports/buildings_2026-05-13_postprocess/buildings_profile.html": {
+    "mtime": 1778676899.0387998,
+    "ast_hash": "53b1bf69cfc0bfb9ff7bcac396401f6c",
+    "semantic_hash": "53b1bf69cfc0bfb9ff7bcac396401f6c"
+  },
+  "reports/buildings_2026-05-13_postprocess/buildings_profile.md": {
+    "mtime": 1778676895.823366,
+    "ast_hash": "80f3438eadd0d9a1f820cf9731e42599",
+    "semantic_hash": "80f3438eadd0d9a1f820cf9731e42599"
+  },
+  "reports/buildings_2026-05-19/buildings_profile.html": {
+    "mtime": 1779142912.0589108,
+    "ast_hash": "d028db69d59ca1aa652d5125ad60f521",
+    "semantic_hash": "d028db69d59ca1aa652d5125ad60f521"
+  },
+  "reports/buildings_2026-05-19/buildings_profile.md": {
+    "mtime": 1779142911.35114,
+    "ast_hash": "7a0bef81a8e9177470f3e1450cdd7f1a",
+    "semantic_hash": "7a0bef81a8e9177470f3e1450cdd7f1a"
+  },
+  "reports/buildings_2026-06-29/buildings_profile.html": {
+    "mtime": 1782745379.767497,
+    "ast_hash": "6a3b99c451f63686bfde27fa3c3a3500",
+    "semantic_hash": "6a3b99c451f63686bfde27fa3c3a3500"
+  },
+  "reports/buildings_2026-06-29/buildings_profile.md": {
+    "mtime": 1782745379.6560955,
+    "ast_hash": "5f2b1c3754fdab08f2efacbbbca83cd0",
+    "semantic_hash": "5f2b1c3754fdab08f2efacbbbca83cd0"
+  },
+  "reports/buildings_2026-06-29_postprocess/buildings_profile.html": {
+    "mtime": 1782745380.1591766,
+    "ast_hash": "8baad8a48ea032b25fb3b7628f428602",
+    "semantic_hash": "8baad8a48ea032b25fb3b7628f428602"
+  },
+  "reports/buildings_2026-06-29_postprocess/buildings_profile.md": {
+    "mtime": 1782745380.0364056,
+    "ast_hash": "aff7a84106fcf22d17af377bb4b9d434",
+    "semantic_hash": "aff7a84106fcf22d17af377bb4b9d434"
+  },
+  "reports/helsingborg_buildings_2026-05-19/buildings_profile.html": {
+    "mtime": 1779142547.2393825,
+    "ast_hash": "d028db69d59ca1aa652d5125ad60f521",
+    "semantic_hash": "d028db69d59ca1aa652d5125ad60f521"
+  },
+  "reports/helsingborg_buildings_2026-05-19/buildings_profile.md": {
+    "mtime": 1779142546.3991346,
+    "ast_hash": "7a0bef81a8e9177470f3e1450cdd7f1a",
+    "semantic_hash": "7a0bef81a8e9177470f3e1450cdd7f1a"
+  },
+  "reports/helsingborg_buildings_2026-05-19_postprocess/buildings_profile.html": {
+    "mtime": 1779142915.743867,
+    "ast_hash": "0b095cb8629ae096cc98fa1fd31fe0c8",
+    "semantic_hash": "0b095cb8629ae096cc98fa1fd31fe0c8"
+  },
+  "reports/helsingborg_buildings_2026-05-19_postprocess/buildings_profile.md": {
+    "mtime": 1779142914.865564,
+    "ast_hash": "ca292dc0cf4d324500fe4fe63f52fc41",
+    "semantic_hash": "ca292dc0cf4d324500fe4fe63f52fc41"
+  },
+  "requirements.txt": {
+    "mtime": 1782333688.5189762,
+    "ast_hash": "99ebf81acb209f1911a4268681e6aedb",
+    "semantic_hash": "99ebf81acb209f1911a4268681e6aedb"
+  },
+  "validation_output.txt": {
+    "mtime": 1776955055.579728,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "docs/swedish_geospatial_datasets_full.pdf": {
+    "mtime": 1776346713.6263957,
+    "ast_hash": "4a8c90ddfd06ed3c7b9952f905cbee88",
+    "semantic_hash": "4a8c90ddfd06ed3c7b9952f905cbee88"
+  }
+}

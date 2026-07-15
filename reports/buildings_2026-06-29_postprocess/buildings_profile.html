@@ -1,0 +1,785 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Buildings (Byggnad) - Postprocess Snapshot - Profile</title>
+    <style>
+      :root {
+        --bg: #f7f7f9;
+        --card: #ffffff;
+        --text: #1f2328;
+        --muted: #5a6570;
+        --border: #e2e8f0;
+        --accent: #2c7a7b;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", Arial, sans-serif;
+        line-height: 1.5;
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 24px auto;
+        padding: 0 20px 40px;
+      }
+      header {
+        padding: 16px 20px;
+        border-radius: 12px;
+        background: linear-gradient(90deg, #e6fffa, #f0fff4);
+        border: 1px solid var(--border);
+      }
+      header h1 {
+        margin: 0 0 6px 0;
+        font-size: 28px;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+      }
+      section {
+        margin-top: 20px;
+        padding: 16px 20px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+      h2 {
+        margin: 0 0 12px 0;
+        font-size: 20px;
+        border-left: 4px solid var(--accent);
+        padding-left: 10px;
+      }
+      h3 {
+        margin: 14px 0 8px 0;
+        font-size: 16px;
+        color: var(--muted);
+      }
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+      }
+      .data-table th,
+      .data-table td {
+        border: 1px solid var(--border);
+        padding: 8px 10px;
+        text-align: left;
+        font-size: 13px;
+      }
+      .data-table th {
+        background: #f8fafc;
+        color: #1f2937;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Buildings (Byggnad) - Postprocess Snapshot</h1>
+        <p>Type: GeoDataFrame</p>
+      </header>
+
+      <section>
+        <h2>Summary</h2>
+        <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Metric</th>
+      <th>Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Rows</td>
+      <td>2,762</td>
+    </tr>
+    <tr>
+      <td>Columns</td>
+      <td>25</td>
+    </tr>
+    <tr>
+      <td>Memory (MB)</td>
+      <td>2.8</td>
+    </tr>
+    <tr>
+      <td>CRS</td>
+      <td>EPSG:3006</td>
+    </tr>
+    <tr>
+      <td>Duplicate rows</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>Duplicate object_id</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+      </section>
+
+      <section>
+        <h2>Missing Values</h2>
+        <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Column</th>
+      <th>Missing</th>
+      <th>Missing %</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>position_uncertainty_height_m</td>
+      <td>218</td>
+      <td>7.9</td>
+    </tr>
+    <tr>
+      <td>building_name_primary</td>
+      <td>2760</td>
+      <td>99.9</td>
+    </tr>
+    <tr>
+      <td>building_name_secondary</td>
+      <td>2762</td>
+      <td>100.0</td>
+    </tr>
+    <tr>
+      <td>building_name_tertiary</td>
+      <td>2762</td>
+      <td>100.0</td>
+    </tr>
+    <tr>
+      <td>secondary_purpose</td>
+      <td>2761</td>
+      <td>100.0</td>
+    </tr>
+    <tr>
+      <td>tertiary_purpose</td>
+      <td>2762</td>
+      <td>100.0</td>
+    </tr>
+    <tr>
+      <td>quaternary_purpose</td>
+      <td>2762</td>
+      <td>100.0</td>
+    </tr>
+    <tr>
+      <td>quinary_purpose</td>
+      <td>2762</td>
+      <td>100.0</td>
+    </tr>
+  </tbody>
+</table>
+      </section>
+
+      <section>
+        <h2>Columns</h2>
+        <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Column</th>
+      <th>Type</th>
+      <th>Non-null</th>
+      <th>Null %</th>
+      <th>Unique</th>
+      <th>Meaning</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>object_id</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>2762</td>
+      <td>Swedish source: objektidentitet</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>version_valid_from</td>
+      <td>datetime64[ms, UTC]</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>742</td>
+      <td>Swedish source: versiongiltigfran</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>position_uncertainty_plan_m</td>
+      <td>float64</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>16</td>
+      <td>Swedish source: lagesosakerhetplan</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>position_uncertainty_height_m</td>
+      <td>float64</td>
+      <td>2544</td>
+      <td>7.9</td>
+      <td>7</td>
+      <td>Swedish source: lagesosakerhethojd</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>original_organisation</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>4</td>
+      <td>Swedish source: ursprunglig_organisation</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>object_version</td>
+      <td>int32</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>7</td>
+      <td>Swedish source: objektversion</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>object_type_number</td>
+      <td>int32</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>7</td>
+      <td>Swedish source: objekttypnr</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>object_type</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>7</td>
+      <td>Swedish source: objekttyp</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>collection_level</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>3</td>
+      <td>Swedish source: insamlingslage</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>building_name_primary</td>
+      <td>str</td>
+      <td>2</td>
+      <td>99.9</td>
+      <td>2</td>
+      <td>Swedish source: byggnadsnamn1</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>building_name_secondary</td>
+      <td>object</td>
+      <td>0</td>
+      <td>100.0</td>
+      <td>0</td>
+      <td>Swedish source: byggnadsnamn2</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>building_name_tertiary</td>
+      <td>object</td>
+      <td>0</td>
+      <td>100.0</td>
+      <td>0</td>
+      <td>Swedish source: byggnadsnamn3</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>house_number</td>
+      <td>int32</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>85</td>
+      <td>Swedish source: husnummer</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>main_building_flag</td>
+      <td>bool</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>2</td>
+      <td>Main building flag (converted to boolean)</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>primary_purpose</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>14</td>
+      <td>Swedish source: andamal1</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>secondary_purpose</td>
+      <td>str</td>
+      <td>1</td>
+      <td>100.0</td>
+      <td>1</td>
+      <td>Swedish source: andamal2</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>tertiary_purpose</td>
+      <td>object</td>
+      <td>0</td>
+      <td>100.0</td>
+      <td>0</td>
+      <td>Swedish source: andamal3</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>quaternary_purpose</td>
+      <td>object</td>
+      <td>0</td>
+      <td>100.0</td>
+      <td>0</td>
+      <td>Swedish source: andamal4</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>quinary_purpose</td>
+      <td>object</td>
+      <td>0</td>
+      <td>100.0</td>
+      <td>0</td>
+      <td>Swedish source: andamal5</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>geometry</td>
+      <td>geometry</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>2762</td>
+      <td></td>
+      <td>Geometry: MultiPolygon, Polygon</td>
+    </tr>
+    <tr>
+      <td>object_type_en</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>7</td>
+      <td>English label for object_type</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>object_type_category</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>7</td>
+      <td>High-level category for object_type</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>primary_purpose_en</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>14</td>
+      <td>English label for primary_purpose</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>primary_purpose_category</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>1</td>
+      <td>High-level category for primary_purpose</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>collection_level_en</td>
+      <td>str</td>
+      <td>2762</td>
+      <td>0.0</td>
+      <td>3</td>
+      <td>English label for collection_level</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+      </section>
+
+      <section>
+        <h2>Numeric Statistics</h2>
+        <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Column</th>
+      <th>Min</th>
+      <th>Max</th>
+      <th>Mean</th>
+      <th>Median</th>
+      <th>Std</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>position_uncertainty_plan_m</td>
+      <td>0.025</td>
+      <td>50.0</td>
+      <td>0.191566</td>
+      <td>0.03</td>
+      <td>1.378291</td>
+    </tr>
+    <tr>
+      <td>position_uncertainty_height_m</td>
+      <td>0.025</td>
+      <td>10.0</td>
+      <td>3.133774</td>
+      <td>2.50</td>
+      <td>2.154363</td>
+    </tr>
+  </tbody>
+</table>
+      </section>
+
+      <section>
+        <h2>Categorical Distributions</h2>
+        <h3>object_id</h3><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Value</th>
+      <th>Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>001876a1-9969-4aba-89c6-cf86713a3226</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>0023c9e0-a36d-412b-a59f-20052d0472fa</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>003700a3-fe6a-418c-89c2-4dac4bdfcb1a</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>0053e9c3-18ea-4178-8ba7-515ca9fd23c0</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>00732301-9c86-4d6a-a945-a9ef98c48d02</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>009f57e9-ab0f-435e-aaf4-6a327d623560</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>00ca1b18-61d6-4714-9b71-ebec94aa0a47</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>00cd84e2-9bd5-43d6-9a45-bad815142e61</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>00d738a7-610f-427e-bd83-c8e42737cf09</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>00f3d03e-abf9-4fbd-aa99-805bcf2e90cd</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table><h3>original_organisation</h3><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Value</th>
+      <th>Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lantmäteriet</td>
+      <td>2208</td>
+    </tr>
+    <tr>
+      <td>Helsingborg</td>
+      <td>537</td>
+    </tr>
+    <tr>
+      <td>Landskrona</td>
+      <td>16</td>
+    </tr>
+    <tr>
+      <td>Kommunsamverkan</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table><h3>object_type</h3><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Value</th>
+      <th>Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Komplementbyggnad</td>
+      <td>1763</td>
+    </tr>
+    <tr>
+      <td>Bostad</td>
+      <td>953</td>
+    </tr>
+    <tr>
+      <td>Samhällsfunktion</td>
+      <td>31</td>
+    </tr>
+    <tr>
+      <td>Övrig byggnad</td>
+      <td>9</td>
+    </tr>
+    <tr>
+      <td>Verksamhet</td>
+      <td>3</td>
+    </tr>
+    <tr>
+      <td>Ekonomibyggnad</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>Industri</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table><h3>collection_level</h3><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Value</th>
+      <th>Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Fasad</td>
+      <td>2108</td>
+    </tr>
+    <tr>
+      <td>Ospecificerad</td>
+      <td>618</td>
+    </tr>
+    <tr>
+      <td>Takkant</td>
+      <td>36</td>
+    </tr>
+  </tbody>
+</table><h3>building_name_primary</h3><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Value</th>
+      <th>Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Rydebäcks kyrka</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>Karmeliterklostret</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table><h3>building_name_secondary</h3><p>No categorical values available.</p><h3>building_name_tertiary</h3><p>No categorical values available.</p><h3>primary_purpose</h3><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Value</th>
+      <th>Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Komplementbyggnad;</td>
+      <td>1763</td>
+    </tr>
+    <tr>
+      <td>Bostad;Småhus friliggande</td>
+      <td>493</td>
+    </tr>
+    <tr>
+      <td>Bostad;Småhus kedjehus</td>
+      <td>228</td>
+    </tr>
+    <tr>
+      <td>Bostad;Småhus radhus</td>
+      <td>160</td>
+    </tr>
+    <tr>
+      <td>Bostad;Småhus med flera lägenheter</td>
+      <td>53</td>
+    </tr>
+    <tr>
+      <td>Samhällsfunktion;Ospecificerad</td>
+      <td>26</td>
+    </tr>
+    <tr>
+      <td>Bostad;Flerfamiljshus</td>
+      <td>19</td>
+    </tr>
+    <tr>
+      <td>Övrig byggnad;</td>
+      <td>9</td>
+    </tr>
+    <tr>
+      <td>Verksamhet;</td>
+      <td>3</td>
+    </tr>
+    <tr>
+      <td>Samhällsfunktion;Skola</td>
+      <td>2</td>
+    </tr>
+  </tbody>
+</table><p class="note">Additional categorical columns not shown: 9</p>
+        <p class="note">Top values per column (up to 10).</p>
+      </section>
+
+      <section>
+        <h2>Sample Rows</h2>
+        <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>object_id</th>
+      <th>version_valid_from</th>
+      <th>position_uncertainty_plan_m</th>
+      <th>position_uncertainty_height_m</th>
+      <th>original_organisation</th>
+      <th>object_version</th>
+      <th>object_type_number</th>
+      <th>object_type</th>
+      <th>collection_level</th>
+      <th>building_name_primary</th>
+      <th>building_name_secondary</th>
+      <th>building_name_tertiary</th>
+      <th>house_number</th>
+      <th>main_building_flag</th>
+      <th>primary_purpose</th>
+      <th>secondary_purpose</th>
+      <th>tertiary_purpose</th>
+      <th>quaternary_purpose</th>
+      <th>quinary_purpose</th>
+      <th>geometry</th>
+      <th>object_type_en</th>
+      <th>object_type_category</th>
+      <th>primary_purpose_en</th>
+      <th>primary_purpose_category</th>
+      <th>collection_level_en</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>001876a1-9969-4aba-89c6-cf86713a3226</td>
+      <td>2017-07-24 13:51:41.718000+00:00</td>
+      <td>0.15</td>
+      <td>10.00</td>
+      <td>Helsingborg</td>
+      <td>2</td>
+      <td>2061</td>
+      <td>Bostad</td>
+      <td>Fasad</td>
+      <td>NaN</td>
+      <td>None</td>
+      <td>None</td>
+      <td>1</td>
+      <td>False</td>
+      <td>Bostad;Småhus friliggande</td>
+      <td>NaN</td>
+      <td>None</td>
+      <td>None</td>
+      <td>None</td>
+      <td>MULTIPOLYGON (((360428.945769587 6203951.52623702, 360428.971160455 6203958.36401743, 360415.033558199 6203958.41348589, 360415.00914521 6203951.57468398, 360428.945769587 6203951.52623702)))</td>
+      <td>Residence</td>
+      <td>Building used for residential purposes (single/multi-family, &gt;15 kvm)</td>
+      <td>Bostad;Småhus friliggande</td>
+      <td>Other</td>
+      <td>Fasad</td>
+    </tr>
+    <tr>
+      <td>0023c9e0-a36d-412b-a59f-20052d0472fa</td>
+      <td>2011-03-21 14:55:57.753000+00:00</td>
+      <td>0.03</td>
+      <td>2.50</td>
+      <td>Lantmäteriet</td>
+      <td>1</td>
+      <td>2066</td>
+      <td>Komplementbyggnad</td>
+      <td>Fasad</td>
+      <td>NaN</td>
+      <td>None</td>
+      <td>None</td>
+      <td>2</td>
+      <td>False</td>
+      <td>Komplementbyggnad;</td>
+      <td>NaN</td>
+      <td>None</td>
+      <td>None</td>
+      <td>None</td>
+      <td>MULTIPOLYGON (((360375.177 6203764.226, 360381.311 6203766.66, 360381.146 6203767.077, 360379.829 6203770.398, 360372.578 6203767.528, 360374.062 6203763.784, 360375.177 6203764.226)))</td>
+      <td>Ancillary building</td>
+      <td>Small building attached to dwelling (garage, shed, etc., &gt;15 kvm)</td>
+      <td>Komplementbyggnad;</td>
+      <td>Other</td>
+      <td>Fasad</td>
+    </tr>
+    <tr>
+      <td>003700a3-fe6a-418c-89c2-4dac4bdfcb1a</td>
+      <td>2021-11-08 11:01:14.642000+00:00</td>
+      <td>0.04</td>
+      <td>0.05</td>
+      <td>Helsingborg</td>
+      <td>1</td>
+      <td>2066</td>
+      <td>Komplementbyggnad</td>
+      <td>Fasad</td>
+      <td>NaN</td>
+      <td>None</td>
+      <td>None</td>
+      <td>3</td>
+      <td>False</td>
+      <td>Komplementbyggnad;</td>
+      <td>NaN</td>
+      <td>None</td>
+      <td>None</td>
+      <td>None</td>
+      <td>MULTIPOLYGON (((361496.217727039 6204129.78610454, 361496.0159700036 6204138.644890756, 361491.0560861137 6204138.522523943, 361491.2617546791 6204129.65965255, 361496.217727039 6204129.78610454)))</td>
+      <td>Ancillary building</td>
+      <td>Small building attached to dwelling (garage, shed, etc., &gt;15 kvm)</td>
+      <td>Komplementbyggnad;</td>
+      <td>Other</td>
+      <td>Fasad</td>
+    </tr>
+  </tbody>
+</table>
+      </section>
+    </div>
+  </body>
+</html>

@@ -9,13 +9,157 @@ Handles:
 """
 
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import List, Tuple, Optional
 import numpy as np
 from shapely.geometry import Polygon, MultiPolygon
 from shapely.validation import make_valid
 import logging
 
 logger = logging.getLogger(__name__)
+
+# mapbox_earcut gives correct cap triangulation for concave footprints AND holes.
+# If it is not installed we fall back to naive fan triangulation (only correct for
+# convex, hole-free polygons) and warn once.
+try:
+    import mapbox_earcut as _earcut
+    _HAS_EARCUT = True
+except ImportError:  # pragma: no cover - depends on environment
+    _earcut = None
+    _HAS_EARCUT = False
+
+_warned_no_earcut = False
+
+
+def _triangulate_cap(
+    exterior: np.ndarray,
+    holes: List[np.ndarray],
+) -> np.ndarray:
+    """
+    Triangulate a (possibly concave, possibly holed) polygon footprint in 2D.
+
+    Args:
+        exterior: (n_exterior, 2) array of exterior ring vertices (no closing dup)
+        holes: list of (n_hole, 2) arrays, one per interior ring (no closing dup)
+
+    Returns:
+        (T, 3) int array of triangle indices into the concatenated vertex order
+        [exterior, hole_0, hole_1, ...] — i.e. the same local ordering the prism
+        builder uses for the bottom ring vertices. Indices are local (0-based,
+        relative to the start of this polygon's exterior ring).
+
+    Uses mapbox_earcut when available (handles concavity + holes correctly);
+    otherwise falls back to fan triangulation of the exterior only (legacy
+    behaviour, correct only for convex hole-free polygons).
+    """
+    global _warned_no_earcut
+
+    if _HAS_EARCUT:
+        # earcut expects all rings stacked as float64 (N, 2), plus ring-end offsets.
+        rings = [np.asarray(exterior, dtype=np.float64)]
+        rings.extend(np.asarray(h, dtype=np.float64) for h in holes)
+        verts = np.vstack(rings)
+        # Ring boundary offsets: cumulative vertex counts marking the end of each ring.
+        ring_ends = np.cumsum([len(r) for r in rings]).astype(np.uint32)
+        indices = _earcut.triangulate_float64(verts, ring_ends)
+        return np.asarray(indices, dtype=np.uint32).reshape(-1, 3)
+
+    # Fallback: fan triangulation of exterior ring only (ignores holes/concavity).
+    if not _warned_no_earcut:
+        logger.warning(
+            "mapbox_earcut not installed; roof/floor caps use fan triangulation, "
+            "which is only correct for convex hole-free footprints. "
+            "Install mapbox_earcut for correct caps."
+        )
+        _warned_no_earcut = True
+    n_exterior = len(exterior)
+    fan = [[0, i, i + 1] for i in range(1, n_exterior - 1)]
+    return np.asarray(fan, dtype=np.uint32).reshape(-1, 3)
+
+
+def weld_vertices(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    decimals: int = 4,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Merge coincident vertices so a mesh becomes topologically connected.
+
+    Building prisms are built with duplicated corner vertices (bottom/roof rings
+    are separate points, and each merged building keeps its own vertex block).
+    Welding by rounded position lets the watertight edge test see shared edges.
+
+    Args:
+        vertices: (N, 3) float array
+        faces: (M, 3) int array
+        decimals: rounding precision (1e-4 m = 0.1 mm) for treating points as equal
+
+    Returns:
+        (welded_vertices, remapped_faces)
+    """
+    if len(vertices) == 0:
+        return vertices, faces
+    keys = np.round(vertices.astype(np.float64), decimals)
+    _, unique_idx, inverse = np.unique(
+        keys, axis=0, return_index=True, return_inverse=True
+    )
+    welded = vertices[unique_idx]
+    remapped = inverse[faces].astype(faces.dtype)
+    return welded, remapped
+
+
+def check_watertight(vertices: np.ndarray, faces: np.ndarray) -> dict:
+    """
+    Check whether a mesh is a closed, edge-manifold surface.
+
+    A closed manifold has every undirected edge shared by exactly two triangles.
+    Vertices are welded by position first (see weld_vertices) because the prism
+    builder emits duplicated corner vertices.
+
+    Args:
+        vertices: (N, 3) float array
+        faces: (M, 3) int array
+
+    Returns:
+        dict: {
+            "is_watertight": bool,
+            "boundary_edges": int,   # edges used by exactly 1 face (holes/gaps)
+            "nonmanifold_edges": int,# edges used by >2 faces
+            "degenerate_faces": int, # faces with a repeated vertex (zero area)
+        }
+    """
+    result = {
+        "is_watertight": False,
+        "boundary_edges": 0,
+        "nonmanifold_edges": 0,
+        "degenerate_faces": 0,
+    }
+    if len(faces) == 0:
+        return result
+
+    welded_v, welded_f = weld_vertices(vertices, faces)
+
+    # Drop degenerate faces (a repeated vertex index -> zero-area triangle).
+    non_degen_mask = (
+        (welded_f[:, 0] != welded_f[:, 1])
+        & (welded_f[:, 1] != welded_f[:, 2])
+        & (welded_f[:, 0] != welded_f[:, 2])
+    )
+    result["degenerate_faces"] = int((~non_degen_mask).sum())
+    f = welded_f[non_degen_mask]
+    if len(f) == 0:
+        return result
+
+    # Build undirected edge list; each triangle contributes 3 edges.
+    edges = np.vstack([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    edges = np.sort(edges, axis=1)  # undirected: (min, max)
+    _, counts = np.unique(edges, axis=0, return_counts=True)
+
+    boundary = int((counts == 1).sum())
+    nonmanifold = int((counts > 2).sum())
+    result["boundary_edges"] = boundary
+    result["nonmanifold_edges"] = nonmanifold
+    result["is_watertight"] = (boundary == 0 and nonmanifold == 0)
+    return result
 
 
 class MeshBuilder:
@@ -61,9 +205,23 @@ class MeshBuilder:
         # Extract exterior ring and holes
         exterior = polygon.exterior.coords[:-1]  # Remove duplicate closing point
         holes = [np.array(hole.coords[:-1]) for hole in polygon.interiors]
-        
+
         # Create indices for bottom vertices
         n_exterior = len(exterior)
+
+        # Guard: a ring with < 3 distinct vertices, or effectively zero area,
+        # cannot form a closed prism. Building walls without valid caps would
+        # produce an open (non-watertight) sliver, so skip such footprints.
+        n_distinct = len({(round(x, 6), round(y, 6)) for x, y in exterior})
+        if n_exterior < 3 or n_distinct < 3 or polygon.area < 1e-6:
+            logger.warning(
+                f"Skipping degenerate footprint: {n_exterior} ring vertices "
+                f"({n_distinct} distinct), area={polygon.area:.3g}"
+            )
+            return (
+                np.empty((0, 3), dtype=np.float32),
+                np.empty((0, 3), dtype=np.uint32),
+            )
         bottom_exterior_indices = list(range(n_exterior))
         
         bottom_hole_indices = []
@@ -93,17 +251,24 @@ class MeshBuilder:
                 vertices_list.append([x, y, z_roof])
         
         # --- FACES ---
-        # Bottom face (triangulated using fan triangulation)
-        if n_exterior >= 3:
-            for i in range(1, n_exterior - 1):
-                # Reverse winding for bottom face (facing down)
-                faces_list.append([0, i + 1, i])
-        
-        # Top face (roof)
+        # Cap triangulation: correct for concave footprints AND interior holes.
+        # cap_tris indexes into the bottom-ring vertex order [exterior, hole_0, ...],
+        # which matches local indices 0 .. current_idx-1.
         roof_base_idx = current_idx
-        for i in range(1, n_exterior - 1):
-            # Forward winding for top face (facing up)
-            faces_list.append([roof_base_idx + i, roof_base_idx + i + 1, roof_base_idx])
+        if n_exterior >= 3:
+            exterior_arr = np.asarray(exterior, dtype=np.float64)
+            cap_tris = _triangulate_cap(exterior_arr, holes)
+
+            # Bottom face: reverse winding so it faces down (-z).
+            for a, b_, c in cap_tris:
+                faces_list.append([int(a), int(c), int(b_)])
+
+            # Top face (roof): same triangulation shifted to roof vertices,
+            # keep CCW winding so it faces up (+z).
+            for a, b_, c in cap_tris:
+                faces_list.append(
+                    [roof_base_idx + int(a), roof_base_idx + int(b_), roof_base_idx + int(c)]
+                )
         
         # Walls (exterior)
         for i in range(n_exterior):
@@ -177,14 +342,31 @@ class MeshBuilder:
         
         if geometry.is_empty:
             return None, None
-        
+
         if not geometry.is_valid:
             geometry = make_valid(geometry)
-        
+
         if isinstance(geometry, Polygon):
             return self.polygon_to_triangles(geometry, height_m, origin=origin)
         elif isinstance(geometry, MultiPolygon):
             return self.multipolygon_to_triangles(geometry, height_m, origin=origin)
+        elif geometry.geom_type == "GeometryCollection":
+            # make_valid() can return a collection mixing polygons with lines/points
+            # (e.g. from self-intersecting footprints). Mesh only the polygonal parts;
+            # dropping the 0/1-D leftovers keeps the result watertight.
+            polys = [g for g in geometry.geoms if isinstance(g, (Polygon, MultiPolygon))]
+            if not polys:
+                logger.warning("GeometryCollection has no polygonal parts; skipping")
+                return None, None
+            if len(polys) == 1:
+                return self.geometry_to_triangles(polys[0], height_m, origin=origin)
+            return self.multipolygon_to_triangles(
+                MultiPolygon(
+                    [p for g in polys for p in (g.geoms if isinstance(g, MultiPolygon) else [g])]
+                ),
+                height_m,
+                origin=origin,
+            )
         else:
             logger.warning(f"Unsupported geometry type: {type(geometry)}")
             return None, None

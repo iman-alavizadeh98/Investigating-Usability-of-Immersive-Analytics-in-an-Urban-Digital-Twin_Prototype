@@ -28,7 +28,7 @@ from .strategies.individual import IndividualBuildingStrategy, IndividualBuildin
 from .strategies.district import DistrictStrategy, DistrictConfig
 from .strategies.grid import GridStrategy, GridConfig
 from .strategies.quadtree import QuadtreeStrategy, QuadtreeConfig
-from .builder import MeshBuilder
+from .builder import MeshBuilder, check_watertight
 from .lod_generation import LODGenerator, LODGenerationError
 
 logger = logging.getLogger(__name__)
@@ -244,7 +244,13 @@ class MeshGenerator:
             building_count = 0
             building_ids = []
             height_sources = {}  # Track distribution: {"lidar_hag_p95": 143, "fallback_default": 7}
-            
+            # Per-building watertightness. Checking each building separately (rather
+            # than the welded group) avoids false non-manifold flags where adjacent
+            # buildings in a cell share a wall edge — each building is still a closed
+            # solid, which is what matters for rendering.
+            buildings_open = 0
+            open_building_boundary_edges = 0
+
             for _, row in buildings.iterrows():
                 geom = row.geometry
                 
@@ -266,10 +272,16 @@ class MeshGenerator:
                     vertex_offset += len(vertices)
                     building_count += 1
                     building_ids.append(building_id)
-                    
+
+                    # Per-building watertight check (boundary edges = open surface).
+                    bw = check_watertight(vertices, faces)
+                    if bw["boundary_edges"] > 0:
+                        buildings_open += 1
+                        open_building_boundary_edges += bw["boundary_edges"]
+
                     # Track height source
                     height_sources[height_source] = height_sources.get(height_source, 0) + 1
-            
+
             if not all_vertices:
                 logger.warning(f"  ✗ No valid meshes generated for {group.group_name}")
                 return None
@@ -277,7 +289,24 @@ class MeshGenerator:
             # Combine all vertices and faces
             combined_vertices = np.vstack(all_vertices)
             combined_faces = np.vstack(all_faces)
-            
+
+            # ========== WATERTIGHT SUMMARY ==========
+            # A group is "watertight" when every building in it is a closed solid
+            # (no open/boundary edges). Shared walls between adjacent buildings are
+            # expected and are NOT counted as defects.
+            watertight_report = {
+                "all_buildings_closed": buildings_open == 0,
+                "buildings_total": building_count,
+                "buildings_open": buildings_open,
+                "open_boundary_edges": open_building_boundary_edges,
+            }
+            if buildings_open > 0:
+                logger.warning(
+                    f"  ⚠ {group.group_name}: {buildings_open}/{building_count} "
+                    f"building(s) not closed "
+                    f"({open_building_boundary_edges} boundary edge(s) total)"
+                )
+
             # ========== LOD GENERATION ==========
             lod_export_results = {}
             vertices_by_lod = {"lod1": (combined_vertices.copy(), combined_faces.copy())}
@@ -350,6 +379,7 @@ class MeshGenerator:
                 "building_ids": building_ids,
                 "height_sources": height_sources,
                 "mesh_stats": mesh_stats,
+                "watertight": watertight_report,
                 # Primary mesh stats (LOD1) for backward compatibility
                 "triangle_count": lod1_stats["face_count"],
                 "vertex_count": lod1_stats["vertex_count"],
@@ -373,6 +403,16 @@ class MeshGenerator:
             "total_vertices": sum(m.get("vertex_count", 0) for m in manifests),
             "total_triangles": sum(m.get("triangle_count", 0) for m in manifests),
             "total_file_size_mb": round(sum(m.get("file_size_mb", 0) for m in manifests), 2),
+            "groups_all_buildings_closed": sum(
+                1 for m in manifests if m.get("watertight", {}).get("all_buildings_closed")
+            ),
+            "groups_with_open_buildings": sum(
+                1 for m in manifests
+                if not m.get("watertight", {}).get("all_buildings_closed", True)
+            ),
+            "total_open_buildings": sum(
+                m.get("watertight", {}).get("buildings_open", 0) for m in manifests
+            ),
             "meshes": manifests
         }
         

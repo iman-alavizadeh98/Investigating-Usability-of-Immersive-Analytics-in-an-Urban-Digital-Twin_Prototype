@@ -152,19 +152,19 @@ def test_manifest_schema():
     """Test that manifest contains all required fields."""
     logger.info("\n[TEST 5] Manifest schema validation...")
     
-    # Expected schema for each mesh in manifest
+    # Expected schema for each mesh in manifest (matches generator._build_group_mesh output)
     required_fields = {
-        "group_id", "group_name", "lod_level", "glb_filename",
+        "group_id", "group_name", "lod_levels", "glb_files",
         "crs", "origin", "bounds_epsg3006", "building_ids",
         "height_sources", "triangle_count", "vertex_count", "file_size_mb"
     }
-    
+
     # Example manifest entry
     manifest_entry = {
         "group_id": "grid_001",
         "group_name": "District 1",
-        "lod_level": 1,
-        "glb_filename": "grid_001_lod1.glb",
+        "lod_levels": ["lod1"],
+        "glb_files": {"lod1": "grid_001_lod1.glb"},
         "crs": "EPSG:3006",
         "origin": {"x": 319500.0, "y": 6398500.0, "z": 0.5},
         "bounds_epsg3006": {
@@ -191,6 +191,8 @@ def test_manifest_schema():
     assert "bounds_epsg3006" in manifest_entry, "Missing bounds_epsg3006"
     assert "west" in manifest_entry["bounds_epsg3006"], "Missing bounds_epsg3006.west"
     
+    assert isinstance(manifest_entry["lod_levels"], list), "lod_levels should be list"
+    assert isinstance(manifest_entry["glb_files"], dict), "glb_files should be dict"
     assert isinstance(manifest_entry["building_ids"], list), "building_ids should be list"
     assert isinstance(manifest_entry["height_sources"], dict), "height_sources should be dict"
     
@@ -278,6 +280,34 @@ def test_height_source_tracking():
     return True
 
 
+def test_watertight_meshes():
+    """Test that generated building prisms are closed (watertight) solids."""
+    logger.info("\n[TEST 8] Watertight mesh validation...")
+
+    from mesh_generation.builder import check_watertight
+
+    builder = MeshBuilder()
+    cases = {
+        "square": Polygon([(0, 0), (10, 0), (10, 10), (0, 10)]),
+        "concave_L": Polygon([(0, 0), (10, 0), (10, 4), (4, 4), (4, 10), (0, 10)]),
+        "with_hole": Polygon(
+            [(0, 0), (20, 0), (20, 20), (0, 20)],
+            [[(6, 6), (6, 14), (14, 14), (14, 6)]],
+        ),
+    }
+    for name, poly in cases.items():
+        v, f = builder.polygon_to_triangles(poly, height_m=5.0)
+        report = check_watertight(v, f)
+        assert report["is_watertight"], f"{name} not watertight: {report}"
+
+    # Degenerate footprint must be skipped, not emitted as an open sliver.
+    v, f = builder.polygon_to_triangles(Polygon([(0, 0), (10, 0), (0, 0)]), height_m=5.0)
+    assert len(f) == 0, "degenerate footprint should produce no faces"
+
+    logger.info("  ✓ All prisms are watertight; degenerate footprint skipped")
+    return True
+
+
 def run_all_tests():
     """Run all acceptance tests."""
     logger.info("=" * 80)
@@ -291,7 +321,8 @@ def run_all_tests():
         test_normals_computation,
         test_manifest_schema,
         test_building_ids_preserved,
-        test_height_source_tracking
+        test_height_source_tracking,
+        test_watertight_meshes
     ]
     
     passed = 0

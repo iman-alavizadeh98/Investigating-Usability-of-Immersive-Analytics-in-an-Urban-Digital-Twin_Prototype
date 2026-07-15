@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class GridConfig(StrategyConfig):
     """Config for grid strategy."""
-    cell_size_m: int = 1000  # 1km cells
+    cell_size_m: int = 1000  # 1000m cells (default); square cells of cell_size_m × cell_size_m
     overlap_m: int = 0  # Optional overlap for seamless loading
 
 

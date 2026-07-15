@@ -103,9 +103,9 @@ class MeshStrategy(ABC):
         # Check for duplicates FIRST - each building can only appear once
         assignment_count = {}
         for group in self.groups:
+            report["buildings_per_group"].append(len(group.building_indices))
             for idx in group.building_indices:
                 assignment_count[idx] = assignment_count.get(idx, 0) + 1
-                report["buildings_per_group"].append(len(group.building_indices))
         
         # Find duplicate assignments
         duplicates = [idx for idx, count in assignment_count.items() if count > 1]

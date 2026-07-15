@@ -7,7 +7,7 @@ Responsible for:
 - Deterministic decimation (same input → same output)
 """
 
-from typing import Tuple, Dict, Optional
+from typing import Any, Tuple, Dict, Optional
 import numpy as np
 import logging
 
@@ -216,7 +216,7 @@ class LODGenerator:
         lod2_faces: int,
         lod3_vertices: int,
         lod3_faces: int
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Compute statistics about decimation effectiveness.
         

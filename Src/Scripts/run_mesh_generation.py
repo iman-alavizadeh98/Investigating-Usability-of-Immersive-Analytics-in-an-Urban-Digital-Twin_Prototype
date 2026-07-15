@@ -6,7 +6,8 @@ Shows how to use the modular mesh generation architecture.
 
 Usage:
     python run_mesh_generation.py --strategy district
-    python run_mesh_generation.py --strategy grid --cell-size 1000
+    python run_mesh_generation.py --strategy grid                  # 1000x1000 m cells (default)
+    python run_mesh_generation.py --strategy grid --cell-size 250  # 250x250 m cells
     python run_mesh_generation.py --strategy quadtree
 """
 
@@ -49,7 +50,7 @@ def main():
         "--cell-size",
         type=int,
         default=1000,
-        help="Cell size in meters (for grid strategy)"
+        help="Grid cell size in meters; produces square cell_size x cell_size cells (for grid strategy, default: 1000)"
     )
     parser.add_argument(
         "--max-buildings",
