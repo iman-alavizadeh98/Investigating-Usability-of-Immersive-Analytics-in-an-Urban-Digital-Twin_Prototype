@@ -19,6 +19,14 @@ Use these files first when deciding what is current:
 
 Treat the phase-based summary documents as historical context unless a newer code path or dated note explicitly overrides them.
 
+### Code knowledge graph (graphify)
+
+A graphify knowledge graph of `Src/` is checked in under `graphify-out/` (`graph.json`, `graph.html`, `GRAPH_REPORT.md`; gitignored, rebuild locally if missing). Prefer it over exploring the repo from scratch when answering structural questions about the code.
+
+- To ask how the code fits together ("what calls X", "how does the LiDAR height flow work", "trace the buildings pipeline"), run `/graphify query "<question>"` — it reads the existing graph and does **not** rebuild.
+- Core abstractions (god nodes): `LiDARHeightPipeline`, `MeshStrategy`, `MeshGroup`, `HeightEstimator`, `DataFrameProfiler`. Main cross-module bridge: `BasePipeline`.
+- Rebuild only after meaningful code changes: `/graphify Src --update` (incremental) or `/graphify Src` (full). Scope to `Src/` — the full repo (`venv`, `conda_env`, Unity, GLB assets) is too large and has no research value.
+
 ---
 
 ## Development Scope
