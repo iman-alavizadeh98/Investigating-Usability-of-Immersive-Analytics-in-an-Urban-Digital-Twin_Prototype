@@ -152,19 +152,24 @@ def test_manifest_schema():
     """Test that manifest contains all required fields."""
     logger.info("\n[TEST 5] Manifest schema validation...")
     
-    # Expected schema for each mesh in manifest (matches generator._build_group_mesh output)
+    # Expected schema for each mesh in manifest (matches generator._build_group_mesh output).
+    # Default export is PLY-only, full detail: primary_format="ply", one LOD.
     required_fields = {
-        "group_id", "group_name", "lod_levels", "glb_files",
+        "group_id", "group_name", "lod_levels", "primary_format",
+        "mesh_files", "glb_files", "ply_files",
         "crs", "origin", "bounds_epsg3006", "building_ids",
         "height_sources", "triangle_count", "vertex_count", "file_size_mb"
     }
 
-    # Example manifest entry
+    # Example manifest entry (default PLY-only, no vertex reduction)
     manifest_entry = {
         "group_id": "grid_001",
         "group_name": "District 1",
         "lod_levels": ["lod1"],
-        "glb_files": {"lod1": "grid_001_lod1.glb"},
+        "primary_format": "ply",
+        "mesh_files": {"lod1": {"ply": "grid_001_lod1.ply"}},
+        "glb_files": {},
+        "ply_files": {"lod1": "grid_001_lod1.ply"},
         "crs": "EPSG:3006",
         "origin": {"x": 319500.0, "y": 6398500.0, "z": 0.5},
         "bounds_epsg3006": {
@@ -177,22 +182,27 @@ def test_manifest_schema():
         "vertex_count": 800,
         "file_size_mb": 2.45
     }
-    
+
     # Verify all required fields present
     missing_fields = required_fields - set(manifest_entry.keys())
     assert len(missing_fields) == 0, f"Missing fields: {missing_fields}"
-    
+
     # Verify nested structure
     assert "origin" in manifest_entry, "Missing origin"
     assert "x" in manifest_entry["origin"], "Missing origin.x"
     assert "y" in manifest_entry["origin"], "Missing origin.y"
     assert "z" in manifest_entry["origin"], "Missing origin.z"
-    
+
     assert "bounds_epsg3006" in manifest_entry, "Missing bounds_epsg3006"
     assert "west" in manifest_entry["bounds_epsg3006"], "Missing bounds_epsg3006.west"
-    
+
     assert isinstance(manifest_entry["lod_levels"], list), "lod_levels should be list"
+    assert isinstance(manifest_entry["mesh_files"], dict), "mesh_files should be dict"
     assert isinstance(manifest_entry["glb_files"], dict), "glb_files should be dict"
+    assert isinstance(manifest_entry["ply_files"], dict), "ply_files should be dict"
+    # Default primary format is PLY; the primary file must appear in mesh_files/ply_files.
+    assert manifest_entry["primary_format"] == "ply", "default primary_format should be ply"
+    assert "lod1" in manifest_entry["ply_files"], "PLY primary file should be listed in ply_files"
     assert isinstance(manifest_entry["building_ids"], list), "building_ids should be list"
     assert isinstance(manifest_entry["height_sources"], dict), "height_sources should be dict"
     

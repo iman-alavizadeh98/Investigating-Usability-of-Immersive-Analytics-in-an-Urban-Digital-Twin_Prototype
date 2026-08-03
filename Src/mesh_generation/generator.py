@@ -44,12 +44,16 @@ class GeneratorConfig:
     material_color: tuple = (1.0, 1.0, 1.0)  # White
     crs: str = "EPSG:3006"  # Authoritative CRS
 
-    # Mesh export formats. "glb" is always the primary/authoritative output;
-    # additional formats (e.g. "ply") are written alongside as extra artifacts.
-    export_formats: tuple = ("glb", "ply")
+    # Mesh export formats. The FIRST entry is the primary/authoritative output
+    # (its export success gates each LOD); any others are written alongside as
+    # extra artifacts. Default is PLY-only; add "glb"/"obj" here if needed.
+    export_formats: tuple = ("ply",)
 
-    # LOD generation settings
-    generate_lods: bool = True  # Generate LOD2 and LOD3
+    # LOD generation settings.
+    # generate_lods controls VERTEX REDUCTION: when True, decimated LOD2/LOD3
+    # meshes are produced alongside full-detail LOD1. When False (default), only
+    # the full-detail LOD1 mesh is exported and no vertices are reduced.
+    generate_lods: bool = False  # Generate reduced-vertex LOD2 and LOD3
     lod_decimation_library: str = "pyvista"  # "pyvista" or "trimesh"
     lod_target_reductions: tuple = (0.5, 0.1)  # (LOD2=50%, LOD3=10%)
     lod_decimation_quality: float = 0.7  # Decimation quality (0.0-1.0)
@@ -329,9 +333,9 @@ class MeshGenerator:
                     # Fall back to LOD1 only; lod_export_results will only have lod1
             
             # ========== EXPORT ALL LODS ==========
-            glb_dir = output_dir / "glb_files"
-            lod_export_results = self.builder.export_glb_suite(
-                glb_dir,
+            mesh_dir = output_dir / "mesh_files"
+            lod_export_results = self.builder.export_mesh_suite(
+                mesh_dir,
                 vertices_by_lod,
                 group.group_id,
                 compute_normals_per_lod=True,
@@ -351,18 +355,30 @@ class MeshGenerator:
             # Build LOD levels list (will have at least lod1, possibly lod2/lod3)
             lod_levels = list(sorted([k for k in lod_export_results.keys() if lod_export_results[k]["success"]]))
             
-            # Build glb_files dictionary with all successful LODs.
-            # ply_files mirrors glb_files for any LOD that also produced a PLY
-            # (only present when "ply" is in config.export_formats).
+            # Build per-format file maps for each successful LOD.
+            # mesh_files is the authoritative map ({lod: {fmt: filename}}) covering
+            # every exported format. glb_files/ply_files are convenience views kept
+            # for backward compatibility with existing manifest consumers; each is
+            # only populated for LODs that actually produced that format (empty
+            # otherwise — e.g. glb_files is empty in the default PLY-only export).
+            primary_format = (
+                self.config.export_formats[0].lower()
+                if self.config.export_formats else "ply"
+            )
+            mesh_files = {}
             glb_files = {}
             ply_files = {}
             mesh_stats = {}
             for lod_level in lod_levels:
                 result = lod_export_results[lod_level]
-                glb_files[lod_level] = result["filename"]
-                extra = result.get("extra_files", {})
-                if "ply" in extra:
-                    ply_files[lod_level] = extra["ply"]
+                # Primary filename + any secondary formats, merged into one map.
+                per_format = {primary_format: result["filename"]}
+                per_format.update(result.get("extra_files", {}))
+                mesh_files[lod_level] = per_format
+                if "glb" in per_format:
+                    glb_files[lod_level] = per_format["glb"]
+                if "ply" in per_format:
+                    ply_files[lod_level] = per_format["ply"]
                 mesh_stats[lod_level] = {
                     "vertices": result["vertex_count"],
                     "faces": result["face_count"],
@@ -373,9 +389,11 @@ class MeshGenerator:
             metadata = {
                 "group_id": group.group_id,
                 "group_name": group.group_name,
-                "lod_levels": lod_levels,  # e.g., [1, 2, 3] or [1] if LOD generation failed
-                "glb_files": glb_files,     # {"lod1": "filename", "lod2": "filename", ...}
-                "ply_files": ply_files,     # {"lod1": "filename", ...}; empty if PLY not exported
+                "lod_levels": lod_levels,  # e.g., ["lod1", "lod2", "lod3"] or ["lod1"] when reduction is off
+                "primary_format": primary_format,  # authoritative export format (default "ply")
+                "mesh_files": mesh_files,   # {"lod1": {"ply": "filename", ...}, ...} — all formats
+                "glb_files": glb_files,     # {"lod1": "filename", ...}; empty when GLB not exported
+                "ply_files": ply_files,     # {"lod1": "filename", ...}; empty when PLY not exported
                 "crs": self.config.crs,
                 "origin": {
                     "x": origin_x,

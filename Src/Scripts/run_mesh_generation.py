@@ -9,6 +9,10 @@ Usage:
     python run_mesh_generation.py --strategy grid                  # 1000x1000 m cells (default)
     python run_mesh_generation.py --strategy grid --cell-size 250  # 250x250 m cells
     python run_mesh_generation.py --strategy quadtree
+
+Export defaults to PLY only, full detail (no vertex reduction). Use:
+    --formats ply,glb          # also write GLB alongside PLY
+    --reduce-vertices          # additionally emit decimated LOD2/LOD3 meshes
 """
 
 import logging
@@ -70,9 +74,16 @@ def main():
     )
     parser.add_argument(
         "--formats",
-        default="glb,ply",
-        help="Comma-separated mesh export formats. 'glb' is always the primary "
-             "output; 'ply' adds Stanford PLY files alongside (default: glb,ply)"
+        default="ply",
+        help="Comma-separated mesh export formats, primary first. The first "
+             "format is authoritative (its export gates each mesh). Supported: "
+             "ply, glb, obj (default: ply)"
+    )
+    parser.add_argument(
+        "--reduce-vertices",
+        action="store_true",
+        help="Also generate decimated (reduced-vertex) LOD2/LOD3 meshes "
+             "alongside full-detail LOD1. Off by default: full detail only."
     )
 
     args = parser.parse_args()
@@ -120,13 +131,18 @@ def main():
     elif args.strategy == "quadtree":
         strategy_config = {"max_buildings_per_cell": args.max_buildings}
     
-    # Parse export formats; always keep GLB as the primary output.
+    # Parse export formats; the first listed format is the primary/authoritative
+    # output. Default is PLY only.
     export_formats = tuple(
         f.strip().lower() for f in args.formats.split(",") if f.strip()
     )
-    if "glb" not in export_formats:
-        export_formats = ("glb",) + export_formats
-    logger.info(f"Export formats: {', '.join(export_formats)}")
+    if not export_formats:
+        export_formats = ("ply",)
+    logger.info(f"Export formats (primary first): {', '.join(export_formats)}")
+    logger.info(
+        "Vertex reduction (LOD2/LOD3): "
+        + ("ENABLED" if args.reduce_vertices else "disabled (full detail only)")
+    )
 
     # Create generator
     config = GeneratorConfig(
@@ -137,6 +153,7 @@ def main():
         material_color=(1.0, 1.0, 1.0),
         crs="EPSG:3006",
         export_formats=export_formats,
+        generate_lods=args.reduce_vertices,
     )
     
     generator = MeshGenerator(buildings_gdf, config)

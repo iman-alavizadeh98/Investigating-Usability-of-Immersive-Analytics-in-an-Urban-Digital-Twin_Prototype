@@ -219,67 +219,74 @@ class HeightEstimator:
         # Extract points intersecting building
         candidate_points = las.xyz[points_in_bbox]
         candidate_classes = las.classification[points_in_bbox]
-        
-        # Create point geometries for intersection test
-        point_geoms = np.array([Point(p[:2]) for p in candidate_points])
-        intersects = np.array([geometry.contains(Point(p[:2])) for p in candidate_points])
-        
-        # Get HAG values if available
-        hag_values = None
+
+        # Get HAG values if available (indexed identically to candidate_points,
+        # i.e. by points_in_bbox, so all per-point arrays stay aligned)
+        candidate_hag = None
         if "HeightAboveGround" in las.point_format.dimension_names:
-            hag_values = las["HeightAboveGround"][points_in_bbox]
-        
+            candidate_hag = np.asarray(las["HeightAboveGround"][points_in_bbox])
+
+        # Filter to points actually inside the footprint. The intersects mask is
+        # computed over candidate_points, so it must be applied to every
+        # candidate-aligned array (points, classes, HAG) to keep them aligned.
+        intersects = np.array([geometry.contains(Point(p[:2])) for p in candidate_points])
+
         all_points = candidate_points[intersects]
         all_classes = candidate_classes[intersects]
-        
+        all_hag = candidate_hag[intersects] if candidate_hag is not None else None
+
         if len(all_points) < self.config.min_points:
             return self._create_fallback_height(
                 building_id,
                 height_run_id,
                 reason=f"insufficient_points: {len(all_points)}"
             )
-        
+
         # Separate ground and non-ground points
         ground_mask = (all_classes == 2)  # ASPRS class 2 = ground
         non_ground_mask = ~ground_mask
-        
+
         ground_points = all_points[ground_mask]
         non_ground_points = all_points[non_ground_mask]
-        
-        # Estimate ground elevation
-        if len(ground_points) >= 3:
-            # Use median for robustness against outliers
-            ground_z = float(np.median(ground_points[:, 2]))
-        else:
-            # If insufficient ground points, use nearby points
-            nearby_z_values = all_points[:, 2]
-            ground_z = float(np.percentile(nearby_z_values, 5))  # 5th percentile as ground estimate
-        
-        # Extract height from non-ground points
-        if hag_values is not None:
-            # Use HAG if available (more accurate)
-            non_ground_hag = hag_values[non_ground_mask]
-            if len(non_ground_hag) > 0:
-                # Use 95th percentile of HAG
-                roof_hag = float(np.percentile(non_ground_hag, self.config.percentile))
-            else:
+
+        # Extract roof height. Prefer HAG (computed by PDAL against a proper
+        # ground surface) since ground points inside a footprint are sparse and
+        # unreliable (the building occludes the ground).
+        if all_hag is not None:
+            # HAG path: roof height is the Nth percentile of non-ground HAG.
+            non_ground_hag = all_hag[non_ground_mask]
+            if len(non_ground_hag) == 0:
                 return self._create_fallback_height(
                     building_id,
                     height_run_id,
                     reason="no_non_ground_points"
                 )
+            roof_hag = float(np.percentile(non_ground_hag, self.config.percentile))
+            height_source = HeightSource.LIDAR_HAG_P95.value
+            # Ground datum: reconstruct from HAG (z = ground_z + hag), which is
+            # independent of whether ground points fall inside the footprint.
+            ground_z = float(np.median(all_points[:, 2] - all_hag))
         else:
-            # Fall back to z-coordinate difference
-            if len(non_ground_points) > 0:
-                height_estimates = non_ground_points[:, 2] - ground_z
-                roof_hag = float(np.percentile(height_estimates, self.config.percentile))
+            # No HAG available: fall back to z-difference against a local ground
+            # estimate. Less accurate on sloped terrain; flagged as a distinct
+            # source so downstream consumers can tell the two apart.
+            if len(ground_points) >= 3:
+                ground_z = float(np.median(ground_points[:, 2]))  # robust to outliers
             else:
+                # Insufficient interior ground points: use a low percentile of
+                # all interior points as the ground datum.
+                ground_z = float(np.percentile(all_points[:, 2], 5))
+
+            if len(non_ground_points) == 0:
                 return self._create_fallback_height(
                     building_id,
                     height_run_id,
                     reason="no_non_ground_points"
                 )
-        
+            height_estimates = non_ground_points[:, 2] - ground_z
+            roof_hag = float(np.percentile(height_estimates, self.config.percentile))
+            height_source = HeightSource.LIDAR_ZDIFF_P95.value
+
         # Apply constraints
         height_m = max(roof_hag, self.config.min_height_m)
         roof_z = ground_z + height_m
@@ -310,7 +317,7 @@ class HeightEstimator:
             "ground_z": round(ground_z, 3),
             "roof_z": round(roof_z, 3),
             "height_m": round(height_m, 3),
-            "height_source": HeightSource.LIDAR_HAG_P95.value,
+            "height_source": height_source,
             "height_quality": quality.value,
             "height_point_count": len(all_points),
             "ground_point_count": len(ground_points),

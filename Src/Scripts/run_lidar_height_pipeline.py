@@ -58,95 +58,115 @@ class ValidationSuite:
     @staticmethod
     def test_synthetic_ground_truth(output_dir: Path) -> bool:
         """
-        Test with synthetic data: flat ground (z=100) and roof points (z=110-115).
-        Expected result: height ≈ 5.0m (within ±0.2m tolerance).
+        Test with synthetic data via the HAG path.
+
+        A small (10m x 10m) building sits inside a larger point cloud that also
+        contains points *outside* the footprint. This is deliberate: it forces
+        the bounding-box filter and the polygon-intersection filter to select
+        different subsets, so the per-point arrays (points, classes, HAG) must be
+        masked consistently. A regression on that masking (mixing bbox-length and
+        footprint-length arrays) produces a wrong height here.
+
+        Ground z=100; roof HAG spread 4.5-5.0m over the roof, so the 95th
+        percentile height is ~5.0m (within ±0.3m tolerance).
         """
-        logger.info("\n[TEST 1/5] Synthetic Ground Truth")
-        
+        logger.info("\n[TEST 1/5] Synthetic Ground Truth (HAG path)")
+
+        temp_dir = None
         try:
-            # Create synthetic building (1km x 1km square)
-            building_coords = [(0, 0), (1000, 0), (1000, 1000), (0, 1000), (0, 0)]
-            building_poly = Polygon(building_coords)
-            
+            # Small footprint so most of the point cloud lies outside it.
+            building_poly = Polygon([(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)])
             buildings_gdf = gpd.GeoDataFrame(
-                {
-                    "object_id": ["test_building_001"],
-                    "geometry": [building_poly]
-                },
-                crs="EPSG:3006"
+                {"object_id": ["test_building_001"], "geometry": [building_poly]},
+                crs="EPSG:3006",
             )
-            
-            # Create synthetic point cloud
-            # Ground points (z=100)
+            building_row = buildings_gdf.iloc[0]
+
             np.random.seed(42)
-            ground_x = np.random.uniform(100, 900, 500)
-            ground_y = np.random.uniform(100, 900, 500)
-            ground_z = np.full(500, 100.0)
-            
-            # Roof points (z=110-115, representing a 5m building)
-            roof_x = np.random.uniform(100, 900, 300)
-            roof_y = np.random.uniform(100, 900, 300)
-            roof_z = np.random.uniform(110.0, 115.0, 300)
-            
-            # Combine
-            points_x = np.concatenate([ground_x, roof_x])
-            points_y = np.concatenate([ground_y, roof_y])
-            points_z = np.concatenate([ground_z, roof_z])
-            
-            # Create LAZ
+
+            # Points INSIDE the footprint: ground + roof.
+            in_ground_x = np.random.uniform(1, 9, 200)
+            in_ground_y = np.random.uniform(1, 9, 200)
+            in_ground_z = np.full(200, 100.0)
+            in_ground_hag = np.zeros(200)
+
+            in_roof_x = np.random.uniform(1, 9, 200)
+            in_roof_y = np.random.uniform(1, 9, 200)
+            in_roof_hag = np.random.uniform(4.5, 5.0, 200)  # p95 ≈ 5.0m
+            in_roof_z = 100.0 + in_roof_hag
+
+            # Points OUTSIDE the footprint (x in 20-40): tall, to make sure they
+            # would corrupt the height if they leaked into the footprint subset.
+            out_x = np.random.uniform(20, 40, 400)
+            out_y = np.random.uniform(1, 9, 400)
+            out_hag = np.random.uniform(30.0, 40.0, 400)
+            out_z = 100.0 + out_hag
+
+            points_x = np.concatenate([in_ground_x, in_roof_x, out_x])
+            points_y = np.concatenate([in_ground_y, in_roof_y, out_y])
+            points_z = np.concatenate([in_ground_z, in_roof_z, out_z])
+            hag = np.concatenate([in_ground_hag, in_roof_hag, out_hag])
+            classification = np.concatenate([
+                np.full(200, 2, dtype=np.uint8),   # inside ground
+                np.full(200, 1, dtype=np.uint8),   # inside roof
+                np.full(400, 1, dtype=np.uint8),   # outside non-ground
+            ])
+
             las = laspy.create()
             las.x = points_x
             las.y = points_y
             las.z = points_z
-            
-            # Set classification (2=ground, 1=unclassified/non-ground)
-            las.classification = np.concatenate([
-                np.full(500, 2, dtype=np.uint8),  # Ground
-                np.full(300, 1, dtype=np.uint8)   # Non-ground
-            ])
-            
-            # Add HeightAboveGround
-            las.add_extra_dim(laspy.ExtraDims.height_above_ground)
-            hag = np.concatenate([
-                np.zeros(500),  # Ground HAG = 0
-                roof_z - 100.0  # Roof HAG = 10-15
-            ])
-            las["HeightAboveGround"] = hag
-            
-            # Write LAZ to temp
+            las.classification = classification
+
+            # Add HeightAboveGround as an extra float dimension.
+            las.add_extra_dim(laspy.ExtraBytesParams(
+                name="HeightAboveGround", type=np.float32
+            ))
+            las["HeightAboveGround"] = hag.astype(np.float32)
+
+            # Round-trip through disk so the test exercises the real read path.
             temp_dir = Path(tempfile.mkdtemp(prefix="test_synthetic_"))
             test_laz = temp_dir / "test_synthetic.laz"
             las.write(test_laz)
-            
-            # Extract height
-            config = HeightExtractionConfig()
+            with laspy.open(test_laz) as src:
+                las_read = src.read()
+
+            config = HeightExtractionConfig(min_points=5)
             estimator = HeightEstimator(config)
-            
+
             height_dict = estimator._extract_height_for_building(
-                buildings_gdf.iloc[0],
-                las,
+                building_row,
+                las_read,
                 "test_run"
             )
-            
-            # Validate
+
             height_m = height_dict["height_m"]
+            source = height_dict.get("height_source")
             expected_height = 5.0
-            tolerance = 0.2
-            
-            if abs(height_m - expected_height) <= tolerance:
-                logger.info(f"  ✓ Height = {height_m}m (expected ~{expected_height}m)")
+            tolerance = 0.3
+
+            ok = (
+                abs(height_m - expected_height) <= tolerance
+                and source == HeightSource.LIDAR_HAG_P95.value
+            )
+            if ok:
+                logger.info(
+                    f"  ✓ Height = {height_m}m (expected ~{expected_height}m), "
+                    f"source={source}"
+                )
                 return True
             else:
                 logger.error(
-                    f"  ✗ Height mismatch: got {height_m}m, expected {expected_height}±{tolerance}m"
+                    f"  ✗ Height mismatch: got {height_m}m (source={source}), "
+                    f"expected {expected_height}±{tolerance}m via HAG path"
                 )
                 return False
-        
+
         except Exception as e:
             logger.error(f"  ✗ Test failed: {e}")
             return False
         finally:
-            if temp_dir.exists():
+            if temp_dir is not None and temp_dir.exists():
                 shutil.rmtree(temp_dir)
     
     @staticmethod
@@ -160,22 +180,23 @@ class ValidationSuite:
         try:
             # Create building
             building_poly = Polygon([(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)])
-            building_row = {
-                "object_id": "test_building_low_points",
-                "geometry": building_poly
-            }
-            
+            buildings_gdf = gpd.GeoDataFrame(
+                {"object_id": ["test_building_low_points"], "geometry": [building_poly]},
+                crs="EPSG:3006",
+            )
+            building_row = buildings_gdf.iloc[0]
+
             # Create point cloud with very few points
             las = laspy.create()
             las.x = np.array([50.0, 60.0])  # Only 2 points
             las.y = np.array([50.0, 60.0])
             las.z = np.array([10.0, 11.0])
             las.classification = np.array([1, 1], dtype=np.uint8)
-            
+
             # Extract height
             config = HeightExtractionConfig(min_points=5)
             estimator = HeightEstimator(config)
-            
+
             height_dict = estimator._extract_height_for_building(
                 building_row,
                 las,

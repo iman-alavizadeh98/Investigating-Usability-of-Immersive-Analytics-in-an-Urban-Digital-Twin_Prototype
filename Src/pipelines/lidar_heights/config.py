@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, Optional
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class QualityLevel(str, Enum):
@@ -18,6 +18,7 @@ class QualityLevel(str, Enum):
 class HeightSource(str, Enum):
     """Source of height estimate."""
     LIDAR_HAG_P95 = "lidar_hag_p95"
+    LIDAR_ZDIFF_P95 = "lidar_zdiff_p95"
     FALLBACK_DEFAULT = "fallback_default"
 
 
@@ -135,7 +136,7 @@ class LiDARHeightPipelineConfig:
     height_run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     """UUID for this pipeline run; links all heights generated in this batch."""
     
-    run_timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    run_timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     """ISO 8601 timestamp of pipeline start."""
     
     # Processing options

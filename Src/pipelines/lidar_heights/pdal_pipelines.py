@@ -172,10 +172,11 @@ class PDALPipelineGenerator:
         
         Pipeline steps:
         1. readers.las - Read LAZ file
-        2. filters.outlier - Remove statistical outliers
-        3. filters.smrf - Ground classification (Simple Morphological Filter)
-        4. filters.hag_delaunay - Compute height-above-ground
-        5. writers.las - Write classified LAZ
+        2. filters.outlier - Flag statistical outliers (classification 7)
+        3. filters.range - Drop the flagged outliers before classification
+        4. filters.smrf - Ground classification (Simple Morphological Filter)
+        5. filters.hag_delaunay - Compute height-above-ground
+        6. writers.las - Write classified LAZ
         
         Args:
             input_laz: Path to input LAZ file
@@ -193,6 +194,13 @@ class PDALPipelineGenerator:
                 "type": "filters.outlier",
                 "method": self.config.outlier_method,
                 "multiplier": self.config.outlier_multiplier
+            },
+            {
+                # filters.outlier only *flags* outliers as classification 7; it
+                # does not remove them. Drop them here so they do not bias SMRF
+                # ground classification or HAG computation.
+                "type": "filters.range",
+                "limits": "Classification![7:7]"
             },
             {
                 "type": "filters.smrf",

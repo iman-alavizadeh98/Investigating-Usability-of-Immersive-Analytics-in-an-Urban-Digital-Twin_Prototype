@@ -675,54 +675,104 @@ class MeshBuilder:
             logger.error(f"Failed to export PLY: {e}")
             return False
 
-    def export_glb_suite(
+    def _export_one_format(
+        self,
+        fmt: str,
+        output_dir: Path,
+        vertices: np.ndarray,
+        faces: np.ndarray,
+        group_id: str,
+        lod_level: str,
+        normals: Optional[np.ndarray],
+    ) -> Optional[str]:
+        """
+        Export a single mesh format for one LOD level.
+
+        Returns the written filename on success, or None on failure/unknown format.
+        Supported formats: "ply" (default primary), "glb", "obj".
+        """
+        name = f"{group_id}_{lod_level}"
+        if fmt == "ply":
+            filename = f"{name}.ply"
+            ok = self.export_ply(
+                output_dir / filename, vertices, faces, name, normals=normals
+            )
+        elif fmt == "glb":
+            filename = f"{name}.glb"
+            ok = self.export_glb(
+                output_dir / filename, vertices, faces, name, normals=normals
+            )
+        elif fmt == "obj":
+            filename = f"{name}.obj"
+            ok = self.export_obj(output_dir / filename, vertices, faces, name)
+        else:
+            logger.warning(f"  ⚠ Unknown export format '{fmt}'; skipping")
+            return None
+
+        if ok:
+            logger.debug(f"  ✓ {filename}")
+            return filename
+        logger.warning(f"  ✗ Failed to export {filename}")
+        return None
+
+    def export_mesh_suite(
         self,
         output_dir: Path,
         vertices_lod: dict,
         group_id: str,
         compute_normals_per_lod: bool = True,
-        export_formats: Tuple[str, ...] = ("glb",),
+        export_formats: Tuple[str, ...] = ("ply",),
     ) -> dict:
         """
-        Export LOD1, LOD2, and LOD3 to separate files with shared metadata.
+        Export each provided LOD level to separate files with shared metadata.
 
-        GLB is the primary/authoritative format (its success gates the LOD).
-        Additional formats (currently "ply") are written alongside as extra
-        artifacts; a failure of a secondary format is logged but does NOT fail
-        the LOD, so downstream GLB consumers are unaffected.
+        The FIRST format in ``export_formats`` is the primary/authoritative
+        format: its success gates the LOD. Any remaining formats are written
+        alongside as extra artifacts; a secondary-format failure is logged but
+        does NOT fail the LOD.
+
+        The default primary format is PLY. GLB (and OBJ) remain available by
+        listing them in ``export_formats``.
 
         Args:
-            output_dir: Directory to save mesh files (per-format subfolders are
-                        NOT created here; the caller passes the target dir).
-            vertices_lod: dict with keys "lod1", "lod2", "lod3"
-                         each containing (vertices, faces) tuple
-            group_id: Group/building identifier for naming
-            compute_normals_per_lod: If True, compute normals for each LOD level
-            export_formats: Formats to write per LOD. "glb" is always treated as
-                            primary; other supported values: "ply".
+            output_dir: Directory to save mesh files (the caller passes the
+                        target dir; no per-format subfolders are created here).
+            vertices_lod: dict with any of the keys "lod1", "lod2", "lod3",
+                          each containing a (vertices, faces) tuple. Only the
+                          keys present are exported — so passing just {"lod1": ...}
+                          produces full-detail meshes with no reduced LODs.
+            group_id: Group/building identifier for naming.
+            compute_normals_per_lod: If True, compute normals for each LOD level.
+            export_formats: Formats to write per LOD, primary first. Supported:
+                            "ply" (default), "glb", "obj".
 
         Returns:
-            dict with export results keyed by LOD level. Each entry has the GLB
-            fields plus, when requested, an "extra_files" mapping of
-            {format: filename} for successfully written secondary formats, e.g.:
+            dict keyed by LOD level. Each entry:
             {
-                "lod1": {"filename": "..._lod1.glb", "success": True,
-                         "file_size_mb": ..., "vertex_count": ...,
-                         "face_count": ..., "extra_files": {"ply": "..._lod1.ply"}},
-                ...
+                "filename": "<primary format filename>",
+                "success": bool,
+                "file_size_mb": float,
+                "vertex_count": int,
+                "face_count": int,
+                "extra_files": {fmt: filename, ...},  # secondary formats written
             }
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Normalize: GLB is always the primary format and is written first.
-        secondary_formats = [f.lower() for f in export_formats if f.lower() != "glb"]
+        formats = [f.lower() for f in export_formats if f.strip()]
+        if not formats:
+            formats = ["ply"]
+        primary_format = formats[0]
+        secondary_formats = formats[1:]
 
         result = {}
 
         for lod_level in ["lod1", "lod2", "lod3"]:
             if lod_level not in vertices_lod:
-                logger.warning(f"LOD level {lod_level} not provided; skipping")
+                # Not an error: reduced LODs are optional. Only warn for lod1.
+                if lod_level == "lod1":
+                    logger.warning(f"LOD level {lod_level} not provided; skipping")
                 continue
 
             vertices, faces = vertices_lod[lod_level]
@@ -732,58 +782,46 @@ class MeshBuilder:
             if compute_normals_per_lod:
                 normals = self.compute_normals(vertices, faces)
 
-            # ---- Primary format: GLB ----
-            glb_filename = f"{group_id}_{lod_level}.glb"
-            glb_path = output_dir / glb_filename
-
-            success = self.export_glb(
-                glb_path,
-                vertices,
-                faces,
-                f"{group_id}_{lod_level}",
-                normals=normals
+            # ---- Primary format (gates LOD success) ----
+            primary_filename = self._export_one_format(
+                primary_format, output_dir, vertices, faces,
+                group_id, lod_level, normals,
             )
 
-            if not success:
+            if primary_filename is None:
                 result[lod_level] = {
-                    "filename": glb_filename,
+                    "filename": f"{group_id}_{lod_level}.{primary_format}",
                     "success": False,
-                    "error": "GLB export failed"
+                    "error": f"{primary_format.upper()} export failed",
                 }
-                logger.warning(f"  ✗ Failed to export {glb_filename}")
                 continue
 
-            file_size_mb = glb_path.stat().st_size / (1024 * 1024)
+            primary_path = output_dir / primary_filename
+            file_size_mb = primary_path.stat().st_size / (1024 * 1024)
             result[lod_level] = {
-                "filename": glb_filename,
+                "filename": primary_filename,
                 "success": True,
                 "file_size_mb": round(file_size_mb, 2),
                 "vertex_count": len(vertices),
-                "face_count": len(faces)
+                "face_count": len(faces),
             }
-            logger.debug(f"  ✓ {glb_filename} ({file_size_mb:.2f} MB)")
 
             # ---- Secondary formats (best-effort; do not gate LOD success) ----
             extra_files = {}
             for fmt in secondary_formats:
-                if fmt == "ply":
-                    ply_filename = f"{group_id}_{lod_level}.ply"
-                    ply_path = output_dir / ply_filename
-                    if self.export_ply(
-                        ply_path,
-                        vertices,
-                        faces,
-                        f"{group_id}_{lod_level}",
-                        normals=normals,
-                    ):
-                        extra_files["ply"] = ply_filename
-                        logger.debug(f"  ✓ {ply_filename}")
-                    else:
-                        logger.warning(f"  ✗ Failed to export {ply_filename}")
-                else:
-                    logger.warning(f"  ⚠ Unknown export format '{fmt}'; skipping")
+                extra_filename = self._export_one_format(
+                    fmt, output_dir, vertices, faces,
+                    group_id, lod_level, normals,
+                )
+                if extra_filename is not None:
+                    extra_files[fmt] = extra_filename
 
             if extra_files:
                 result[lod_level]["extra_files"] = extra_files
 
         return result
+
+    # Backwards-compatible alias. GLB is no longer the default primary format;
+    # callers should prefer export_mesh_suite. Kept so existing call sites and
+    # tests referring to export_glb_suite keep working.
+    export_glb_suite = export_mesh_suite
