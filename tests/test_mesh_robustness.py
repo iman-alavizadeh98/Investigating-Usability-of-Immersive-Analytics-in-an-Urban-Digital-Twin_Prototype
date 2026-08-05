@@ -318,6 +318,208 @@ def test_watertight_meshes():
     return True
 
 
+def _ownership_test_buildings():
+    """
+    Footprints chosen to break naive assignment rules, on a 500 m lattice anchored
+    at (298000, 6383500):
+
+      - straddler: crosses the x=298500 cell boundary -> `intersects` would put it
+        in TWO cells; `within` would drop it entirely.
+      - u_shape:   concave, centroid falls in the notch OUTSIDE the polygon.
+      - donut:     centroid falls in the hole, OUTSIDE the polygon.
+
+    The last two are why assignment uses representative_point() (guaranteed inside)
+    rather than centroid.
+    """
+    from shapely.geometry import Polygon
+
+    straddler = box(298480, 6383600, 298520, 6383640)   # spans the 298500 boundary
+
+    # U opening east; centroid lands in the notch.
+    u_shape = Polygon([
+        (298100, 6383600), (298180, 6383600), (298180, 6383620),
+        (298130, 6383620), (298130, 6383660), (298180, 6383660),
+        (298180, 6383680), (298100, 6383680),
+    ])
+
+    donut = Polygon(
+        [(298600, 6383600), (298700, 6383600), (298700, 6383700), (298600, 6383700)],
+        [[(298630, 6383630), (298670, 6383630), (298670, 6383670), (298630, 6383670)]],
+    )
+
+    return gpd.GeoDataFrame(
+        {"object_id": ["straddler", "u_shape", "donut"]},
+        geometry=[straddler, u_shape, donut],
+        crs="EPSG:3006",
+    )
+
+
+def test_grid_ownership_is_exclusive():
+    """Test 9: every building belongs to exactly one grid cell."""
+    logger.info("\n[TEST 9] Grid ownership is exclusive (representative point)")
+
+    from mesh_generation.strategies.grid import GridStrategy, GridConfig
+
+    gdf = _ownership_test_buildings()
+    config = GridConfig()
+    config.cell_size_m = 500
+    strategy = GridStrategy(gdf, config)
+    groups = strategy.partition()
+
+    slots = sum(len(g.building_indices) for g in groups)
+    unique = len({i for g in groups for i in g.building_indices})
+
+    assert slots == unique, f"building assigned to multiple cells ({slots} slots, {unique} unique)"
+    assert unique == len(gdf), f"only {unique}/{len(gdf)} buildings assigned"
+
+    report = strategy.validate()
+    assert report["max_assignments_per_building"] == 1, report["max_assignments_per_building"]
+    assert report["duplicate_building_count"] == 0
+    assert report["unassigned_building_count"] == 0
+    assert not report["validation_errors"], report["validation_errors"]
+
+    # Concave/donut footprints must land in a cell that actually contains an
+    # interior point -- the failure mode a centroid rule would introduce.
+    for group in groups:
+        ox = group.metadata["cell_origin_x"]
+        oy = group.metadata["cell_origin_y"]
+        assert ox % 500 == 0 and oy % 500 == 0, f"cell off lattice: ({ox}, {oy})"
+        for pos in group.building_indices:
+            point = gdf.geometry.iloc[pos].representative_point()
+            assert ox <= point.x < ox + 500 and oy <= point.y < oy + 500, (
+                f"building {gdf.object_id.iloc[pos]} placed in a cell that does not "
+                f"contain its representative point"
+            )
+
+    logger.info(f"  ✓ {len(gdf)} buildings -> {len(groups)} cells, no duplicates")
+    logger.info("  ✓ concave and donut footprints placed by interior point")
+    return True
+
+
+def test_grid_anchor_stability():
+    """Test 10: cell ids are stable when only a subset of buildings is processed."""
+    logger.info("\n[TEST 10] Grid anchor stability (subset -> same cell ids)")
+
+    from mesh_generation.strategies.grid import GridStrategy, GridConfig
+
+    rng = np.random.default_rng(7)
+    xs = rng.uniform(298000, 302000, 400)
+    ys = rng.uniform(6383500, 6387500, 400)
+    gdf = gpd.GeoDataFrame(
+        {"object_id": [f"b{i:03d}" for i in range(400)]},
+        geometry=[box(x, y, x + 12, y + 12) for x, y in zip(xs, ys)],
+        crs="EPSG:3006",
+    )
+
+    def assign(frame):
+        config = GridConfig()
+        config.cell_size_m = 500
+        strategy = GridStrategy(frame, config)
+        ids = frame["object_id"].to_numpy()
+        return {
+            ids[pos]: group.group_id
+            for group in strategy.partition()
+            for pos in group.building_indices
+        }
+
+    full = assign(gdf)
+    # A subset has a different total_bounds -- which is exactly what used to shift
+    # the grid origin and renumber every cell.
+    subset = gdf.iloc[sorted(rng.choice(len(gdf), size=140, replace=False))].reset_index(drop=True)
+    partial = assign(subset)
+
+    shared = set(full) & set(partial)
+    mismatched = [k for k in shared if full[k] != partial[k]]
+    assert not mismatched, (
+        f"{len(mismatched)}/{len(shared)} buildings changed cell id when only a "
+        f"subset was processed, e.g. {mismatched[:3]}"
+    )
+
+    logger.info(f"  ✓ {len(shared)} shared buildings kept identical cell ids")
+    return True
+
+
+def test_generator_fails_on_ownership_violation():
+    """Test 11: the generator refuses to build from an overlapping partition."""
+    logger.info("\n[TEST 11] Generator fails loudly on ownership violations")
+
+    import tempfile
+    from mesh_generation.strategies.base import StrategyValidationError
+
+    gdf = _ownership_test_buildings()
+
+    class OverlappingStrategy(MeshStrategy):
+        def partition(self):
+            bounds = tuple(gdf.total_bounds)
+            self.groups = [
+                MeshGroup("a", "A", [0, 1], bounds, 2),
+                MeshGroup("b", "B", [0, 2], bounds, 2),   # building 0 assigned twice
+            ]
+            return self.groups
+
+        def get_strategy_name(self):
+            return "Overlapping (test)"
+
+        def get_strategy_description(self):
+            return "deliberately assigns one building to two groups"
+
+    generator = MeshGenerator(gdf, GeneratorConfig())
+    generator.strategy = OverlappingStrategy(gdf, None)
+    try:
+        generator.generate(Path(tempfile.mkdtemp()) / "strict")
+        raise AssertionError("expected StrategyValidationError, none raised")
+    except StrategyValidationError:
+        pass
+
+    # The escape hatch must still work for a researcher who needs to proceed.
+    lenient = MeshGenerator(gdf, GeneratorConfig(strict_ownership=False))
+    lenient.strategy = OverlappingStrategy(gdf, None)
+    lenient.generate(Path(tempfile.mkdtemp()) / "lenient")
+
+    logger.info("  ✓ raises by default, continues with strict_ownership=False")
+    return True
+
+
+def test_quadtree_ownership_is_exclusive():
+    """Test 12: quadtree assigns each building to exactly one leaf cell."""
+    logger.info("\n[TEST 12] Quadtree ownership is exclusive (midline tie-break)")
+
+    from mesh_generation.strategies.quadtree import QuadtreeStrategy, QuadtreeConfig
+
+    # Buildings deliberately sitting ON the quadrant midlines.
+    rng = np.random.default_rng(11)
+    geoms = [box(x, y, x + 20, y + 20)
+             for x, y in zip(rng.uniform(298000, 302000, 300),
+                             rng.uniform(6383500, 6387500, 300))]
+    midx, midy = 300000, 6385500
+    geoms += [
+        box(midx - 25, midy - 25, midx + 25, midy + 25),   # centred on the corner
+        box(midx - 25, 6384000, midx + 25, 6384040),       # crosses the vertical midline
+        box(298500, midy - 25, 298540, midy + 25),         # crosses the horizontal midline
+    ]
+    gdf = gpd.GeoDataFrame(
+        {"object_id": [f"b{i:03d}" for i in range(len(geoms))]},
+        geometry=geoms, crs="EPSG:3006",
+    )
+
+    config = QuadtreeConfig()
+    config.max_buildings_per_cell = 40
+    strategy = QuadtreeStrategy(gdf, config)
+    groups = strategy.partition()
+
+    slots = sum(len(g.building_indices) for g in groups)
+    unique = len({i for g in groups for i in g.building_indices})
+    assert slots == unique, f"{slots - unique} duplicate assignment(s) across quadtree leaves"
+    assert unique == len(gdf), f"only {unique}/{len(gdf)} buildings assigned"
+
+    report = strategy.validate()
+    assert report["max_assignments_per_building"] == 1
+    assert not report["validation_errors"], report["validation_errors"]
+
+    logger.info(f"  ✓ {len(gdf)} buildings -> {len(groups)} leaves, no duplicates")
+    return True
+
+
 def run_all_tests():
     """Run all acceptance tests."""
     logger.info("=" * 80)
@@ -332,7 +534,14 @@ def run_all_tests():
         test_manifest_schema,
         test_building_ids_preserved,
         test_height_source_tracking,
-        test_watertight_meshes
+        test_watertight_meshes,
+        # Strict ownership regression guards. Added 2026-08-05 after a 5.0%
+        # building duplication reached a shipped run: no earlier test ever
+        # instantiated a real strategy, so nothing caught it.
+        test_grid_ownership_is_exclusive,
+        test_grid_anchor_stability,
+        test_generator_fails_on_ownership_violation,
+        test_quadtree_ownership_is_exclusive,
     ]
     
     passed = 0

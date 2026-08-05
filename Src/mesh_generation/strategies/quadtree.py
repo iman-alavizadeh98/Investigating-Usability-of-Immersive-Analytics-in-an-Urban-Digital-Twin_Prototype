@@ -89,18 +89,46 @@ class QuadtreeStrategy(MeshStrategy):
         minx, miny, maxx, maxy = cell_geom.bounds
         midx = (minx + maxx) / 2
         midy = (miny + maxy) / 2
-        
+
         quadrants = [
             box(minx, miny, midx, midy),  # SW
             box(midx, miny, maxx, midy),  # SE
             box(minx, midy, midx, maxy),  # NW
             box(midx, midy, maxx, maxy),  # NE
         ]
-        
-        for quad_cell in quadrants:
-            mask = self.buildings_gdf.iloc[building_indices].geometry.intersects(quad_cell)
+
+        # Assign each building to EXACTLY ONE quadrant by its representative point.
+        #
+        # The previous `geometry.intersects(quad_cell)` put every boundary-straddling
+        # building into multiple quadrants, violating the strict ownership policy in
+        # base.MeshStrategy.validate() (the same bug fixed in grid.py).
+        #
+        # Tie-breaking is done with explicit HALF-OPEN interval tests rather than a
+        # shapely predicate: a point exactly on the shared midline would otherwise be
+        # in both quadrants (`intersects`) or neither (`within`). Half-open matches
+        # the floor() convention in grid.py, so both strategies break ties the same way.
+        # The outermost edges use <= so the parent cell stays fully covered.
+        subset = self.buildings_gdf.iloc[building_indices]
+        points = subset.geometry.representative_point()
+        px = points.x.to_numpy()
+        py = points.y.to_numpy()
+
+        west = px < midx
+        south = py < midy
+        # Points on/after the far edge still belong to the top/right quadrant.
+        east = ~west
+        north = ~south
+
+        quadrant_masks = [
+            west & south,   # SW
+            east & south,   # SE
+            west & north,   # NW
+            east & north,   # NE
+        ]
+
+        for quad_cell, mask in zip(quadrants, quadrant_masks):
             quad_indices = [building_indices[i] for i, m in enumerate(mask) if m]
-            
+
             if quad_indices:
                 self._subdivide(quad_cell, quad_indices, depth + 1)
     

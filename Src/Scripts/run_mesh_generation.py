@@ -25,6 +25,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mesh_generation.generator import MeshGenerator, GeneratorConfig
+from mesh_generation.grid_reference import (
+    GRID_ANCHOR_X,
+    GRID_ANCHOR_Y,
+    DEFAULT_CELL_SIZE_M,
+)
 from utils.data_profiler import DataFrameProfiler
 
 # Configure logging
@@ -53,8 +58,31 @@ def main():
     parser.add_argument(
         "--cell-size",
         type=int,
-        default=1000,
-        help="Grid cell size in meters; produces square cell_size x cell_size cells (for grid strategy, default: 1000)"
+        default=DEFAULT_CELL_SIZE_M,
+        help=f"Grid cell size in meters; produces square cell_size x cell_size cells "
+             f"(for grid strategy, default: {DEFAULT_CELL_SIZE_M}). The default matches "
+             "the analytical cell size used by the cell-attribute pipeline."
+    )
+    parser.add_argument(
+        "--grid-anchor-x",
+        type=float,
+        default=GRID_ANCHOR_X,
+        help=f"Frozen grid lattice anchor easting, EPSG:3006 (default: {GRID_ANCHOR_X}). "
+             "Change only for deliberate experiments — the default keeps mesh cells "
+             "and analytical attribute cells on the SAME lattice."
+    )
+    parser.add_argument(
+        "--grid-anchor-y",
+        type=float,
+        default=GRID_ANCHOR_Y,
+        help=f"Frozen grid lattice anchor northing, EPSG:3006 (default: {GRID_ANCHOR_Y})."
+    )
+    parser.add_argument(
+        "--allow-ownership-violations",
+        action="store_true",
+        help="Continue even if buildings are assigned to more than one group. "
+             "Off by default: duplicated buildings inflate every downstream count. "
+             "Use only when you knowingly accept an inconsistent partition."
     )
     parser.add_argument(
         "--max-buildings",
@@ -127,7 +155,15 @@ def main():
     strategy_config = {}
     
     if args.strategy == "grid":
-        strategy_config = {"cell_size_m": args.cell_size}
+        strategy_config = {
+            "cell_size_m": args.cell_size,
+            "origin_x": args.grid_anchor_x,
+            "origin_y": args.grid_anchor_y,
+        }
+        logger.info(
+            f"Grid lattice: {args.cell_size}m cells anchored at "
+            f"({args.grid_anchor_x}, {args.grid_anchor_y}) EPSG:3006"
+        )
     elif args.strategy == "quadtree":
         strategy_config = {"max_buildings_per_cell": args.max_buildings}
     
@@ -152,6 +188,7 @@ def main():
         terrain_offset_m=0.5,
         material_color=(1.0, 1.0, 1.0),
         crs="EPSG:3006",
+        strict_ownership=not args.allow_ownership_violations,
         export_formats=export_formats,
         generate_lods=args.reduce_vertices,
     )

@@ -23,7 +23,8 @@ import numpy as np
 from datetime import datetime
 import pandas as pd
 
-from .strategies.base import MeshStrategy
+from .strategies.base import MeshStrategy, StrategyValidationError
+from .grid_reference import grid_reference_metadata
 from .strategies.individual import IndividualBuildingStrategy, IndividualBuildingConfig
 from .strategies.district import DistrictStrategy, DistrictConfig
 from .strategies.grid import GridStrategy, GridConfig
@@ -43,6 +44,10 @@ class GeneratorConfig:
     terrain_offset_m: float = 0.5
     material_color: tuple = (1.0, 1.0, 1.0)  # White
     crs: str = "EPSG:3006"  # Authoritative CRS
+
+    # Stop the run if any building is assigned to more than one group (or to none).
+    # Default True: a silent 5% duplication previously reached a shipped run.
+    strict_ownership: bool = True
 
     # Mesh export formats. The FIRST entry is the primary/authoritative output
     # (its export success gates each LOD); any others are written alongside as
@@ -145,9 +150,24 @@ class MeshGenerator:
         # Validate
         validation_report = self.strategy.validate()
         if validation_report["validation_errors"]:
-            logger.warning("Validation issues:")
+            # Ownership violations are data-corrupting, not cosmetic: duplicated
+            # buildings inflate every downstream count and break the cell-level
+            # analytics join. Stop by default rather than logging and continuing.
+            logger.error("Ownership validation FAILED:")
             for error in validation_report["validation_errors"]:
-                logger.warning(f"  ⚠ {error}")
+                logger.error(f"  ✗ {error}")
+
+            if self.config.strict_ownership:
+                raise StrategyValidationError(
+                    f"{len(validation_report['validation_errors'])} ownership violation(s) "
+                    f"in strategy '{self.strategy.get_strategy_name()}'. Each building must "
+                    "belong to exactly one group. Re-run with strict_ownership=False "
+                    "(CLI: --allow-ownership-violations) to override deliberately."
+                )
+            logger.warning(
+                "strict_ownership=False — continuing despite ownership violations. "
+                "Downstream counts will be inflated."
+            )
         
         stats = self.strategy.get_statistics()
         logger.info(
@@ -407,6 +427,24 @@ class MeshGenerator:
                     "north": float(group.bounds[3])
                 },
                 "building_ids": building_ids,
+                # Lattice address of this group, when the strategy is grid-like.
+                # Distinct from "origin" above: "origin" is the CONTENT bbox corner
+                # (the mesh's local frame), while "cell" is the nominal lattice cell
+                # the group owns. Consumers joining to analytics use "cell".
+                **(
+                    {
+                        "cell": {
+                            "col": group.metadata["grid_col"],
+                            "row": group.metadata["grid_row"],
+                            "origin_x": group.metadata["cell_origin_x"],
+                            "origin_y": group.metadata["cell_origin_y"],
+                            "size_m": group.metadata["cell_size_m"],
+                        }
+                    }
+                    if group.metadata and "grid_col" in group.metadata
+                    else {}
+                ),
+                "assignment_rule": (group.metadata or {}).get("assignment_rule"),
                 "height_sources": height_sources,
                 "mesh_stats": mesh_stats,
                 "watertight": watertight_report,
@@ -422,6 +460,22 @@ class MeshGenerator:
             logger.error(f"  ✗ Error: {e}")
             return None
     
+    def _grid_reference_block(self) -> Optional[Dict[str, Any]]:
+        """
+        The frozen-lattice block for grid-like strategies, or None otherwise.
+
+        Read from the strategy's actual config rather than the module defaults, so
+        a deliberately overridden anchor or cell size is recorded truthfully.
+        """
+        cfg = getattr(self.strategy, "config", None)
+        if cfg is None or not hasattr(cfg, "origin_x") or not hasattr(cfg, "cell_size_m"):
+            return None
+        return grid_reference_metadata(
+            cell_size_m=cfg.cell_size_m,
+            anchor_x=cfg.origin_x,
+            anchor_y=cfg.origin_y,
+        )
+
     def _save_manifest(self, manifests: List[Dict], output_dir: Path) -> Path:
         """Save mesh manifest to JSON with semantic metadata."""
         manifest_data = {
@@ -429,6 +483,15 @@ class MeshGenerator:
             "strategy": self.strategy.get_strategy_name(),
             "strategy_description": self.strategy.get_strategy_description(),
             "crs": self.config.crs,
+            # Frozen lattice definition, present for grid-like strategies. Lets any
+            # consumer (notably the Unity runtime) reconstruct cell boundaries and
+            # use a STABLE world anchor instead of deriving one from this run's own
+            # extent — the same instability that made cell ids non-reproducible.
+            **(
+                {"grid_reference": self._grid_reference_block()}
+                if self._grid_reference_block() is not None
+                else {}
+            ),
             "total_groups": len(manifests),
             "total_vertices": sum(m.get("vertex_count", 0) for m in manifests),
             "total_triangles": sum(m.get("triangle_count", 0) for m in manifests),
