@@ -11,3 +11,4 @@ pdal>=2.4
 scipy>=1.11
 pyvista>=0.43.0
 mapbox_earcut>=1.0  # robust roof/floor cap triangulation (concave footprints + holes)
+pyarrow>=14.0  # Parquet export (LiDAR heights + cell attributes)

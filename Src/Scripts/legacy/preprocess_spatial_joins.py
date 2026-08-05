@@ -1,4 +1,40 @@
 """
+DEPRECATED 2026-08-05 -- DO NOT USE. Kept for lineage, not for running.
+
+Replaced by:
+    Src/pipelines/cell_attributes/   (aggregation onto the 500 m analytical grid)
+    Src/Scripts/run_cell_attributes.py
+
+Four independent defects were found in this script; it was never successfully run
+(Processed_data/analytics/ was empty), so nothing downstream was contaminated:
+
+1. POPULATION DOUBLE-COUNTING (aggregate_building_analytics, `total_pop += total`).
+   Each grid cell's FULL `Totalt` was added to EVERY building overlapping it: a
+   cell with 200 residents and 50 buildings gave all 50 buildings 200 people each.
+   A building spanning two cells received both cells' full totals.
+
+2. SILENT POPULATION LOSS (`drop_duplicates(subset=["Ruta"])`). The `Ruta` code is
+   reused across cell sizes -- 48 codes appear as both a 250 m and a 1000 m cell --
+   so deduplicating on the code alone discarded 2,186 residents
+   (717,781 -> 715,595).
+
+3. TRUNCATED FIELD NAMES leaked into output keys. DBF truncates names to 10
+   characters, so `Alder_16_1` (really Ålder 16-19) and `Alder_20_2` (Ålder 20-24)
+   were written verbatim into JSON.
+
+4. WRONG SOURCE PATH. CONFIG pointed at `Raw_data/befolkningShp/`, which does not
+   exist; the data lives in `Raw_data/0- Gothenburg/befolkningShp/`. The script
+   could not run as written. It also read buildings straight from Raw_data,
+   bypassing the buildings pipeline.
+
+The successor attaches attributes to the 500 m CELL rather than to individual
+buildings: population is only known at cell resolution, so any per-building figure
+is modelled and unverifiable. The legitimate building->cell mapping is reproduced
+separately using the same representative-point rule as mesh partitioning, so a
+building's mesh group and its attribute cell are guaranteed identical.
+
+--- original docstring below ---
+
 Create spatial join mappings between buildings and grid cells.
 
 Phase 3: Spatial Joins

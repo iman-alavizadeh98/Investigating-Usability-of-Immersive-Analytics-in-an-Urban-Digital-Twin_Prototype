@@ -17,9 +17,23 @@ conda_env/
 # =========================
 # UNITY GENERATED FILES
 # =========================
-Unity/
-Unity/GISTesting/Library/
-Unity/GISTesting/Logs/
+# Ignore Unity's generated/derived folders, NOT the whole project: Assets/Scripts/
+# holds real authored source (the PLY importer and georeferenced city loader) that
+# must be version-controlled.
+Unity/*/Library/
+Unity/*/Logs/
+Unity/*/Temp/
+Unity/*/Obj/
+Unity/*/Build/
+Unity/*/Builds/
+Unity/*/UserSettings/
+Unity/*/MemoryCaptures/
+Unity/*/Recordings/
+Unity/*/.vs/
+Unity/*/*.csproj
+Unity/*/*.sln
+Unity/*/*.slnx
+Unity/GISTesting/
 Unity/GISTesting/Temp/
 Unity/GISTesting/UserSettings/
 Unity/GISTesting/Assets/Models/
