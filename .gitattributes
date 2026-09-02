@@ -1,8 +1,140 @@
-# Keep raw GIS data untouched
-Raw_data/** -text
-*.tif -text
-*.tfw -text
-*.prj -text
-*.las -text
-*.laz -text
-*.xml -text
+# =============================================================================
+# .gitattributes — line endings, diffing, and merging
+# =============================================================================
+# Git LFS is deliberately NOT used: no data is tracked at all (see .gitignore),
+# so there is nothing large enough to warrant it.
+# =============================================================================
+
+# Default: let git detect text and normalize to LF in the repository.
+* text=auto
+
+
+# -----------------------------------------------------------------------------
+# Unity serialized YAML — force LF
+# -----------------------------------------------------------------------------
+# Unity always writes these files with LF, on every platform. This clone has
+# core.autocrlf=true, which would rewrite them to CRLF on checkout; Unity then
+# saves them back as LF, producing whole-file phantom diffs. eol=lf makes the
+# editor and git agree.
+#
+# merge=unityyamlmerge routes conflicts through Unity's semantic YAML merge
+# tool. If the driver is not registered, git falls back to its normal 3-way
+# text merge (verified), so these lines are safe with or without setup.
+# Register it once per machine with:
+#
+#   git config merge.unityyamlmerge.name "Unity SmartMerge"
+#   git config merge.unityyamlmerge.driver '"C:/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Data/Tools/UnityYAMLMerge.exe" merge -p "$BASE" "$REMOTE" "$LOCAL" "$MERGED"'
+
+*.unity              text eol=lf merge=unityyamlmerge
+*.prefab             text eol=lf merge=unityyamlmerge
+*.asset              text eol=lf merge=unityyamlmerge
+*.meta               text eol=lf merge=unityyamlmerge
+*.mat                text eol=lf merge=unityyamlmerge
+*.anim               text eol=lf merge=unityyamlmerge
+*.controller         text eol=lf merge=unityyamlmerge
+*.overrideController text eol=lf merge=unityyamlmerge
+*.physicMaterial     text eol=lf merge=unityyamlmerge
+*.physicsMaterial2D  text eol=lf merge=unityyamlmerge
+*.playable           text eol=lf merge=unityyamlmerge
+*.mask               text eol=lf merge=unityyamlmerge
+*.preset             text eol=lf merge=unityyamlmerge
+*.terrainlayer       text eol=lf merge=unityyamlmerge
+*.signal             text eol=lf merge=unityyamlmerge
+*.spriteatlas        text eol=lf merge=unityyamlmerge
+*.guiskin            text eol=lf merge=unityyamlmerge
+*.flare              text eol=lf merge=unityyamlmerge
+*.fontsettings       text eol=lf merge=unityyamlmerge
+*.mixer              text eol=lf merge=unityyamlmerge
+*.lighting           text eol=lf merge=unityyamlmerge
+*.renderTexture      text eol=lf merge=unityyamlmerge
+*.cubemap            text eol=lf merge=unityyamlmerge
+
+# Unity JSON/text project files — LF, but plain text merge (not YAML).
+*.asmdef             text eol=lf
+*.asmref             text eol=lf
+*.inputactions       text eol=lf
+*.shadergraph        text eol=lf
+*.shadersubgraph     text eol=lf
+*.uss                text eol=lf
+*.uxml               text eol=lf
+Unity/*/Packages/manifest.json       text eol=lf
+Unity/*/Packages/packages-lock.json  text eol=lf
+Unity/*/ProjectSettings/*.asset      text eol=lf
+Unity/*/ProjectSettings/*.txt        text eol=lf
+Unity/*/ProjectSettings/*.json       text eol=lf
+
+
+# -----------------------------------------------------------------------------
+# Source
+# -----------------------------------------------------------------------------
+*.cs   text diff=csharp
+*.py   text diff=python
+*.md   text
+*.json text
+*.yml  text
+*.yaml text
+*.sh   text eol=lf
+
+# Git hooks are run by sh. They have no extension, so `* text=auto` would give
+# them CRLF on checkout under core.autocrlf=true and the shebang would break
+# with "bad interpreter: /bin/sh^M".
+.githooks/* text eol=lf
+
+
+# -----------------------------------------------------------------------------
+# Binary — never line-ending-converted, never diffed as text
+# -----------------------------------------------------------------------------
+# These are all gitignored today. The rules exist so that if one is ever forced
+# in (git add -f), git treats it as bytes instead of silently corrupting it.
+
+# Point clouds / geospatial
+*.laz    binary
+*.las    binary
+*.trj    binary
+*.gpkg   binary
+*.shp    binary
+*.shx    binary
+*.dbf    binary
+*.tif    binary
+*.tiff   binary
+*.tfw    binary
+
+# Meshes
+*.ply    binary
+*.glb    binary
+*.fbx    binary
+
+# Textures / media
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.psd    binary
+*.tga    binary
+*.exr    binary
+*.hdr    binary
+*.wav    binary
+*.mp3    binary
+*.ogg    binary
+*.mp4    binary
+
+# Fonts / binaries / archives
+*.ttf    binary
+*.otf    binary
+*.dll    binary
+*.so     binary
+*.dylib  binary
+*.lib    binary
+*.pdb    binary
+*.zip    binary
+*.7z     binary
+*.unitypackage binary
+
+# Scientific
+*.npy      binary
+*.parquet  binary
+*.pkl      binary
+
+# Office / reference documents
+*.docx binary
+*.xlsx binary
+*.pdf  binary

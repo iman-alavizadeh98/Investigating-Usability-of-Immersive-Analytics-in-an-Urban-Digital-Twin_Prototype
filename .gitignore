@@ -1,62 +1,176 @@
+# =============================================================================
+# .gitignore — Gothenburg urban digital twin prototype
+# =============================================================================
+#
+# POLICY (see docs/decisions/2026-08-26_unity-version-control-policy.md)
+#
+#   Git tracks SOURCE only: Python pipeline code, Unity C# scripts, Unity
+#   project/package settings, configs, docs, tests.
+#
+#   Git NEVER tracks DATA: nothing under Raw_data/ or Processed_data/, no
+#   meshes, point clouds, rasters, or generated scene geometry — regardless of
+#   where it sits in the tree. None of it may be published.
+#
+#   The rule is enforced, not just documented: .githooks/pre-commit rejects any
+#   commit that stages a data path or an oversized blob. Enable it once per
+#   clone with:  git config core.hooksPath .githooks
+#
+# UNITY RULE OF THUMB
+#   An asset and its .meta file are one unit. Ignore both together or track both
+#   together — never one without the other, or Unity churns GUIDs on every
+#   machine and you get phantom add/delete diffs.
+# =============================================================================
+
+
 # =========================
-# RAW GIS DATA
+# DATA — NEVER TRACKED, NEVER PUBLISHED
 # =========================
-Raw_data/ortoRgb_allRes025050/
+# No leading slash: these match at any depth, including inside Unity/.
 Raw_data/
 Processed_data/
+
+# Geospatial / point-cloud / mesh payloads, wherever they land.
+*.laz
+*.las
+*.copc.laz
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.sbn
+*.sbx
+*.qix
+*.tif
+*.tiff
+*.tfw
+*.trj
+*.ply
+*.glb
+*.gltf
+*.fbx
+*.parquet
+*.npy
+*.pkl
+
+# ...and the Unity .meta twins of those payloads, so Assets/ never ends up with
+# a tracked .meta pointing at an untracked asset (see UNITY RULE OF THUMB).
+*.laz.meta
+*.las.meta
+*.gpkg.meta
+*.tif.meta
+*.tiff.meta
+*.ply.meta
+*.glb.meta
+*.gltf.meta
+*.fbx.meta
+
 
 # =========================
 # PYTHON
 # =========================
 venv/
+.venv/
+conda_env/
+env/
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+.mypy_cache/
+.ruff_cache/
 
-conda_env/
 
 # =========================
-# UNITY GENERATED FILES
+# UNITY — GENERATED / DERIVED PROJECT FOLDERS
 # =========================
-# Ignore Unity's generated/derived folders, NOT the whole project: Assets/Scripts/
-# holds real authored source (the PLY importer and georeferenced city loader) that
-# must be version-controlled.
-Unity/*/Library/
-Unity/*/Logs/
-Unity/*/Temp/
-Unity/*/Obj/
-Unity/*/Build/
-Unity/*/Builds/
+# Ignore Unity's generated folders, NOT the whole project: Assets/Scripts/ holds
+# real authored source (PLY importer, georeferenced city loader) and
+# ProjectSettings/ + Packages/ are what make a clone open identically.
+Unity/*/[Ll]ibrary/
+Unity/*/[Tt]emp/
+Unity/*/[Oo]bj/
+Unity/*/[Bb]uild/
+Unity/*/[Bb]uilds/
+Unity/*/[Ll]ogs/
 Unity/*/UserSettings/
 Unity/*/MemoryCaptures/
-Unity/*/Recordings/
-Unity/*/.vs/
-Unity/*/*.csproj
-Unity/*/*.sln
-Unity/*/*.slnx
-Unity/GISTesting/
-Unity/GISTesting/Temp/
-Unity/GISTesting/UserSettings/
-Unity/GISTesting/Assets/Models/
-Unity/GISTesting/Assets/Models.meta
-Unity/GISTesting/Assets/Scenes/
-Unity/DigitalTwinPerview/
+Unity/*/[Rr]ecordings/
+Unity/*/Bee/
+Unity/*/artifacts/
+Unity/*/.vsconfig
+
+# Unity 6 / package-generated caches inside Assets.
+Unity/*/Assets/AssetStoreTools*
+Unity/*/Assets/StreamingAssets/aa/
+Unity/*/Assets/AddressableAssetsData/*/*.bin*
+Unity/*/Assets/Plugins/Editor/JetBrains*
+
+# Editor UI state that Unity writes on first use of the Scene Template window.
+# Not needed to open or build the project; it only churns. Track it instead if
+# the project ever ships real scene templates.
+Unity/*/ProjectSettings/SceneTemplateSettings.json
+
+# Build products and crash/diagnostic droppings.
+*.unitypackage
+*.apk
+*.aab
+*.app
+*.exe
+*.pdb
+*.mdb
+sysinfo.txt
+crashlytics-build.properties
+
+# -------------------------
+# Generated city geometry (the big one)
+# -------------------------
+# The city loader builds meshes at edit time from Processed_data/. If that
+# scene is saved, Unity serializes every vertex into the .unity YAML — the
+# working SampleScene.unity hit 220 MB this way, against 11 KB clean.
+#
+# SampleScene.unity is tracked ONLY as the clean template: camera, light, and
+# the CityMeshLoader component. Load the city, then "Save As" into Generated/
+# below if you want to keep it locally. Never save the city into the template.
+Unity/*/Assets/Scenes/Generated/
+Unity/*/Assets/Scenes/Generated.meta
+
+# Baked lighting is derived output, not source.
+Unity/*/Assets/Scenes/*/Lightmap-*
+Unity/*/Assets/Scenes/*/ReflectionProbe-*
+Unity/*/Assets/**/LightingData.asset
+Unity/*/Assets/**/LightingData.asset.meta
+
 
 # =========================
-# UNITY IDE FILES
+# IDE / EDITOR
 # =========================
+# Unity regenerates all of these from the .asmdef files on open.
 *.csproj
 *.sln
 *.slnx
 *.user
 *.userprefs
-.vs/
+*.pidb
+*.booproj
+*.svd
 *.vsconfig
+.vs/
+.idea/
+
+# Keep only the shared VS Code settings, not per-user state.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
 
 # =========================
 # OS
 # =========================
 .DS_Store
 Thumbs.db
+desktop.ini
 
 
 # =========================

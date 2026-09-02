@@ -1,0 +1,108 @@
+#!/bin/sh
+#
+# pre-commit — enforce the repository's version-control policy.
+#
+# Enable once per clone:
+#     git config core.hooksPath .githooks
+#
+# It rejects a commit that would:
+#   1. track data      — anything under Raw_data/ or Processed_data/
+#   2. track a big file — default 5 MB, e.g. a SampleScene.unity with the
+#                         generated city serialized into it (220 MB observed)
+#   3. break Unity     — stage an asset without its .meta, or a .meta without
+#                        its asset, which desynchronises GUIDs across machines
+#
+# .gitignore already covers the normal path; this catches `git add -f`, a stale
+# ignore rule, and the 220 MB scene save. Override the size limit with:
+#     git config hooks.maxfilesize <bytes>
+#
+# The size and meta checks can be bypassed with `git commit --no-verify` when
+# you genuinely mean it. The data check cannot be talked out of here — if you
+# think you need it, change the policy in
+# docs/decisions/2026-08-26_unity-version-control-policy.md first.
+
+set -u
+
+max_bytes=$(git config --int hooks.maxfilesize 2>/dev/null || true)
+[ -n "${max_bytes:-}" ] || max_bytes=5242880
+
+problems=$(mktemp)
+trap 'rm -f "$problems"' EXIT
+
+staged=$(mktemp)
+trap 'rm -f "$problems" "$staged"' EXIT
+git diff --cached --name-only --diff-filter=ACMR > "$staged"
+
+# --- 1. data paths ----------------------------------------------------------
+while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+        Raw_data/*|*/Raw_data/*|Processed_data/*|*/Processed_data/*)
+            printf 'DATA      %s\n' "$path" >> "$problems"
+            ;;
+    esac
+done < "$staged"
+
+# --- 2. oversized blobs -----------------------------------------------------
+while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    blob=$(git rev-parse ":$path" 2>/dev/null) || continue
+    size=$(git cat-file -s "$blob" 2>/dev/null) || continue
+    if [ "$size" -gt "$max_bytes" ]; then
+        printf 'TOO BIG   %s (%s bytes, limit %s)\n' "$path" "$size" "$max_bytes" >> "$problems"
+    fi
+done < "$staged"
+
+# --- 3. Unity asset/.meta pairing -------------------------------------------
+# An asset and its .meta must move together. A tracked .meta whose asset is
+# untracked (or vice versa) makes Unity regenerate GUIDs, which silently
+# re-links every reference in every scene on the next machine.
+is_tracked_or_staged() {
+    git ls-files --error-unmatch -- "$1" >/dev/null 2>&1
+}
+
+while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+        Unity/*/Assets/*) ;;
+        *) continue ;;
+    esac
+    base=$(basename -- "$path")
+    case "$base" in
+        .*) continue ;;   # Unity ignores dot-files; they get no .meta
+    esac
+
+    case "$path" in
+        *.meta)
+            asset=${path%.meta}
+            # A folder .meta is fine as long as the folder exists on disk; git
+            # does not track directories, so it will never be in the index.
+            if [ ! -d "$asset" ] && ! is_tracked_or_staged "$asset"; then
+                printf 'ORPHAN    %s (its asset is not tracked)\n' "$path" >> "$problems"
+            fi
+            ;;
+        *)
+            if ! is_tracked_or_staged "$path.meta"; then
+                printf 'NO META   %s (stage %s.meta too)\n' "$path" "$path" >> "$problems"
+            fi
+            ;;
+    esac
+done < "$staged"
+
+# --- report -----------------------------------------------------------------
+if [ -s "$problems" ]; then
+    echo ""
+    echo "pre-commit: this commit violates the repository's version-control policy."
+    echo ""
+    sort -u "$problems" | sed 's/^/    /'
+    echo ""
+    echo "  DATA     never commit Raw_data/ or Processed_data/ — none of it is publishable."
+    echo "  TOO BIG  likely a saved scene with generated city geometry, or a mesh export."
+    echo "           Revert it (git restore --staged <path>) and keep the scene a clean template."
+    echo "  ORPHAN /"
+    echo "  NO META  Unity assets and their .meta files must be staged together."
+    echo ""
+    exit 1
+fi
+
+exit 0
