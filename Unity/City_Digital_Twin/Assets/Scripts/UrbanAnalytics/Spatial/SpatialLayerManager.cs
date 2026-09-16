@@ -89,6 +89,12 @@ namespace UrbanAnalytics.Spatial
             private set;
         }
 
+        public Task InitializationTask
+        {
+            get;
+            private set;
+        }
+
 
         public SpatialLayer ActiveLayer
         {
@@ -118,9 +124,10 @@ namespace UrbanAnalytics.Spatial
 
         private void Start()
         {
-            _ = InitializeAsync(
-                lifetimeCancellation.Token
-            );
+            InitializationTask =
+                InitializeAsync(
+                    lifetimeCancellation.Token
+                );
         }
 
         private void Awake()
