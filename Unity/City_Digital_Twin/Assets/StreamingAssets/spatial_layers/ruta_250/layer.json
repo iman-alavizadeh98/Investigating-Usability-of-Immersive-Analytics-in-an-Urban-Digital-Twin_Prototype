@@ -1,0 +1,12 @@
+{
+  "id": "ruta_250",
+  "displayName": "250 m Statistical Grid",
+  "description": "SCB 250 metre statistical grid cells.",
+  "geometryType": "Polygon",
+  "geometryMode": "Procedural",
+  "geometrySource": "geometry.json",
+  "unitCount": 3919,
+  "visibleByDefault": true,
+  "selectable": true,
+  "extractable": true
+}

@@ -123,6 +123,12 @@ Unity/*/ProjectSettings/SceneTemplateSettings.json
 sysinfo.txt
 crashlytics-build.properties
 
+# Generated Unity runtime building data
+Unity/City_Digital_Twin/Assets/StreamingAssets/buildings_runtime.bin
+Unity/City_Digital_Twin/Assets/StreamingAssets/buildings_runtime.bin.meta
+Unity/City_Digital_Twin/Assets/StreamingAssets/buildings_runtime_ruta.bin
+Unity/City_Digital_Twin/Assets/StreamingAssets/buildings_runtime_ruta.bin.meta
+
 # -------------------------
 # Generated city geometry (the big one)
 # -------------------------

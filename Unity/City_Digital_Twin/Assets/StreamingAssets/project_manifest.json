@@ -1,0 +1,36 @@
+{
+  "packageVersion": "1.0",
+  "projectId": "urban_analytics_test",
+  "displayName": "Urban Analytics Test Project",
+
+  "spatialReference": {
+    "sourceCRS": "EPSG:3006",
+    "sourceUnit": "meter"
+  },
+
+  "unityTransform": {
+    "originInSourceCRS": {
+      "easting": 298000.0,
+      "northing": 6383000.0,
+      "elevation": 0.0
+    },
+
+    "metersToUnity": 0.001,
+
+    "axisMapping": {
+      "easting": "X",
+      "northing": "Z",
+      "elevation": "Y"
+    }
+  },
+
+  "urbanContext": [],
+  "spatialLayers": [
+  {
+    "id": "ruta_250",
+    "definition": "spatial_layers/ruta_250/layer.json"
+  }
+],
+  "dataLayers": [],
+  "associations": []
+}
