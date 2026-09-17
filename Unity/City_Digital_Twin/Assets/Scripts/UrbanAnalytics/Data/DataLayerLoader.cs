@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UrbanAnalytics.Core.IO;
@@ -8,74 +10,87 @@ using UrbanAnalytics.Data.Serialization;
 namespace UrbanAnalytics.Data
 {
     /// <summary>
-    /// Loads and validates analytical DataLayers from StreamingAssets.
+    /// Loads and validates an analytical DataLayer package from
+    /// the runtime package stored in StreamingAssets.
     ///
-    /// Loading flow:
+    /// Expected structure:
     ///
-    /// layer.json
-    ///     ↓
-    /// DataLayerDefinition
-    ///     ↓
-    /// values.json
-    ///     ↓
-    /// DataLayerFileDto
-    ///     ↓
-    /// validated runtime DataLayer
+    /// data_layers/
+    /// └── layer_name/
+    ///     ├── layer.json
+    ///     └── values.json
+    ///
+    /// The loader is platform-independent because all runtime
+    /// file access goes through RuntimeAssetReader.
     /// </summary>
-    public sealed class DataLayerLoader
+    public static class DataLayerLoader
     {
-        private readonly RuntimeAssetReader assetReader;
+        public const string SupportedSchemaVersion =
+            "1.0";
 
 
-        public DataLayerLoader(
-            RuntimeAssetReader assetReader)
+        public static async Task<DataLayer> LoadAsync(
+            string layerDefinitionRelativePath,
+            RuntimeAssetReader assetReader,
+            CancellationToken cancellationToken = default
+        )
         {
-            this.assetReader = assetReader
-                ?? throw new ArgumentNullException(
+            if (assetReader == null)
+            {
+                throw new ArgumentNullException(
                     nameof(assetReader)
                 );
-        }
+            }
 
 
-        /// <summary>
-        /// Loads a DataLayer definition and its associated values file.
-        ///
-        /// The supplied path is relative to StreamingAssets.
-        ///
-        /// Example:
-        /// data_layers/income_2023/layer.json
-        /// </summary>
-        public async Task<DataLayer> LoadAsync(
-            string definitionPath)
-        {
-            if (string.IsNullOrWhiteSpace(definitionPath))
+            string definitionPath =
+                RuntimeAssetReader.NormalizeRelativePath(
+                    layerDefinitionRelativePath
+                );
+
+
+            // =====================================================
+            // LOAD DEFINITION
+            // =====================================================
+
+            string definitionJson;
+
+            try
             {
-                throw new ArgumentException(
-                    "Data layer definition path cannot be empty.",
-                    nameof(definitionPath)
+                definitionJson =
+                    await assetReader.ReadTextAsync(
+                        definitionPath,
+                        cancellationToken
+                    );
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidDataException(
+                    $"Failed to read data layer definition " +
+                    $"'{definitionPath}'.",
+                    exception
                 );
             }
 
-            string normalizedDefinitionPath =
-                NormalizePath(definitionPath);
+
+            cancellationToken
+                .ThrowIfCancellationRequested();
 
 
-            // -----------------------------------------------------
-            // Load definition
-            // -----------------------------------------------------
-
-            string definitionJson =
-                await assetReader.ReadTextAsync(
-                    normalizedDefinitionPath
-                );
-
-            if (string.IsNullOrWhiteSpace(definitionJson))
+            if (string.IsNullOrWhiteSpace(
+                    definitionJson
+                ))
             {
-                throw new InvalidOperationException(
-                    $"Data layer definition is empty: " +
-                    $"{normalizedDefinitionPath}"
+                throw new InvalidDataException(
+                    $"Data layer definition " +
+                    $"'{definitionPath}' is empty."
                 );
             }
+
 
             DataLayerDefinition definition;
 
@@ -88,190 +103,478 @@ namespace UrbanAnalytics.Data
             }
             catch (Exception exception)
             {
-                throw new InvalidOperationException(
-                    $"Failed to parse data layer definition: " +
-                    $"{normalizedDefinitionPath}",
+                throw new InvalidDataException(
+                    $"Failed to deserialize data layer " +
+                    $"definition '{definitionPath}'.",
                     exception
                 );
             }
 
-            ValidateDefinition(definition);
 
-
-            // -----------------------------------------------------
-            // Resolve values file
-            // -----------------------------------------------------
-
-            string valuesPath =
-                ResolveRelativePath(
-                    normalizedDefinitionPath,
-                    definition.DataFile
-                );
-
-
-            // -----------------------------------------------------
-            // Load values
-            // -----------------------------------------------------
-
-            string valuesJson =
-                await assetReader.ReadTextAsync(
-                    valuesPath
-                );
-
-            if (string.IsNullOrWhiteSpace(valuesJson))
+            if (definition == null)
             {
-                throw new InvalidOperationException(
-                    $"Data values file is empty: {valuesPath}"
+                throw new InvalidDataException(
+                    $"Data layer definition " +
+                    $"'{definitionPath}' could not be parsed."
                 );
             }
 
-            DataLayerFileDto valuesDto;
+
+            ValidateDefinition(
+                definition
+            );
+
+
+            // =====================================================
+            // RESOLVE VALUES FILE
+            // =====================================================
+
+            string valuesPath;
 
             try
             {
-                valuesDto =
+                valuesPath =
+                    RuntimeAssetReader.ResolveSiblingPath(
+                        definitionPath,
+                        definition.DataFile
+                    );
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidDataException(
+                    $"Invalid dataFile " +
+                    $"'{definition.DataFile}' for data layer " +
+                    $"'{definition.Id}'.",
+                    exception
+                );
+            }
+
+
+            // =====================================================
+            // LOAD VALUES
+            // =====================================================
+
+            string valuesJson;
+
+            try
+            {
+                valuesJson =
+                    await assetReader.ReadTextAsync(
+                        valuesPath,
+                        cancellationToken
+                    );
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidDataException(
+                    $"Failed to read values file " +
+                    $"'{valuesPath}' for data layer " +
+                    $"'{definition.Id}'.",
+                    exception
+                );
+            }
+
+
+            cancellationToken
+                .ThrowIfCancellationRequested();
+
+
+            if (string.IsNullOrWhiteSpace(
+                    valuesJson
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Values file '{valuesPath}' for " +
+                    $"data layer '{definition.Id}' is empty."
+                );
+            }
+
+
+            DataLayerFileDto valuesFile;
+
+            try
+            {
+                valuesFile =
                     JsonUtility.FromJson<DataLayerFileDto>(
                         valuesJson
                     );
             }
             catch (Exception exception)
             {
-                throw new InvalidOperationException(
-                    $"Failed to parse data values file: " +
-                    $"{valuesPath}",
+                throw new InvalidDataException(
+                    $"Failed to deserialize values file " +
+                    $"'{valuesPath}' for data layer " +
+                    $"'{definition.Id}'.",
                     exception
                 );
             }
 
 
-            // -----------------------------------------------------
-            // Validate and construct runtime layer
-            // -----------------------------------------------------
+            if (valuesFile == null)
+            {
+                throw new InvalidDataException(
+                    $"Values file '{valuesPath}' for " +
+                    $"data layer '{definition.Id}' " +
+                    $"could not be parsed."
+                );
+            }
+
+
+            cancellationToken
+                .ThrowIfCancellationRequested();
+
+
+            ValidateValuesFileHeader(
+                valuesFile,
+                definition
+            );
+
 
             return BuildDataLayer(
                 definition,
-                valuesDto
+                valuesFile,
+                cancellationToken
             );
         }
 
 
         // =========================================================
-        // Runtime construction
+        // DEFINITION VALIDATION
+        // =========================================================
+
+        private static void ValidateDefinition(
+            DataLayerDefinition definition
+        )
+        {
+            if (string.IsNullOrWhiteSpace(
+                    definition.SchemaVersion
+                ))
+            {
+                throw new InvalidDataException(
+                    "Data layer definition is missing schemaVersion."
+                );
+            }
+
+
+            if (!string.Equals(
+                    definition.SchemaVersion,
+                    SupportedSchemaVersion,
+                    StringComparison.Ordinal
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Unsupported data layer schema version " +
+                    $"'{definition.SchemaVersion}'. " +
+                    $"Supported version is " +
+                    $"'{SupportedSchemaVersion}'."
+                );
+            }
+
+
+            if (string.IsNullOrWhiteSpace(
+                    definition.Id
+                ))
+            {
+                throw new InvalidDataException(
+                    "Data layer definition is missing an ID."
+                );
+            }
+
+
+            if (string.IsNullOrWhiteSpace(
+                    definition.DisplayName
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Data layer '{definition.Id}' " +
+                    $"is missing displayName."
+                );
+            }
+
+
+            if (string.IsNullOrWhiteSpace(
+                    definition.TargetSpatialLayerId
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Data layer '{definition.Id}' " +
+                    $"is missing targetSpatialLayerId."
+                );
+            }
+
+
+            if (string.IsNullOrWhiteSpace(
+                    definition.DataFile
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Data layer '{definition.Id}' " +
+                    $"is missing dataFile."
+                );
+            }
+
+
+            if (!definition.TryGetTemporalMode(
+                    out DataTemporalMode temporalMode
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Data layer '{definition.Id}' " +
+                    $"contains an invalid temporalMode."
+                );
+            }
+
+
+            if (temporalMode !=
+                DataTemporalMode.Static)
+            {
+                throw new NotSupportedException(
+                    $"Data layer '{definition.Id}' uses " +
+                    $"temporal mode '{temporalMode}'. " +
+                    $"Only Static data layers are currently supported."
+                );
+            }
+
+
+            IReadOnlyList<DataVariableDefinition> variables =
+                definition.Variables;
+
+
+            if (variables == null ||
+                variables.Count == 0)
+            {
+                throw new InvalidDataException(
+                    $"Data layer '{definition.Id}' " +
+                    $"defines no variables."
+                );
+            }
+
+
+            var variableIds =
+                new HashSet<string>(
+                    StringComparer.Ordinal
+                );
+
+
+            for (
+                int i = 0;
+                i < variables.Count;
+                i++
+            )
+            {
+                DataVariableDefinition variable =
+                    variables[i];
+
+
+                if (variable == null)
+                {
+                    throw new InvalidDataException(
+                        $"Data layer '{definition.Id}' " +
+                        $"contains a null variable definition " +
+                        $"at index {i}."
+                    );
+                }
+
+
+                if (string.IsNullOrWhiteSpace(
+                        variable.Id
+                    ))
+                {
+                    throw new InvalidDataException(
+                        $"Data layer '{definition.Id}' " +
+                        $"contains a variable without an ID."
+                    );
+                }
+
+
+                if (!variableIds.Add(
+                        variable.Id
+                    ))
+                {
+                    throw new InvalidDataException(
+                        $"Data layer '{definition.Id}' " +
+                        $"defines duplicate variable " +
+                        $"'{variable.Id}'."
+                    );
+                }
+
+
+                if (!variable.TryGetValueType(
+                        out _
+                    ))
+                {
+                    throw new InvalidDataException(
+                        $"Variable '{variable.Id}' in data layer " +
+                        $"'{definition.Id}' contains an invalid " +
+                        $"valueType."
+                    );
+                }
+            }
+        }
+
+
+        // =========================================================
+        // VALUES FILE VALIDATION
+        // =========================================================
+
+        private static void ValidateValuesFileHeader(
+            DataLayerFileDto valuesFile,
+            DataLayerDefinition definition
+        )
+        {
+            if (string.IsNullOrWhiteSpace(
+                    valuesFile.schemaVersion
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Values file for data layer " +
+                    $"'{definition.Id}' is missing schemaVersion."
+                );
+            }
+
+
+            if (!string.Equals(
+                    valuesFile.schemaVersion,
+                    SupportedSchemaVersion,
+                    StringComparison.Ordinal
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Values file for data layer " +
+                    $"'{definition.Id}' uses unsupported schema " +
+                    $"version '{valuesFile.schemaVersion}'."
+                );
+            }
+
+
+            if (!string.Equals(
+                    valuesFile.dataLayerId,
+                    definition.Id,
+                    StringComparison.Ordinal
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Data layer ID mismatch. " +
+                    $"Definition declares '{definition.Id}', " +
+                    $"but values file declares " +
+                    $"'{valuesFile.dataLayerId}'."
+                );
+            }
+
+
+            if (!string.Equals(
+                    valuesFile.targetSpatialLayerId,
+                    definition.TargetSpatialLayerId,
+                    StringComparison.Ordinal
+                ))
+            {
+                throw new InvalidDataException(
+                    $"Target spatial layer mismatch for " +
+                    $"data layer '{definition.Id}'. " +
+                    $"Definition declares " +
+                    $"'{definition.TargetSpatialLayerId}', " +
+                    $"but values file declares " +
+                    $"'{valuesFile.targetSpatialLayerId}'."
+                );
+            }
+        }
+
+
+        // =========================================================
+        // RUNTIME CONSTRUCTION
         // =========================================================
 
         private static DataLayer BuildDataLayer(
             DataLayerDefinition definition,
-            DataLayerFileDto valuesDto)
+            DataLayerFileDto valuesFile,
+            CancellationToken cancellationToken
+        )
         {
-            if (valuesDto == null)
-            {
-                throw new InvalidOperationException(
-                    $"Values DTO for data layer " +
-                    $"'{definition.Id}' is null."
-                );
-            }
-
-
-            // -----------------------------------------------------
-            // Validate layer identity
-            // -----------------------------------------------------
-
-            if (!string.Equals(
-                    valuesDto.dataLayerId,
-                    definition.Id,
-                    StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException(
-                    $"Data layer ID mismatch. " +
-                    $"Definition='{definition.Id}', " +
-                    $"Values='{valuesDto.dataLayerId}'."
-                );
-            }
-
-
-            // -----------------------------------------------------
-            // Validate target spatial layer
-            // -----------------------------------------------------
-
-            if (!string.Equals(
-                    valuesDto.targetSpatialLayerId,
-                    definition.TargetSpatialLayerId,
-                    StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException(
-                    $"Target spatial layer mismatch for " +
-                    $"data layer '{definition.Id}'. " +
-                    $"Definition=" +
-                    $"'{definition.TargetSpatialLayerId}', " +
-                    $"Values=" +
-                    $"'{valuesDto.targetSpatialLayerId}'."
-                );
-            }
-
-
-            // -----------------------------------------------------
-            // Validate unit IDs
-            // -----------------------------------------------------
-
             string[] unitIds =
-                valuesDto.unitIds
+                valuesFile.unitIds
                 ?? Array.Empty<string>();
+
 
             if (unitIds.Length == 0)
             {
-                throw new InvalidOperationException(
+                throw new InvalidDataException(
                     $"Data layer '{definition.Id}' " +
                     $"contains no unit IDs."
                 );
             }
 
+
             ValidateUnitIds(
                 definition.Id,
-                unitIds
+                unitIds,
+                cancellationToken
             );
 
 
-            // -----------------------------------------------------
-            // Index serialized columns
-            // -----------------------------------------------------
-
-            DataColumnDto[] columnDtos =
-                valuesDto.columns
+            DataColumnDto[] serializedColumnArray =
+                valuesFile.columns
                 ?? Array.Empty<DataColumnDto>();
 
-            Dictionary<string, DataColumnDto>
-                serializedColumns =
-                    new Dictionary<string, DataColumnDto>(
-                        StringComparer.Ordinal
-                    );
 
-            for (int i = 0; i < columnDtos.Length; i++)
+            if (serializedColumnArray.Length == 0)
             {
+                throw new InvalidDataException(
+                    $"Data layer '{definition.Id}' " +
+                    $"contains no value columns."
+                );
+            }
+
+
+            var serializedColumns =
+                new Dictionary<string, DataColumnDto>(
+                    StringComparer.Ordinal
+                );
+
+
+            for (
+                int i = 0;
+                i < serializedColumnArray.Length;
+                i++
+            )
+            {
+                cancellationToken
+                    .ThrowIfCancellationRequested();
+
+
                 DataColumnDto column =
-                    columnDtos[i];
+                    serializedColumnArray[i];
+
 
                 if (column == null)
                 {
-                    throw new InvalidOperationException(
+                    throw new InvalidDataException(
                         $"Data layer '{definition.Id}' " +
                         $"contains a null column at index {i}."
                     );
                 }
 
+
                 if (string.IsNullOrWhiteSpace(
-                        column.variableId))
+                        column.variableId
+                    ))
                 {
-                    throw new InvalidOperationException(
+                    throw new InvalidDataException(
                         $"Data layer '{definition.Id}' " +
-                        $"contains a column without a variable ID."
+                        $"contains a column without variableId."
                     );
                 }
 
+
                 if (!serializedColumns.TryAdd(
                         column.variableId,
-                        column))
+                        column
+                    ))
                 {
-                    throw new InvalidOperationException(
+                    throw new InvalidDataException(
                         $"Data layer '{definition.Id}' " +
                         $"contains duplicate column " +
                         $"'{column.variableId}'."
@@ -280,97 +583,51 @@ namespace UrbanAnalytics.Data
             }
 
 
-            // -----------------------------------------------------
-            // Build runtime columns
-            // -----------------------------------------------------
-
-            Dictionary<string, DataColumn>
-                runtimeColumns =
-                    new Dictionary<string, DataColumn>(
-                        StringComparer.Ordinal
-                    );
-
-            IReadOnlyList<DataVariableDefinition>
-                variableDefinitions =
-                    definition.Variables;
-
-            if (variableDefinitions == null ||
-                variableDefinitions.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    $"Data layer '{definition.Id}' " +
-                    $"defines no variables."
-                );
-            }
-
-            HashSet<string> definedVariableIds =
-                new HashSet<string>(
+            var runtimeColumns =
+                new Dictionary<string, DataColumn>(
                     StringComparer.Ordinal
                 );
 
 
-            for (int i = 0;
-                 i < variableDefinitions.Count;
-                 i++)
+            IReadOnlyList<DataVariableDefinition> variables =
+                definition.Variables;
+
+
+            for (
+                int i = 0;
+                i < variables.Count;
+                i++
+            )
             {
+                cancellationToken
+                    .ThrowIfCancellationRequested();
+
+
                 DataVariableDefinition variable =
-                    variableDefinitions[i];
+                    variables[i];
 
-                if (variable == null)
-                {
-                    throw new InvalidOperationException(
-                        $"Data layer '{definition.Id}' " +
-                        $"contains a null variable definition."
-                    );
-                }
-
-                if (string.IsNullOrWhiteSpace(
-                        variable.Id))
-                {
-                    throw new InvalidOperationException(
-                        $"Data layer '{definition.Id}' " +
-                        $"contains a variable without an ID."
-                    );
-                }
-
-                if (!definedVariableIds.Add(
-                        variable.Id))
-                {
-                    throw new InvalidOperationException(
-                        $"Data layer '{definition.Id}' " +
-                        $"defines duplicate variable " +
-                        $"'{variable.Id}'."
-                    );
-                }
-
-
-                // -------------------------------------------------
-                // Find matching serialized column
-                // -------------------------------------------------
 
                 if (!serializedColumns.TryGetValue(
                         variable.Id,
-                        out DataColumnDto columnDto))
+                        out DataColumnDto serializedColumn
+                    ))
                 {
-                    throw new InvalidOperationException(
+                    throw new InvalidDataException(
                         $"Data layer '{definition.Id}' " +
-                        $"does not contain values for variable " +
-                        $"'{variable.Id}'."
+                        $"does not contain a values column for " +
+                        $"variable '{variable.Id}'."
                     );
                 }
 
-
-                // -------------------------------------------------
-                // Convert serialized column → runtime column
-                // -------------------------------------------------
 
                 DataColumn runtimeColumn =
                     BuildColumn(
                         definition.Id,
                         variable,
-                        columnDto,
+                        serializedColumn,
                         unitIds.Length
                     );
+
 
                 runtimeColumns.Add(
                     variable.Id,
@@ -379,18 +636,21 @@ namespace UrbanAnalytics.Data
             }
 
 
-            // -----------------------------------------------------
-            // Detect undeclared columns
-            // -----------------------------------------------------
-
             foreach (
                 string serializedVariableId
-                in serializedColumns.Keys)
+                in serializedColumns.Keys
+            )
             {
-                if (!definedVariableIds.Contains(
-                        serializedVariableId))
+                cancellationToken
+                    .ThrowIfCancellationRequested();
+
+
+                if (!definition.TryGetVariable(
+                        serializedVariableId,
+                        out _
+                    ))
                 {
-                    throw new InvalidOperationException(
+                    throw new InvalidDataException(
                         $"Data layer '{definition.Id}' " +
                         $"contains values for undeclared variable " +
                         $"'{serializedVariableId}'."
@@ -398,10 +658,6 @@ namespace UrbanAnalytics.Data
                 }
             }
 
-
-            // -----------------------------------------------------
-            // Construct final runtime layer
-            // -----------------------------------------------------
 
             return new DataLayer(
                 definition,
@@ -412,48 +668,43 @@ namespace UrbanAnalytics.Data
 
 
         // =========================================================
-        // Column construction
+        // COLUMN CONSTRUCTION
         // =========================================================
 
         private static DataColumn BuildColumn(
             string dataLayerId,
             DataVariableDefinition variable,
             DataColumnDto dto,
-            int rowCount)
+            int rowCount
+        )
         {
             if (!variable.TryGetValueType(
-                    out DataValueType valueType))
+                    out DataValueType valueType
+                ))
             {
-                throw new InvalidOperationException(
+                throw new InvalidDataException(
                     $"Variable '{variable.Id}' in data layer " +
-                    $"'{dataLayerId}' has unsupported value type."
+                    $"'{dataLayerId}' has an invalid value type."
                 );
             }
 
 
-            // -----------------------------------------------------
-            // Validate optional no-data mask
-            // -----------------------------------------------------
-
             bool[] validMask =
                 dto.valid;
+
 
             if (validMask != null &&
                 validMask.Length != 0 &&
                 validMask.Length != rowCount)
             {
-                throw new InvalidOperationException(
+                throw new InvalidDataException(
                     $"Validity mask for variable " +
                     $"'{variable.Id}' contains " +
-                    $"{validMask.Length} values but " +
-                    $"expected {rowCount}."
+                    $"{validMask.Length} values, but " +
+                    $"{rowCount} rows were expected."
                 );
             }
 
-
-            // -----------------------------------------------------
-            // Build typed runtime column
-            // -----------------------------------------------------
 
             switch (valueType)
             {
@@ -463,12 +714,14 @@ namespace UrbanAnalytics.Data
                             dto.floatValues
                             ?? Array.Empty<double>();
 
+
                         ValidateValueCount(
                             dataLayerId,
                             variable.Id,
                             values.Length,
                             rowCount
                         );
+
 
                         return new FloatDataColumn(
                             values,
@@ -483,12 +736,14 @@ namespace UrbanAnalytics.Data
                             dto.integerValues
                             ?? Array.Empty<long>();
 
+
                         ValidateValueCount(
                             dataLayerId,
                             variable.Id,
                             values.Length,
                             rowCount
                         );
+
 
                         return new IntegerDataColumn(
                             values,
@@ -503,12 +758,14 @@ namespace UrbanAnalytics.Data
                             dto.booleanValues
                             ?? Array.Empty<bool>();
 
+
                         ValidateValueCount(
                             dataLayerId,
                             variable.Id,
                             values.Length,
                             rowCount
                         );
+
 
                         return new BooleanDataColumn(
                             values,
@@ -523,12 +780,14 @@ namespace UrbanAnalytics.Data
                             dto.stringValues
                             ?? Array.Empty<string>();
 
+
                         ValidateValueCount(
                             dataLayerId,
                             variable.Id,
                             values.Length,
                             rowCount
                         );
+
 
                         return new StringDataColumn(
                             values,
@@ -548,208 +807,78 @@ namespace UrbanAnalytics.Data
 
 
         // =========================================================
-        // Definition validation
-        // =========================================================
-
-        private static void ValidateDefinition(
-            DataLayerDefinition definition)
-        {
-            if (definition == null)
-            {
-                throw new InvalidOperationException(
-                    "Data layer definition is null."
-                );
-            }
-
-
-            if (string.IsNullOrWhiteSpace(
-                    definition.Id))
-            {
-                throw new InvalidOperationException(
-                    "Data layer definition has no ID."
-                );
-            }
-
-
-            if (string.IsNullOrWhiteSpace(
-                    definition.TargetSpatialLayerId))
-            {
-                throw new InvalidOperationException(
-                    $"Data layer '{definition.Id}' " +
-                    $"has no target spatial layer ID."
-                );
-            }
-
-
-            if (string.IsNullOrWhiteSpace(
-                    definition.DataFile))
-            {
-                throw new InvalidOperationException(
-                    $"Data layer '{definition.Id}' " +
-                    $"has no data file."
-                );
-            }
-
-
-            if (!definition.TryGetTemporalMode(
-                    out DataTemporalMode temporalMode))
-            {
-                throw new InvalidOperationException(
-                    $"Data layer '{definition.Id}' " +
-                    $"has an invalid temporal mode."
-                );
-            }
-
-
-            // For now, only static datasets are supported.
-            // TimeSeries will be added after the static
-            // visualization pipeline is working.
-            if (temporalMode != DataTemporalMode.Static)
-            {
-                throw new NotSupportedException(
-                    $"Data layer '{definition.Id}' uses " +
-                    $"temporal mode '{temporalMode}'. " +
-                    $"Time-series loading has not yet " +
-                    $"been implemented."
-                );
-            }
-
-
-            if (definition.Variables == null ||
-                definition.Variables.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    $"Data layer '{definition.Id}' " +
-                    $"defines no variables."
-                );
-            }
-        }
-
-
-        // =========================================================
-        // Unit validation
+        // UNIT VALIDATION
         // =========================================================
 
         private static void ValidateUnitIds(
             string dataLayerId,
-            string[] unitIds)
+            string[] unitIds,
+            CancellationToken cancellationToken
+        )
         {
-            HashSet<string> ids =
+            var seenIds =
                 new HashSet<string>(
                     StringComparer.Ordinal
                 );
 
 
-            for (int i = 0;
-                 i < unitIds.Length;
-                 i++)
+            for (
+                int i = 0;
+                i < unitIds.Length;
+                i++
+            )
             {
-                string id =
+                cancellationToken
+                    .ThrowIfCancellationRequested();
+
+
+                string unitId =
                     unitIds[i];
 
 
-                if (string.IsNullOrWhiteSpace(id))
+                if (string.IsNullOrWhiteSpace(
+                        unitId
+                    ))
                 {
-                    throw new InvalidOperationException(
+                    throw new InvalidDataException(
                         $"Data layer '{dataLayerId}' " +
-                        $"contains an empty unit ID " +
-                        $"at row {i}."
+                        $"contains an empty unit ID at row {i}."
                     );
                 }
 
 
-                if (!ids.Add(id))
+                if (!seenIds.Add(
+                        unitId
+                    ))
                 {
-                    throw new InvalidOperationException(
+                    throw new InvalidDataException(
                         $"Data layer '{dataLayerId}' " +
-                        $"contains duplicate unit ID '{id}'."
+                        $"contains duplicate unit ID " +
+                        $"'{unitId}'."
                     );
                 }
             }
         }
 
 
-        // =========================================================
-        // Value count validation
-        // =========================================================
-
         private static void ValidateValueCount(
             string dataLayerId,
             string variableId,
             int actual,
-            int expected)
+            int expected
+        )
         {
             if (actual == expected)
+            {
                 return;
+            }
 
 
-            throw new InvalidOperationException(
+            throw new InvalidDataException(
                 $"Variable '{variableId}' in data layer " +
-                $"'{dataLayerId}' contains {actual} values " +
-                $"but expected {expected}."
+                $"'{dataLayerId}' contains {actual} values, " +
+                $"but {expected} were expected."
             );
-        }
-
-
-        // =========================================================
-        // Path resolution
-        // =========================================================
-
-        /// <summary>
-        /// Resolves a file referenced from a layer definition.
-        ///
-        /// Example:
-        ///
-        /// definition:
-        /// data_layers/income_2023/layer.json
-        ///
-        /// referenced file:
-        /// values.json
-        ///
-        /// result:
-        /// data_layers/income_2023/values.json
-        /// </summary>
-        private static string ResolveRelativePath(
-            string definitionPath,
-            string referencedFile)
-        {
-            string normalizedFile =
-                NormalizePath(referencedFile);
-
-
-            int lastSlash =
-                definitionPath.LastIndexOf('/');
-
-
-            if (lastSlash < 0)
-                return normalizedFile;
-
-
-            string directory =
-                definitionPath.Substring(
-                    0,
-                    lastSlash
-                );
-
-
-            return $"{directory}/{normalizedFile}";
-        }
-
-
-        /// <summary>
-        /// Normalizes runtime package paths to use
-        /// forward slashes and removes leading slashes.
-        /// </summary>
-        private static string NormalizePath(
-            string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                return string.Empty;
-
-
-            return path
-                .Replace('\\', '/')
-                .TrimStart('/');
         }
     }
 }

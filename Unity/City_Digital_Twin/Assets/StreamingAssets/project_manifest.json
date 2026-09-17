@@ -31,6 +31,11 @@
     "definition": "spatial_layers/ruta_250/layer.json"
   }
 ],
-  "dataLayers": [],
+  "dataLayers": [
+  {
+    "id": "income_2023",
+    "definition": "data_layers/income_2023/layer.json"
+  }
+],
   "associations": []
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UrbanAnalytics.Core;
@@ -8,25 +9,32 @@ using UrbanAnalytics.Spatial;
 namespace UrbanAnalytics.Data
 {
     /// <summary>
-    /// Central runtime manager for analytical data layers.
+    /// Central runtime manager for analytical DataLayers.
     ///
     /// Responsibilities:
-    /// - discover DataLayers from project_manifest.json
-    /// - load DataLayers through DataLayerLoader
-    /// - cache loaded layers
-    /// - validate their target SpatialLayer
-    /// - validate DataLayer unit IDs against SpatialUnit IDs
-    /// - manage the active analytical data layer
+    /// - discover data layers declared by the project manifest;
+    /// - load layers on demand;
+    /// - cache loaded layers;
+    /// - validate their target SpatialLayer;
+    /// - validate SpatialUnit ID associations;
+    /// - unload layers;
+    /// - track the currently active DataLayer.
     ///
-    /// It does NOT:
-    /// - render data
-    /// - modify geometry
-    /// - define visualization mappings
-    /// - own spatial geometry
+    /// This manager does not:
+    /// - render data;
+    /// - modify geometry;
+    /// - define visualization encodings;
+    /// - own spatial geometry;
+    /// - perform VR interaction.
     /// </summary>
     public sealed class DataLayerManager : MonoBehaviour
     {
+        // =========================================================
+        // DEPENDENCIES
+        // =========================================================
+
         [Header("Dependencies")]
+
         [SerializeField]
         private ProjectManager projectManager;
 
@@ -34,14 +42,30 @@ namespace UrbanAnalytics.Data
         private SpatialLayerManager spatialLayerManager;
 
 
-        [Header("Startup")]
-        [SerializeField]
-        private bool loadAllOnStart = true;
+        // =========================================================
+        // STARTUP
+        // =========================================================
 
+        [Header("Startup")]
+
+        [SerializeField]
+        private bool loadAllLayersOnStart = true;
+
+
+        // =========================================================
+        // RUNTIME STATE
+        // =========================================================
 
         private readonly Dictionary<string, DataLayer>
             loadedLayers =
                 new Dictionary<string, DataLayer>(
+                    StringComparer.Ordinal
+                );
+
+
+        private readonly Dictionary<string, ResourceReference>
+            layerReferences =
+                new Dictionary<string, ResourceReference>(
                     StringComparer.Ordinal
                 );
 
@@ -53,21 +77,13 @@ namespace UrbanAnalytics.Data
                 );
 
 
-        private DataLayerLoader loader;
-
-        private string activeLayerId;
+        private CancellationTokenSource
+            lifetimeCancellation;
 
 
         // =========================================================
-        // Public state
+        // PUBLIC STATE
         // =========================================================
-
-        public Task InitializationTask
-        {
-            get;
-            private set;
-        }
-
 
         public bool IsInitialized
         {
@@ -90,40 +106,128 @@ namespace UrbanAnalytics.Data
         }
 
 
-        public string ActiveLayerId =>
-            activeLayerId;
+        public string ActiveLayerId
+        {
+            get;
+            private set;
+        }
 
 
-        public int LoadedLayerCount =>
-            loadedLayers.Count;
+        public Task InitializationTask
+        {
+            get;
+            private set;
+        }
 
 
-        public IEnumerable<DataLayer> LoadedLayers =>
-            loadedLayers.Values;
+        public DataLayer ActiveLayer
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(
+                        ActiveLayerId
+                    ))
+                {
+                    return null;
+                }
+
+
+                return loadedLayers.TryGetValue(
+                    ActiveLayerId,
+                    out DataLayer layer
+                )
+                    ? layer
+                    : null;
+            }
+        }
+
+
+        public IReadOnlyDictionary<string, DataLayer>
+            LoadedLayers =>
+                loadedLayers;
 
 
         // =========================================================
-        // Unity lifecycle
+        // UNITY LIFECYCLE
         // =========================================================
+
+        private void Awake()
+        {
+            ResolveDependencies();
+
+
+            if (projectManager == null)
+            {
+                Debug.LogError(
+                    "DataLayerManager could not find ProjectManager.",
+                    this
+                );
+
+                enabled = false;
+                return;
+            }
+
+
+            if (spatialLayerManager == null)
+            {
+                Debug.LogError(
+                    "DataLayerManager could not find SpatialLayerManager.",
+                    this
+                );
+
+                enabled = false;
+                return;
+            }
+
+
+            lifetimeCancellation =
+                new CancellationTokenSource();
+        }
+
 
         private void Start()
         {
+            if (!enabled)
+            {
+                return;
+            }
+
+
             InitializationTask =
-                InitializeAsync();
+                InitializeAsync(
+                    lifetimeCancellation.Token
+                );
+        }
+
+
+        private void OnDestroy()
+        {
+            if (lifetimeCancellation == null)
+            {
+                return;
+            }
+
+
+            lifetimeCancellation.Cancel();
+            lifetimeCancellation.Dispose();
+
+            lifetimeCancellation = null;
         }
 
 
         // =========================================================
-        // Initialization
+        // INITIALIZATION
         // =========================================================
 
-        private async Task InitializeAsync()
+        private async Task InitializeAsync(
+            CancellationToken cancellationToken
+        )
         {
-            if (IsInitialized)
+            if (IsInitialized ||
+                IsInitializing)
+            {
                 return;
-
-            if (IsInitializing)
-                return;
+            }
 
 
             IsInitializing = true;
@@ -132,33 +236,6 @@ namespace UrbanAnalytics.Data
 
             try
             {
-                /*
-                 * Allow all scene Start() methods to run so their
-                 * initialization tasks have been assigned.
-                 */
-                await Task.Yield();
-
-
-                // -------------------------------------------------
-                // Dependencies
-                // -------------------------------------------------
-
-                if (projectManager == null)
-                {
-                    throw new InvalidOperationException(
-                        "DataLayerManager requires a ProjectManager."
-                    );
-                }
-
-
-                if (spatialLayerManager == null)
-                {
-                    throw new InvalidOperationException(
-                        "DataLayerManager requires a SpatialLayerManager."
-                    );
-                }
-
-
                 // -------------------------------------------------
                 // Wait for project manifest
                 // -------------------------------------------------
@@ -169,112 +246,70 @@ namespace UrbanAnalytics.Data
                 }
 
 
+                cancellationToken
+                    .ThrowIfCancellationRequested();
+
+
                 if (!projectManager.IsLoaded ||
                     projectManager.Manifest == null)
                 {
                     throw new InvalidOperationException(
-                        "ProjectManager did not successfully load " +
-                        "the project manifest."
+                        "ProjectManager failed to load the " +
+                        "project manifest."
                     );
                 }
 
 
                 // -------------------------------------------------
                 // Wait for spatial system
+                //
+                // Start execution order between MonoBehaviours
+                // is not guaranteed.
                 // -------------------------------------------------
 
-                if (spatialLayerManager.InitializationTask != null)
+                if (spatialLayerManager.InitializationTask == null)
                 {
-                    await spatialLayerManager.InitializationTask;
+                    await Task.Yield();
                 }
 
 
-                // -------------------------------------------------
-                // Create loader
-                // -------------------------------------------------
+                cancellationToken
+                    .ThrowIfCancellationRequested();
 
-                if (projectManager.AssetReader == null)
+
+                if (spatialLayerManager.InitializationTask == null)
                 {
                     throw new InvalidOperationException(
-                        "ProjectManager AssetReader is null."
+                        "SpatialLayerManager did not start its " +
+                        "initialization task."
                     );
                 }
 
 
-                loader =
-                    new DataLayerLoader(
-                        projectManager.AssetReader
-                    );
+                await spatialLayerManager.InitializationTask;
 
 
-                // -------------------------------------------------
-                // Manifest data-layer references
-                // -------------------------------------------------
-
-                ResourceReference[] references =
-                    projectManager.Manifest.dataLayers;
+                cancellationToken
+                    .ThrowIfCancellationRequested();
 
 
-                if (references == null ||
-                    references.Length == 0)
+                if (!spatialLayerManager.IsInitialized)
                 {
-                    IsInitialized = true;
-
-
-                    Debug.Log(
-                        "DataLayerManager initialized. " +
-                        "Available data layers: 0",
-                        this
+                    throw new InvalidOperationException(
+                        $"SpatialLayerManager did not initialize " +
+                        $"successfully. Error: " +
+                        $"{spatialLayerManager.LastError}"
                     );
-
-
-                    return;
                 }
 
 
                 // -------------------------------------------------
-                // Validate manifest references
+                // Register manifest data layers
                 // -------------------------------------------------
 
-                ValidateManifestReferences(
-                    references
+                RegisterManifestLayers(
+                    projectManager.Manifest
                 );
-
-
-                // -------------------------------------------------
-                // Load layers
-                // -------------------------------------------------
-
-                if (loadAllOnStart)
-                {
-                    for (int i = 0;
-                         i < references.Length;
-                         i++)
-                    {
-                        await LoadLayerAsync(
-                            references[i].id
-                        );
-                    }
-                }
-
-
-                // -------------------------------------------------
-                // Pick initial active layer
-                // -------------------------------------------------
-
-                if (loadedLayers.Count > 0 &&
-                    string.IsNullOrWhiteSpace(activeLayerId))
-                {
-                    foreach (
-                        KeyValuePair<string, DataLayer> pair
-                        in loadedLayers)
-                    {
-                        activeLayerId =
-                            pair.Key;
-
-                        break;
-                    }
-                }
 
 
                 IsInitialized = true;
@@ -282,20 +317,26 @@ namespace UrbanAnalytics.Data
 
                 Debug.Log(
                     $"DataLayerManager initialized. " +
-                    $"Available data layers: {references.Length}, " +
-                    $"Loaded: {loadedLayers.Count}",
+                    $"Available data layers: " +
+                    $"{layerReferences.Count}",
                     this
                 );
 
 
-                if (!string.IsNullOrWhiteSpace(
-                        activeLayerId))
+                // -------------------------------------------------
+                // Optional startup loading
+                // -------------------------------------------------
+
+                if (loadAllLayersOnStart)
                 {
-                    Debug.Log(
-                        $"Active data layer: {activeLayerId}",
-                        this
+                    await LoadAllLayersAsync(
+                        cancellationToken
                     );
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal during scene shutdown.
             }
             catch (Exception exception)
             {
@@ -307,9 +348,6 @@ namespace UrbanAnalytics.Data
                     exception,
                     this
                 );
-
-
-                throw;
             }
             finally
             {
@@ -318,198 +356,285 @@ namespace UrbanAnalytics.Data
         }
 
 
-        // =========================================================
-        // Loading
-        // =========================================================
-
-        public Task<DataLayer> LoadLayerAsync(
-            string dataLayerId)
+        private void RegisterManifestLayers(
+            ProjectManifest manifest
+        )
         {
-            if (string.IsNullOrWhiteSpace(
-                    dataLayerId))
+            layerReferences.Clear();
+
+
+            if (manifest.dataLayers == null)
             {
-                throw new ArgumentException(
-                    "Data layer ID cannot be empty.",
-                    nameof(dataLayerId)
-                );
+                return;
             }
 
 
-            if (loadedLayers.TryGetValue(
-                    dataLayerId,
-                    out DataLayer existingLayer))
+            foreach (
+                ResourceReference reference
+                in manifest.dataLayers
+            )
             {
-                return Task.FromResult(
-                    existingLayer
+                ValidateReference(
+                    reference
                 );
+
+
+                string normalizedId =
+                    reference.id.Trim();
+
+
+                if (!layerReferences.TryAdd(
+                        normalizedId,
+                        reference
+                    ))
+                {
+                    throw new InvalidOperationException(
+                        $"Duplicate data layer reference " +
+                        $"'{reference.id}' in project manifest."
+                    );
+                }
+            }
+        }
+
+
+        // =========================================================
+        // LOADING
+        // =========================================================
+
+        public async Task<DataLayer> LoadLayerAsync(
+            string layerId,
+            CancellationToken cancellationToken = default
+        )
+        {
+            EnsureInitialized();
+
+
+            string normalizedId =
+                NormalizeLayerId(
+                    layerId
+                );
+
+
+            if (loadedLayers.TryGetValue(
+                    normalizedId,
+                    out DataLayer existingLayer
+                ))
+            {
+                return existingLayer;
             }
 
 
             if (loadingTasks.TryGetValue(
-                    dataLayerId,
-                    out Task<DataLayer> existingTask))
+                    normalizedId,
+                    out Task<DataLayer> existingTask
+                ))
             {
-                return existingTask;
+                return await existingTask;
             }
 
 
-            Task<DataLayer> task =
+            if (!layerReferences.TryGetValue(
+                    normalizedId,
+                    out ResourceReference reference
+                ))
+            {
+                throw new KeyNotFoundException(
+                    $"Data layer '{normalizedId}' is not " +
+                    $"declared in the project manifest."
+                );
+            }
+
+
+            Task<DataLayer> loadingTask =
                 LoadLayerInternalAsync(
-                    dataLayerId
+                    normalizedId,
+                    reference,
+                    cancellationToken
                 );
 
 
             loadingTasks.Add(
-                dataLayerId,
-                task
+                normalizedId,
+                loadingTask
             );
 
 
-            return task;
-        }
-
-
-        private async Task<DataLayer>
-            LoadLayerInternalAsync(
-                string dataLayerId)
-        {
             try
             {
-                if (loader == null)
-                {
-                    throw new InvalidOperationException(
-                        "DataLayerLoader has not been initialized."
-                    );
-                }
-
-
-                ResourceReference reference =
-                    FindReference(
-                        dataLayerId
-                    );
-
-
-                if (reference == null)
-                {
-                    throw new KeyNotFoundException(
-                        $"Data layer '{dataLayerId}' is not " +
-                        $"registered in project_manifest.json."
-                    );
-                }
-
-
-                if (string.IsNullOrWhiteSpace(
-                        reference.definition))
-                {
-                    throw new InvalidOperationException(
-                        $"Data layer '{dataLayerId}' does not " +
-                        $"have a definition path."
-                    );
-                }
-
-
-                // -------------------------------------------------
-                // Load actual layer
-                // -------------------------------------------------
-
-                DataLayer layer =
-                    await loader.LoadAsync(
-                        reference.definition
-                    );
-
-
-                // -------------------------------------------------
-                // Validate reference identity
-                // -------------------------------------------------
-
-                if (!string.Equals(
-                        layer.Id,
-                        reference.id,
-                        StringComparison.Ordinal))
-                {
-                    throw new InvalidOperationException(
-                        $"Manifest data-layer ID " +
-                        $"'{reference.id}' does not match " +
-                        $"loaded DataLayer ID '{layer.Id}'."
-                    );
-                }
-
-
-                // -------------------------------------------------
-                // Validate against spatial domain
-                // -------------------------------------------------
-
-                ValidateSpatialAssociation(
-                    layer
-                );
-
-
-                // -------------------------------------------------
-                // Store
-                // -------------------------------------------------
-
-                loadedLayers.Add(
-                    layer.Id,
-                    layer
-                );
-
-
-                if (string.IsNullOrWhiteSpace(
-                        activeLayerId))
-                {
-                    activeLayerId =
-                        layer.Id;
-                }
-
-
-                LogLoadedLayer(
-                    layer
-                );
-
-
-                return layer;
+                return await loadingTask;
             }
             finally
             {
                 loadingTasks.Remove(
-                    dataLayerId
+                    normalizedId
+                );
+            }
+        }
+
+
+        private async Task<DataLayer> LoadLayerInternalAsync(
+            string layerId,
+            ResourceReference reference,
+            CancellationToken cancellationToken
+        )
+        {
+            DataLayer layer =
+                await DataLayerLoader.LoadAsync(
+                    reference.definition,
+                    projectManager.AssetReader,
+                    cancellationToken
+                );
+
+
+            cancellationToken
+                .ThrowIfCancellationRequested();
+
+
+            if (!string.Equals(
+                    layer.Id,
+                    layerId,
+                    StringComparison.Ordinal
+                ))
+            {
+                throw new InvalidOperationException(
+                    $"Project manifest declares data layer " +
+                    $"'{layerId}', but loaded layer declares " +
+                    $"'{layer.Id}'."
+                );
+            }
+
+
+            SpatialLayer targetSpatialLayer =
+                await ResolveTargetSpatialLayerAsync(
+                    layer.TargetSpatialLayerId,
+                    cancellationToken
+                );
+
+
+            ValidateSpatialAssociation(
+                layer,
+                targetSpatialLayer
+            );
+
+
+            loadedLayers.Add(
+                layer.Id,
+                layer
+            );
+
+
+            LogLoadedLayer(
+                layer,
+                targetSpatialLayer
+            );
+
+
+            if (ActiveLayer == null)
+            {
+                SetActiveLayer(
+                    layer.Id
+                );
+            }
+
+
+            return layer;
+        }
+
+
+        public async Task LoadAllLayersAsync(
+            CancellationToken cancellationToken = default
+        )
+        {
+            EnsureInitialized();
+
+
+            foreach (
+                string layerId
+                in layerReferences.Keys
+            )
+            {
+                cancellationToken
+                    .ThrowIfCancellationRequested();
+
+
+                await LoadLayerAsync(
+                    layerId,
+                    cancellationToken
                 );
             }
         }
 
 
         // =========================================================
-        // Spatial association validation
+        // SPATIAL ASSOCIATION
         // =========================================================
 
-        private void ValidateSpatialAssociation(
-            DataLayer layer)
+        private async Task<SpatialLayer>
+            ResolveTargetSpatialLayerAsync(
+                string spatialLayerId,
+                CancellationToken cancellationToken
+            )
         {
-            if (layer == null)
+            if (spatialLayerManager.TryGetLayer(
+                    spatialLayerId,
+                    out SpatialLayer loadedSpatialLayer
+                ))
             {
-                throw new ArgumentNullException(
-                    nameof(layer)
+                return loadedSpatialLayer;
+            }
+
+
+            if (!spatialLayerManager.IsLayerAvailable(
+                    spatialLayerId
+                ))
+            {
+                throw new InvalidOperationException(
+                    $"Data layer targets spatial layer " +
+                    $"'{spatialLayerId}', but that spatial layer " +
+                    $"is not declared in the project manifest."
                 );
             }
 
 
-            /*
-             * This assumes SpatialLayerManager exposes:
-             *
-             * TryGetLayer(
-             *     string layerId,
-             *     out SpatialLayer layer)
-             *
-             * which matches the architecture already established.
-             */
-            if (!spatialLayerManager.TryGetLayer(
-                    layer.TargetSpatialLayerId,
-                    out SpatialLayer spatialLayer))
+            return await spatialLayerManager.LoadLayerAsync(
+                spatialLayerId,
+                cancellationToken
+            );
+        }
+
+
+        private void ValidateSpatialAssociation(
+            DataLayer dataLayer,
+            SpatialLayer spatialLayer
+        )
+        {
+            if (dataLayer == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(dataLayer)
+                );
+            }
+
+
+            if (spatialLayer == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(spatialLayer)
+                );
+            }
+
+
+            if (!string.Equals(
+                    dataLayer.TargetSpatialLayerId,
+                    spatialLayer.Id,
+                    StringComparison.Ordinal
+                ))
             {
                 throw new InvalidOperationException(
-                    $"Data layer '{layer.Id}' targets spatial " +
-                    $"layer '{layer.TargetSpatialLayerId}', but " +
-                    $"that spatial layer is not loaded."
+                    $"Data layer '{dataLayer.Id}' targets " +
+                    $"'{dataLayer.TargetSpatialLayerId}', but " +
+                    $"association validation received spatial " +
+                    $"layer '{spatialLayer.Id}'."
                 );
             }
 
@@ -518,29 +643,33 @@ namespace UrbanAnalytics.Data
             int missingCount = 0;
 
 
-            const int maxMissingExamples = 10;
+            const int maxMissingExamples =
+                10;
 
 
-            List<string> missingExamples =
+            var missingExamples =
                 new List<string>(
                     maxMissingExamples
                 );
 
 
             IReadOnlyList<string> unitIds =
-                layer.UnitIds;
+                dataLayer.UnitIds;
 
 
-            for (int i = 0;
-                 i < unitIds.Count;
-                 i++)
+            for (
+                int i = 0;
+                i < unitIds.Count;
+                i++
+            )
             {
                 string unitId =
                     unitIds[i];
 
 
                 if (spatialLayer.ContainsUnit(
-                        unitId))
+                        unitId
+                    ))
                 {
                     matchedCount++;
                 }
@@ -560,10 +689,6 @@ namespace UrbanAnalytics.Data
             }
 
 
-            // -----------------------------------------------------
-            // Missing spatial IDs are an error
-            // -----------------------------------------------------
-
             if (missingCount > 0)
             {
                 string examples =
@@ -574,10 +699,9 @@ namespace UrbanAnalytics.Data
 
 
                 throw new InvalidOperationException(
-                    $"Data layer '{layer.Id}' contains " +
-                    $"{missingCount} unit IDs that do not " +
-                    $"exist in spatial layer " +
-                    $"'{layer.TargetSpatialLayerId}'.\n" +
+                    $"Data layer '{dataLayer.Id}' contains " +
+                    $"{missingCount} unit IDs that do not exist " +
+                    $"in spatial layer '{spatialLayer.Id}'.\n" +
                     $"Examples: {examples}"
                 );
             }
@@ -585,64 +709,88 @@ namespace UrbanAnalytics.Data
 
             Debug.Log(
                 $"Data/spatial association validated:\n" +
-                $"{layer.Id} -> {layer.TargetSpatialLayerId}\n" +
-                $"Matched units: " +
-                $"{matchedCount}/{layer.UnitCount}",
+                $"{dataLayer.Id} -> {spatialLayer.Id}\n" +
+                $"Data units matched: " +
+                $"{matchedCount}/{dataLayer.UnitCount}\n" +
+                $"Spatial units available: " +
+                $"{spatialLayer.UnitCount}",
                 this
             );
         }
 
 
         // =========================================================
-        // Lookup
+        // LOOKUP
         // =========================================================
 
-        public bool ContainsLayer(
-            string dataLayerId)
+        public bool IsLayerAvailable(
+            string layerId
+        )
         {
             if (string.IsNullOrWhiteSpace(
-                    dataLayerId))
+                    layerId
+                ))
+            {
+                return false;
+            }
+
+
+            return layerReferences.ContainsKey(
+                layerId.Trim()
+            );
+        }
+
+
+        public bool IsLayerLoaded(
+            string layerId
+        )
+        {
+            if (string.IsNullOrWhiteSpace(
+                    layerId
+                ))
             {
                 return false;
             }
 
 
             return loadedLayers.ContainsKey(
-                dataLayerId
+                layerId.Trim()
             );
         }
 
 
         public bool TryGetLayer(
-            string dataLayerId,
-            out DataLayer layer)
+            string layerId,
+            out DataLayer layer
+        )
         {
-            layer = null;
-
-
             if (string.IsNullOrWhiteSpace(
-                    dataLayerId))
+                    layerId
+                ))
             {
+                layer = null;
                 return false;
             }
 
 
             return loadedLayers.TryGetValue(
-                dataLayerId,
+                layerId.Trim(),
                 out layer
             );
         }
 
 
         public DataLayer GetLayer(
-            string dataLayerId)
+            string layerId
+        )
         {
             if (!TryGetLayer(
-                    dataLayerId,
-                    out DataLayer layer))
+                    layerId,
+                    out DataLayer layer
+                ))
             {
                 throw new KeyNotFoundException(
-                    $"Data layer '{dataLayerId}' is not loaded."
+                    $"Data layer '{layerId}' is not loaded."
                 );
             }
 
@@ -651,217 +799,195 @@ namespace UrbanAnalytics.Data
         }
 
 
-        public bool TryGetActiveLayer(
-            out DataLayer layer)
-        {
-            layer = null;
-
-
-            if (string.IsNullOrWhiteSpace(
-                    activeLayerId))
-            {
-                return false;
-            }
-
-
-            return loadedLayers.TryGetValue(
-                activeLayerId,
-                out layer
-            );
-        }
-
-
         // =========================================================
-        // Active layer
+        // ACTIVE LAYER
         // =========================================================
 
         public void SetActiveLayer(
-            string dataLayerId)
+            string layerId
+        )
         {
-            if (string.IsNullOrWhiteSpace(
-                    dataLayerId))
-            {
-                throw new ArgumentException(
-                    "Data layer ID cannot be empty.",
-                    nameof(dataLayerId)
+            string normalizedId =
+                NormalizeLayerId(
+                    layerId
                 );
-            }
 
 
             if (!loadedLayers.ContainsKey(
-                    dataLayerId))
+                    normalizedId
+                ))
             {
-                throw new KeyNotFoundException(
+                throw new InvalidOperationException(
                     $"Cannot activate data layer " +
-                    $"'{dataLayerId}' because it is not loaded."
+                    $"'{normalizedId}' because it is not loaded."
                 );
             }
 
 
-            activeLayerId =
-                dataLayerId;
+            ActiveLayerId =
+                normalizedId;
 
 
             Debug.Log(
-                $"Active data layer: {activeLayerId}",
+                $"Active data layer: {ActiveLayerId}",
                 this
             );
         }
 
 
+        public void ClearActiveLayer()
+        {
+            ActiveLayerId = null;
+        }
+
+
         // =========================================================
-        // Unloading
+        // UNLOADING
         // =========================================================
 
         public bool UnloadLayer(
-            string dataLayerId)
+            string layerId
+        )
         {
-            if (string.IsNullOrWhiteSpace(
-                    dataLayerId))
-            {
-                return false;
-            }
-
-
-            bool removed =
-                loadedLayers.Remove(
-                    dataLayerId
+            string normalizedId =
+                NormalizeLayerId(
+                    layerId
                 );
 
 
-            if (!removed)
+            if (!loadedLayers.Remove(
+                    normalizedId
+                ))
+            {
                 return false;
+            }
 
 
             if (string.Equals(
-                    activeLayerId,
-                    dataLayerId,
-                    StringComparison.Ordinal))
+                    ActiveLayerId,
+                    normalizedId,
+                    StringComparison.Ordinal
+                ))
             {
-                activeLayerId =
-                    null;
-
-
-                foreach (
-                    KeyValuePair<string, DataLayer> pair
-                    in loadedLayers)
-                {
-                    activeLayerId =
-                        pair.Key;
-
-                    break;
-                }
+                ActiveLayerId = null;
             }
+
+
+            Debug.Log(
+                $"Data layer unloaded: {normalizedId}",
+                this
+            );
 
 
             return true;
         }
 
 
-        // =========================================================
-        // Manifest lookup
-        // =========================================================
-
-        private ResourceReference FindReference(
-            string dataLayerId)
+        public void UnloadAllLayers()
         {
-            ResourceReference[] references =
-                projectManager.Manifest.dataLayers;
-
-
-            if (references == null)
-                return null;
-
-
-            for (int i = 0;
-                 i < references.Length;
-                 i++)
-            {
-                ResourceReference reference =
-                    references[i];
-
-
-                if (reference == null)
-                    continue;
-
-
-                if (string.Equals(
-                        reference.id,
-                        dataLayerId,
-                        StringComparison.Ordinal))
-                {
-                    return reference;
-                }
-            }
-
-
-            return null;
+            loadedLayers.Clear();
+            ActiveLayerId = null;
         }
 
 
-        private static void ValidateManifestReferences(
-            ResourceReference[] references)
+        // =========================================================
+        // DEPENDENCY RESOLUTION
+        // =========================================================
+
+        private void ResolveDependencies()
         {
-            HashSet<string> ids =
-                new HashSet<string>(
-                    StringComparer.Ordinal
+            if (projectManager == null)
+            {
+                projectManager =
+                    FindFirstObjectByType<ProjectManager>();
+            }
+
+
+            if (spatialLayerManager == null)
+            {
+                spatialLayerManager =
+                    FindFirstObjectByType<SpatialLayerManager>();
+            }
+        }
+
+
+        // =========================================================
+        // VALIDATION
+        // =========================================================
+
+        private static void ValidateReference(
+            ResourceReference reference
+        )
+        {
+            if (reference == null)
+            {
+                throw new InvalidOperationException(
+                    "Project manifest contains a null " +
+                    "data layer reference."
                 );
+            }
 
 
-            for (int i = 0;
-                 i < references.Length;
-                 i++)
+            if (string.IsNullOrWhiteSpace(
+                    reference.id
+                ))
             {
-                ResourceReference reference =
-                    references[i];
+                throw new InvalidOperationException(
+                    "Data layer reference is missing an ID."
+                );
+            }
 
 
-                if (reference == null)
-                {
-                    throw new InvalidOperationException(
-                        $"Data-layer reference at index {i} is null."
-                    );
-                }
-
-
-                if (string.IsNullOrWhiteSpace(
-                        reference.id))
-                {
-                    throw new InvalidOperationException(
-                        $"Data-layer reference at index {i} " +
-                        $"has no ID."
-                    );
-                }
-
-
-                if (string.IsNullOrWhiteSpace(
-                        reference.definition))
-                {
-                    throw new InvalidOperationException(
-                        $"Data-layer reference " +
-                        $"'{reference.id}' has no definition path."
-                    );
-                }
-
-
-                if (!ids.Add(
-                        reference.id))
-                {
-                    throw new InvalidOperationException(
-                        $"Duplicate data-layer reference ID: " +
-                        $"'{reference.id}'."
-                    );
-                }
+            if (string.IsNullOrWhiteSpace(
+                    reference.definition
+                ))
+            {
+                throw new InvalidOperationException(
+                    $"Data layer '{reference.id}' is missing " +
+                    $"its definition path."
+                );
             }
         }
 
 
+        private void EnsureInitialized()
+        {
+            if (!IsInitialized)
+            {
+                throw new InvalidOperationException(
+                    "DataLayerManager has not finished initialization."
+                );
+            }
+        }
+
+
+        private static string NormalizeLayerId(
+            string layerId
+        )
+        {
+            if (string.IsNullOrWhiteSpace(
+                    layerId
+                ))
+            {
+                throw new ArgumentException(
+                    "Data layer ID cannot be null or empty.",
+                    nameof(layerId)
+                );
+            }
+
+
+            return layerId.Trim();
+        }
+
+
         // =========================================================
-        // Diagnostics
+        // DIAGNOSTICS
         // =========================================================
 
         private void LogLoadedLayer(
-            DataLayer layer)
+            DataLayer layer,
+            SpatialLayer spatialLayer
+        )
         {
             Debug.Log(
                 $"Data layer loaded:\n" +
@@ -869,7 +995,9 @@ namespace UrbanAnalytics.Data
                 $"Name: {layer.DisplayName}\n" +
                 $"Target spatial layer: " +
                 $"{layer.TargetSpatialLayerId}\n" +
-                $"Units: {layer.UnitCount}\n" +
+                $"Data units: {layer.UnitCount}\n" +
+                $"Target spatial units: " +
+                $"{spatialLayer.UnitCount}\n" +
                 $"Variables: {layer.VariableCount}",
                 this
             );
@@ -879,27 +1007,33 @@ namespace UrbanAnalytics.Data
                 layer.Definition.Variables;
 
 
-            for (int i = 0;
-                 i < variables.Count;
-                 i++)
+            for (
+                int i = 0;
+                i < variables.Count;
+                i++
+            )
             {
                 DataVariableDefinition variable =
                     variables[i];
 
 
                 if (variable == null)
+                {
                     continue;
+                }
 
 
                 if (layer.TryGetNumericRange(
                         variable.Id,
                         out double minimum,
-                        out double maximum))
+                        out double maximum
+                    ))
                 {
                     string unit =
                         string.IsNullOrWhiteSpace(
-                            variable.Unit)
-                            ? ""
+                            variable.Unit
+                        )
+                            ? string.Empty
                             : $" {variable.Unit}";
 
 

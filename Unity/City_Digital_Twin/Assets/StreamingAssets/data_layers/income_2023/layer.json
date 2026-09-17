@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0",
+  "id": "income_2023",
+  "displayName": "Income 2023",
+  "description": "Income statistics for the 250 metre statistical grid.",
+  "targetSpatialLayerId": "ruta_250",
+  "dataFile": "values.json",
+  "temporalMode": "Static",
+  "variables": [
+    {
+      "id": "median_income",
+      "displayName": "Median income",
+      "description": "Median income for each statistical grid cell.",
+      "valueType": "Float",
+      "unit": "SEK"
+    }
+  ]
+}
