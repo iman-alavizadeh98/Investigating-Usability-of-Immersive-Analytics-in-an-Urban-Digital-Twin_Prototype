@@ -3,29 +3,21 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+
 using UrbanAnalytics.Data;
 using UrbanAnalytics.Rendering;
 
 namespace UrbanAnalytics.Visualization
 {
     /// <summary>
-    /// Applies analytical DataLayer values to rendered SpatialLayers.
+    /// Orchestrates reusable visualization specifications.
     ///
-    /// Current supported visualization channel:
-    /// - Color
-    ///
-    /// Color encoding modifies existing mesh vertex colors.
-    /// Spatial geometry is not rebuilt.
-    ///
-    /// This manager does not:
-    /// - own analytical values;
-    /// - own spatial geometry;
-    /// - triangulate geometry;
-    /// - create SpatialUnits;
-    /// - perform VR interaction;
-    /// - own UI presentation.
+    /// The manager itself does not implement geometry algorithms.
+    /// Visualization methods are implemented by registered
+    /// IVisualizationRenderer implementations.
     /// </summary>
-    public sealed class VisualizationManager : MonoBehaviour
+    public sealed class VisualizationManager :
+        MonoBehaviour
     {
         // =========================================================
         // DEPENDENCIES
@@ -40,13 +32,10 @@ namespace UrbanAnalytics.Visualization
 
 
         // =========================================================
-        // MATERIAL
+        // MATERIALS
         // =========================================================
 
         [Header("Rendering")]
-        [Tooltip(
-            "Material using the Custom/VertexColorUnlit shader."
-        )]
         [SerializeField]
         private Material vertexColorMaterial;
 
@@ -60,23 +49,28 @@ namespace UrbanAnalytics.Visualization
         private bool applyOnStart = true;
 
         [SerializeField]
-        private VisualizationEncoding startupEncoding =
-            new VisualizationEncoding();
+        private VisualizationSpec startupVisualization =
+            new VisualizationSpec();
 
 
         // =========================================================
-        // RUNTIME STATE
+        // RUNTIME
         // =========================================================
 
-        private readonly Dictionary<SpatialMeshChunk, Color32[]>
-            colorBuffers =
-                new Dictionary<SpatialMeshChunk, Color32[]>();
+        private readonly List<VisualizationLayerInstance>
+            activeInstances =
+                new List<VisualizationLayerInstance>();
 
-        private readonly Dictionary<SpatialMeshChunk, Material>
-            originalMaterials =
-                new Dictionary<SpatialMeshChunk, Material>();
 
-        private CancellationTokenSource lifetimeCancellation;
+        private CancellationTokenSource
+            lifetimeCancellation;
+
+
+        private VisualizationRendererRegistry
+            rendererRegistry;
+
+        private VisualizationRenderContext
+            renderContext;
 
 
         // =========================================================
@@ -89,11 +83,13 @@ namespace UrbanAnalytics.Visualization
             private set;
         }
 
+
         public bool IsInitializing
         {
             get;
             private set;
         }
+
 
         public string LastError
         {
@@ -101,18 +97,31 @@ namespace UrbanAnalytics.Visualization
             private set;
         }
 
+
         public Task InitializationTask
         {
             get;
             private set;
         }
 
-        public VisualizationEncoding ActiveEncoding
+
+        public VisualizationSpec ActiveVisualization
         {
             get;
             private set;
         }
 
+
+        public IReadOnlyList<VisualizationLayerInstance>
+            ActiveInstances =>
+                activeInstances;
+
+
+        /*
+         * Kept for compatibility with the existing legend UI.
+         *
+         * Later this can become a collection of legends.
+         */
         public VisualizationLegendInfo ActiveLegend
         {
             get;
@@ -124,22 +133,16 @@ namespace UrbanAnalytics.Visualization
         // EVENTS
         // =========================================================
 
-        /// <summary>
-        /// Raised whenever an active visualization changes.
-        /// UI components such as legends can subscribe to this.
-        /// </summary>
         public event Action<VisualizationLegendInfo>
             VisualizationChanged;
 
-        /// <summary>
-        /// Raised when the active visualization is removed.
-        /// </summary>
+
         public event Action
             VisualizationCleared;
 
 
         // =========================================================
-        // UNITY LIFECYCLE
+        // UNITY
         // =========================================================
 
         private void Awake()
@@ -150,11 +153,14 @@ namespace UrbanAnalytics.Visualization
             if (dataLayerManager == null)
             {
                 Debug.LogError(
-                    "VisualizationManager could not find DataLayerManager.",
+                    "VisualizationManager could not find " +
+                    "DataLayerManager.",
                     this
                 );
 
-                enabled = false;
+                enabled =
+                    false;
+
                 return;
             }
 
@@ -162,17 +168,42 @@ namespace UrbanAnalytics.Visualization
             if (geometryManager == null)
             {
                 Debug.LogError(
-                    "VisualizationManager could not find GeometryManager.",
+                    "VisualizationManager could not find " +
+                    "GeometryManager.",
                     this
                 );
 
-                enabled = false;
+                enabled =
+                    false;
+
+                return;
+            }
+
+
+            if (vertexColorMaterial == null)
+            {
+                Debug.LogError(
+                    "VisualizationManager requires a " +
+                    "vertex-color material.",
+                    this
+                );
+
+                enabled =
+                    false;
+
                 return;
             }
 
 
             lifetimeCancellation =
                 new CancellationTokenSource();
+
+
+            rendererRegistry =
+                new VisualizationRendererRegistry();
+
+
+            RegisterRenderers();
         }
 
 
@@ -198,15 +229,12 @@ namespace UrbanAnalytics.Visualization
                 lifetimeCancellation.Cancel();
                 lifetimeCancellation.Dispose();
 
-                lifetimeCancellation = null;
+                lifetimeCancellation =
+                    null;
             }
 
 
-            colorBuffers.Clear();
-            originalMaterials.Clear();
-
-            ActiveEncoding = null;
-            ActiveLegend = null;
+            ClearActiveVisualization();
         }
 
 
@@ -225,18 +253,18 @@ namespace UrbanAnalytics.Visualization
             }
 
 
-            IsInitializing = true;
-            LastError = null;
+            IsInitializing =
+                true;
+
+            LastError =
+                null;
 
 
             try
             {
                 /*
-                 * Start() order between MonoBehaviours is not
-                 * guaranteed.
-                 *
-                 * Allow the dependent managers to create their
-                 * initialization tasks.
+                 * Give all scene Start() methods a chance to
+                 * establish their initialization tasks.
                  */
                 if (dataLayerManager.InitializationTask == null ||
                     geometryManager.InitializationTask == null)
@@ -245,7 +273,8 @@ namespace UrbanAnalytics.Visualization
                 }
 
 
-                cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken
+                    .ThrowIfCancellationRequested();
 
 
                 if (dataLayerManager.InitializationTask == null)
@@ -270,13 +299,14 @@ namespace UrbanAnalytics.Visualization
                 await geometryManager.InitializationTask;
 
 
-                cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken
+                    .ThrowIfCancellationRequested();
 
 
                 if (!dataLayerManager.IsInitialized)
                 {
                     throw new InvalidOperationException(
-                        "DataLayerManager did not initialize successfully. " +
+                        $"DataLayerManager initialization failed. " +
                         $"Error: {dataLayerManager.LastError}"
                     );
                 }
@@ -285,27 +315,37 @@ namespace UrbanAnalytics.Visualization
                 if (!geometryManager.IsInitialized)
                 {
                     throw new InvalidOperationException(
-                        "GeometryManager did not initialize successfully. " +
+                        $"GeometryManager initialization failed. " +
                         $"Error: {geometryManager.LastError}"
                     );
                 }
 
 
-                IsInitialized = true;
+                renderContext =
+                    new VisualizationRenderContext(
+                        dataLayerManager,
+                        geometryManager,
+                        vertexColorMaterial
+                    );
+
+
+                IsInitialized =
+                    true;
 
 
                 Debug.Log(
-                    "VisualizationManager initialized.",
+                    "VisualizationManager initialized with " +
+                    "modular renderer architecture.",
                     this
                 );
 
 
                 if (applyOnStart &&
-                    startupEncoding != null &&
-                    startupEncoding.IsConfigured)
+                    startupVisualization != null &&
+                    startupVisualization.IsConfigured)
                 {
-                    await ApplyEncodingInternalAsync(
-                        startupEncoding,
+                    await ApplyVisualizationAsync(
+                        startupVisualization,
                         cancellationToken
                     );
                 }
@@ -327,813 +367,175 @@ namespace UrbanAnalytics.Visualization
             }
             finally
             {
-                IsInitializing = false;
+                IsInitializing =
+                    false;
             }
         }
 
 
         // =========================================================
-        // PUBLIC API
+        // RENDERER REGISTRATION
         // =========================================================
 
-        /// <summary>
-        /// Applies a complete visualization encoding.
-        /// </summary>
-        public async Task ApplyEncodingAsync(
-            VisualizationEncoding encoding,
+        private void RegisterRenderers()
+        {
+            rendererRegistry.Register(
+                new SurfaceRenderer()
+            );
+
+
+            rendererRegistry.Register(
+                new HeightSurfaceRenderer()
+            );
+
+
+            /*
+             * Future:
+             *
+             * rendererRegistry.Register(
+             *     new BarGlyphRenderer()
+             * );
+             *
+             * rendererRegistry.Register(
+             *     new StackedBarGlyphRenderer()
+             * );
+             *
+             * rendererRegistry.Register(
+             *     new RadialGlyphRenderer()
+             * );
+             */
+        }
+
+
+        // =========================================================
+        // APPLY VISUALIZATION
+        // =========================================================
+
+        public async Task ApplyVisualizationAsync(
+            VisualizationSpec visualization,
             CancellationToken cancellationToken = default
         )
         {
             EnsureInitialized();
 
 
-            await ApplyEncodingInternalAsync(
-                encoding,
-                cancellationToken
-            );
-        }
-
-
-        /// <summary>
-        /// Applies a color encoding using the full numeric
-        /// range of the selected variable.
-        /// </summary>
-        public async Task ApplyColorAsync(
-            string dataLayerId,
-            string variableId,
-            CancellationToken cancellationToken = default
-        )
-        {
-            var encoding =
-                new VisualizationEncoding(
-                    dataLayerId,
-                    variableId
-                );
-
-
-            encoding.UseDataRange();
-
-
-            await ApplyEncodingAsync(
-                encoding,
-                cancellationToken
-            );
-        }
-
-
-        /// <summary>
-        /// Applies a color encoding using a manually
-        /// specified numeric range.
-        /// </summary>
-        public async Task ApplyColorAsync(
-            string dataLayerId,
-            string variableId,
-            double minimum,
-            double maximum,
-            CancellationToken cancellationToken = default
-        )
-        {
-            var encoding =
-                new VisualizationEncoding(
-                    dataLayerId,
-                    variableId
-                );
-
-
-            encoding.UseManualRange(
-                minimum,
-                maximum
-            );
-
-
-            await ApplyEncodingAsync(
-                encoding,
-                cancellationToken
-            );
-        }
-
-
-        /// <summary>
-        /// Changes the numeric domain used by the active
-        /// color visualization.
-        /// </summary>
-        public async Task SetActiveColorRangeAsync(
-            double minimum,
-            double maximum,
-            CancellationToken cancellationToken = default
-        )
-        {
-            EnsureActiveColorEncoding();
-
-
-            ActiveEncoding.UseManualRange(
-                minimum,
-                maximum
-            );
-
-
-            await ApplyEncodingInternalAsync(
-                ActiveEncoding,
-                cancellationToken
-            );
-        }
-
-
-        /// <summary>
-        /// Returns the active color visualization to automatic
-        /// data min/max normalization.
-        /// </summary>
-        public async Task UseActiveDataRangeAsync(
-            CancellationToken cancellationToken = default
-        )
-        {
-            EnsureActiveColorEncoding();
-
-
-            ActiveEncoding.UseDataRange();
-
-
-            await ApplyEncodingInternalAsync(
-                ActiveEncoding,
-                cancellationToken
-            );
-        }
-
-
-        /// <summary>
-        /// Changes the gradient used by the active visualization.
-        /// </summary>
-        public async Task SetActiveGradientAsync(
-            Gradient gradient,
-            CancellationToken cancellationToken = default
-        )
-        {
-            EnsureActiveColorEncoding();
-
-
-            ActiveEncoding.SetGradient(
-                gradient
-            );
-
-
-            await ApplyEncodingInternalAsync(
-                ActiveEncoding,
-                cancellationToken
-            );
-        }
-
-
-        /// <summary>
-        /// Reverses or restores the current gradient direction.
-        /// </summary>
-        public async Task SetGradientReversedAsync(
-            bool reversed,
-            CancellationToken cancellationToken = default
-        )
-        {
-            EnsureActiveColorEncoding();
-
-
-            ActiveEncoding.SetReverseGradient(
-                reversed
-            );
-
-
-            await ApplyEncodingInternalAsync(
-                ActiveEncoding,
-                cancellationToken
-            );
-        }
-
-
-        /// <summary>
-        /// Changes the color used for units with no valid value.
-        /// </summary>
-        public async Task SetActiveNoDataColorAsync(
-            Color color,
-            CancellationToken cancellationToken = default
-        )
-        {
-            EnsureActiveColorEncoding();
-
-
-            ActiveEncoding.SetNoDataColor(
-                color
-            );
-
-
-            await ApplyEncodingInternalAsync(
-                ActiveEncoding,
-                cancellationToken
-            );
-        }
-
-
-        // =========================================================
-        // ENCODING DISPATCH
-        // =========================================================
-
-        private async Task ApplyEncodingInternalAsync(
-            VisualizationEncoding encoding,
-            CancellationToken cancellationToken
-        )
-        {
-            if (encoding == null)
+            if (visualization == null)
             {
                 throw new ArgumentNullException(
-                    nameof(encoding)
+                    nameof(visualization)
                 );
             }
 
 
-            if (!encoding.IsConfigured)
+            if (!visualization.IsConfigured)
             {
                 throw new InvalidOperationException(
-                    "VisualizationEncoding requires both a " +
-                    "DataLayer ID and variable ID."
+                    "VisualizationSpec contains no configured " +
+                    "visualization layers."
                 );
             }
 
 
-            switch (encoding.Channel)
+            ClearActiveVisualization();
+
+
+            try
             {
-                case VisualizationChannel.Color:
+                foreach (
+                    VisualizationLayerSpec layer
+                    in visualization.Layers
+                )
+                {
+                    cancellationToken
+                        .ThrowIfCancellationRequested();
+
+
+                    if (layer == null ||
+                        !layer.Enabled)
                     {
-                        await ApplyColorEncodingAsync(
-                            encoding,
+                        continue;
+                    }
+
+
+                    if (!layer.IsConfigured)
+                    {
+                        throw new InvalidOperationException(
+                            "Visualization contains an enabled " +
+                            "layer that is not configured."
+                        );
+                    }
+
+
+                    IVisualizationRenderer renderer =
+                        rendererRegistry.Get(
+                            layer.Mark
+                        );
+
+
+                    VisualizationLayerInstance instance =
+                        await renderer.RenderAsync(
+                            renderContext,
+                            layer,
                             cancellationToken
                         );
 
-                        break;
-                    }
 
-
-                default:
-                    throw new NotSupportedException(
-                        $"Visualization channel " +
-                        $"'{encoding.Channel}' is not supported."
+                    activeInstances.Add(
+                        instance
                     );
+                }
+
+
+                ActiveVisualization =
+                    visualization;
+
+
+                PublishPrimaryLegend();
+
+
+                Debug.Log(
+                    $"Visualization applied:\n" +
+                    $"ID: {visualization.Id}\n" +
+                    $"Name: {visualization.DisplayName}\n" +
+                    $"Runtime layers: {activeInstances.Count}",
+                    this
+                );
             }
+            catch
+            {
+                ClearActiveVisualization();
 
-
-            ActiveEncoding =
-                encoding;
+                throw;
+            }
         }
 
 
         // =========================================================
-        // COLOR ENCODING
+        // CLEAR
         // =========================================================
 
-        private async Task ApplyColorEncodingAsync(
-            VisualizationEncoding encoding,
-            CancellationToken cancellationToken
-        )
+        public void ClearActiveVisualization()
         {
-            if (vertexColorMaterial == null)
-            {
-                throw new InvalidOperationException(
-                    "VisualizationManager requires a material " +
-                    "using the Custom/VertexColorUnlit shader."
-                );
-            }
-
-
-            // -----------------------------------------------------
-            // Resolve DataLayer
-            // -----------------------------------------------------
-
-            DataLayer dataLayer;
-
-
-            if (!dataLayerManager.TryGetLayer(
-                    encoding.DataLayerId,
-                    out dataLayer
-                ))
-            {
-                dataLayer =
-                    await dataLayerManager.LoadLayerAsync(
-                        encoding.DataLayerId
-                    );
-            }
-
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-
-            // -----------------------------------------------------
-            // Validate variable
-            // -----------------------------------------------------
-
-            if (!dataLayer.ContainsVariable(
-                    encoding.VariableId
-                ))
-            {
-                throw new InvalidOperationException(
-                    $"Data layer '{dataLayer.Id}' does not contain " +
-                    $"variable '{encoding.VariableId}'."
-                );
-            }
-
-
-            // -----------------------------------------------------
-            // Resolve visualization range
-            // -----------------------------------------------------
-
-            ResolveValueRange(
-                dataLayer,
-                encoding,
-                out double minimum,
-                out double maximum
-            );
-
-
-            // -----------------------------------------------------
-            // Resolve target SpatialLayer
-            // -----------------------------------------------------
-
-            string spatialLayerId =
-                dataLayer.TargetSpatialLayerId;
-
-
-            if (!geometryManager.IsLayerRendered(
-                    spatialLayerId
-                ))
-            {
-                await geometryManager.RenderLayerAsync(
-                    spatialLayerId,
-                    cancellationToken
-                );
-            }
-
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-
-            if (!geometryManager.TryGetRenderedLayerRoot(
-                    spatialLayerId,
-                    out GameObject layerRoot
-                ))
-            {
-                throw new InvalidOperationException(
-                    $"Spatial layer '{spatialLayerId}' is loaded " +
-                    $"but has no rendered layer root."
-                );
-            }
-
-
-            SpatialMeshChunk[] chunks =
-                layerRoot.GetComponentsInChildren<SpatialMeshChunk>(
-                    true
-                );
-
-
-            if (chunks == null ||
-                chunks.Length == 0)
-            {
-                throw new InvalidOperationException(
-                    $"Rendered spatial layer '{spatialLayerId}' " +
-                    $"contains no SpatialMeshChunks."
-                );
-            }
-
-
-            // -----------------------------------------------------
-            // Apply colors
-            // -----------------------------------------------------
-
-            int coloredUnits = 0;
-            int noDataUnits = 0;
-            int processedVertices = 0;
-            int updatedChunks = 0;
-
-
             for (
-                int i = 0;
-                i < chunks.Length;
-                i++
+                int i = activeInstances.Count - 1;
+                i >= 0;
+                i--
             )
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                VisualizationLayerInstance instance =
+                    activeInstances[i];
 
 
-                SpatialMeshChunk chunk =
-                    chunks[i];
-
-
-                if (chunk == null ||
-                    !chunk.IsInitialized)
-                {
-                    continue;
-                }
-
-
-                if (!string.Equals(
-                        chunk.SpatialLayerId,
-                        spatialLayerId,
-                        StringComparison.Ordinal
-                    ))
-                {
-                    continue;
-                }
-
-
-                ApplyColorsToChunk(
-                    chunk,
-                    dataLayer,
-                    encoding,
-                    minimum,
-                    maximum,
-                    out int chunkColoredUnits,
-                    out int chunkNoDataUnits
-                );
-
-
-                coloredUnits +=
-                    chunkColoredUnits;
-
-                noDataUnits +=
-                    chunkNoDataUnits;
-
-                processedVertices +=
-                    chunk.Mesh.vertexCount;
-
-                updatedChunks++;
-
-
-                /*
-                 * Avoid updating every chunk in one
-                 * uninterrupted frame.
-                 */
-                await Task.Yield();
+                instance?.Dispose();
             }
 
 
-            cancellationToken.ThrowIfCancellationRequested();
+            activeInstances.Clear();
 
 
-            // -----------------------------------------------------
-            // Publish current visualization metadata
-            // -----------------------------------------------------
+            ActiveVisualization =
+                null;
 
-            PublishLegend(
-                dataLayer,
-                encoding,
-                spatialLayerId,
-                minimum,
-                maximum
-            );
-
-
-            Debug.Log(
-                $"Visualization applied:\n" +
-                $"Data layer: {dataLayer.Id}\n" +
-                $"Variable: {encoding.VariableId}\n" +
-                $"Spatial layer: {spatialLayerId}\n" +
-                $"Channel: Color\n" +
-                $"Range: [{minimum}, {maximum}]\n" +
-                $"Colored units: {coloredUnits}\n" +
-                $"No-data units: {noDataUnits}\n" +
-                $"Vertices updated: {processedVertices}\n" +
-                $"Chunks updated: {updatedChunks}",
-                this
-            );
-        }
-
-
-        // =========================================================
-        // CHUNK COLOR UPDATE
-        // =========================================================
-
-        private void ApplyColorsToChunk(
-            SpatialMeshChunk chunk,
-            DataLayer dataLayer,
-            VisualizationEncoding encoding,
-            double minimum,
-            double maximum,
-            out int coloredUnits,
-            out int noDataUnits
-        )
-        {
-            coloredUnits = 0;
-            noDataUnits = 0;
-
-
-            Mesh mesh =
-                chunk.Mesh;
-
-
-            if (mesh == null)
-            {
-                throw new InvalidOperationException(
-                    $"SpatialMeshChunk '{chunk.name}' has no mesh."
-                );
-            }
-
-
-            // -----------------------------------------------------
-            // Remember original material
-            // -----------------------------------------------------
-
-            if (!originalMaterials.ContainsKey(
-                    chunk
-                ))
-            {
-                originalMaterials.Add(
-                    chunk,
-                    chunk.MeshRenderer.sharedMaterial
-                );
-            }
-
-
-            // -----------------------------------------------------
-            // Reuse vertex-color buffer
-            // -----------------------------------------------------
-
-            if (!colorBuffers.TryGetValue(
-                    chunk,
-                    out Color32[] colors
-                ) ||
-                colors == null ||
-                colors.Length != mesh.vertexCount)
-            {
-                colors =
-                    new Color32[
-                        mesh.vertexCount
-                    ];
-
-
-                colorBuffers[
-                    chunk
-                ] = colors;
-
-
-                mesh.MarkDynamic();
-            }
-
-
-            Color32 noDataColor =
-                encoding.GetNoDataColor();
-
-
-            // Initially mark everything as no-data.
-            for (
-                int i = 0;
-                i < colors.Length;
-                i++
-            )
-            {
-                colors[i] =
-                    noDataColor;
-            }
-
-
-            // -----------------------------------------------------
-            // Apply one color to each semantic unit
-            // -----------------------------------------------------
-
-            IReadOnlyList<SpatialMeshUnitRange> ranges =
-                chunk.UnitRanges;
-
-
-            for (
-                int i = 0;
-                i < ranges.Count;
-                i++
-            )
-            {
-                SpatialMeshUnitRange range =
-                    ranges[i];
-
-
-                Color32 unitColor;
-
-
-                if (dataLayer.TryGetDouble(
-                        range.UnitId,
-                        encoding.VariableId,
-                        out double value
-                    ))
-                {
-                    float normalized =
-                        NormalizeValue(
-                            value,
-                            minimum,
-                            maximum
-                        );
-
-
-                    unitColor =
-                        encoding.EvaluateColor(
-                            normalized
-                        );
-
-
-                    coloredUnits++;
-                }
-                else
-                {
-                    unitColor =
-                        noDataColor;
-
-
-                    noDataUnits++;
-                }
-
-
-                for (
-                    int vertexIndex = range.VertexStart;
-                    vertexIndex < range.VertexEndExclusive;
-                    vertexIndex++
-                )
-                {
-                    colors[
-                        vertexIndex
-                    ] = unitColor;
-                }
-            }
-
-
-            /*
-             * Only the vertex-color buffer changes.
-             *
-             * Mesh positions, indices, normals and semantic
-             * mappings stay unchanged.
-             */
-            mesh.colors32 =
-                colors;
-
-
-            chunk.SetMaterial(
-                vertexColorMaterial
-            );
-        }
-
-
-        // =========================================================
-        // VALUE RANGE
-        // =========================================================
-
-        private static void ResolveValueRange(
-            DataLayer dataLayer,
-            VisualizationEncoding encoding,
-            out double minimum,
-            out double maximum
-        )
-        {
-            switch (encoding.RangeMode)
-            {
-                case VisualizationRangeMode.DataMinMax:
-                    {
-                        if (!dataLayer.TryGetNumericRange(
-                                encoding.VariableId,
-                                out minimum,
-                                out maximum
-                            ))
-                        {
-                            throw new InvalidOperationException(
-                                $"Could not calculate numeric range for " +
-                                $"'{dataLayer.Id}.{encoding.VariableId}'."
-                            );
-                        }
-
-                        break;
-                    }
-
-
-                case VisualizationRangeMode.Manual:
-                    {
-                        minimum =
-                            encoding.ManualMinimum;
-
-                        maximum =
-                            encoding.ManualMaximum;
-
-                        break;
-                    }
-
-
-                default:
-                    throw new ArgumentOutOfRangeException(
-                        nameof(encoding.RangeMode)
-                    );
-            }
-
-
-            if (double.IsNaN(minimum) ||
-                double.IsInfinity(minimum) ||
-                double.IsNaN(maximum) ||
-                double.IsInfinity(maximum))
-            {
-                throw new InvalidOperationException(
-                    "Visualization range contains a non-finite value."
-                );
-            }
-
-
-            if (maximum < minimum)
-            {
-                throw new InvalidOperationException(
-                    $"Visualization maximum ({maximum}) cannot be " +
-                    $"smaller than minimum ({minimum})."
-                );
-            }
-        }
-
-
-        private static float NormalizeValue(
-            double value,
-            double minimum,
-            double maximum
-        )
-        {
-            if (maximum <= minimum)
-            {
-                return 0.5f;
-            }
-
-
-            double normalized =
-                (value - minimum) /
-                (maximum - minimum);
-
-
-            if (normalized < 0.0)
-            {
-                normalized = 0.0;
-            }
-            else if (normalized > 1.0)
-            {
-                normalized = 1.0;
-            }
-
-
-            return (float)normalized;
-        }
-
-
-        // =========================================================
-        // LEGEND STATE
-        // =========================================================
-
-        private void PublishLegend(
-            DataLayer dataLayer,
-            VisualizationEncoding encoding,
-            string spatialLayerId,
-            double minimum,
-            double maximum
-        )
-        {
-            string displayName =
-                encoding.VariableId;
-
-            string unit =
-                string.Empty;
-
-
-            if (dataLayer.TryGetVariableDefinition(
-                    encoding.VariableId,
-                    out DataVariableDefinition variableDefinition
-                ))
-            {
-                if (!string.IsNullOrWhiteSpace(
-                        variableDefinition.DisplayName
-                    ))
-                {
-                    displayName =
-                        variableDefinition.DisplayName;
-                }
-
-
-                unit =
-                    variableDefinition.Unit
-                    ?? string.Empty;
-            }
-
-
-            ActiveLegend =
-                new VisualizationLegendInfo(
-                    dataLayer.Id,
-                    encoding.VariableId,
-                    displayName,
-                    unit,
-                    spatialLayerId,
-                    minimum,
-                    maximum,
-                    encoding.ColorGradient,
-                    encoding.ReverseGradient,
-                    encoding.NoDataColor
-                );
-
-
-            VisualizationChanged?.Invoke(
-                ActiveLegend
-            );
-        }
-
-
-        private void ClearLegend()
-        {
             ActiveLegend =
                 null;
 
@@ -1143,217 +545,50 @@ namespace UrbanAnalytics.Visualization
 
 
         // =========================================================
-        // RESET
+        // LEGEND
         // =========================================================
 
-        /// <summary>
-        /// Removes analytical coloring from a rendered spatial
-        /// layer and restores its original material.
-        /// </summary>
-        public bool ResetLayerVisualization(
-            string spatialLayerId
-        )
+        private void PublishPrimaryLegend()
         {
-            EnsureInitialized();
-
-
-            if (string.IsNullOrWhiteSpace(
-                    spatialLayerId
-                ))
-            {
-                return false;
-            }
-
-
-            if (!geometryManager.TryGetRenderedLayerRoot(
-                    spatialLayerId,
-                    out GameObject layerRoot
-                ))
-            {
-                return false;
-            }
-
-
-            SpatialMeshChunk[] chunks =
-                layerRoot.GetComponentsInChildren<SpatialMeshChunk>(
-                    true
-                );
-
-
-            Color32 white =
-                new Color32(
-                    255,
-                    255,
-                    255,
-                    255
-                );
+            ActiveLegend =
+                null;
 
 
             foreach (
-                SpatialMeshChunk chunk
-                in chunks
+                VisualizationLayerInstance instance
+                in activeInstances
             )
             {
-                if (chunk == null ||
-                    chunk.Mesh == null)
+                if (instance == null ||
+                    instance.Legends == null ||
+                    instance.Legends.Count == 0)
                 {
                     continue;
                 }
 
 
-                Mesh mesh =
-                    chunk.Mesh;
+                ActiveLegend =
+                    instance.Legends[0];
 
-
-                if (!colorBuffers.TryGetValue(
-                        chunk,
-                        out Color32[] colors
-                    ) ||
-                    colors == null ||
-                    colors.Length != mesh.vertexCount)
-                {
-                    colors =
-                        new Color32[
-                            mesh.vertexCount
-                        ];
-
-
-                    colorBuffers[
-                        chunk
-                    ] = colors;
-                }
-
-
-                for (
-                    int i = 0;
-                    i < colors.Length;
-                    i++
-                )
-                {
-                    colors[i] =
-                        white;
-                }
-
-
-                mesh.colors32 =
-                    colors;
-
-
-                if (originalMaterials.TryGetValue(
-                        chunk,
-                        out Material originalMaterial
-                    ) &&
-                    originalMaterial != null)
-                {
-                    chunk.SetMaterial(
-                        originalMaterial
-                    );
-                }
+                break;
             }
 
 
-            bool clearedActiveVisualization =
-                false;
-
-
-            if (ActiveEncoding != null &&
-                dataLayerManager.TryGetLayer(
-                    ActiveEncoding.DataLayerId,
-                    out DataLayer activeDataLayer
-                ))
+            if (ActiveLegend != null)
             {
-                if (string.Equals(
-                        activeDataLayer.TargetSpatialLayerId,
-                        spatialLayerId,
-                        StringComparison.Ordinal
-                    ))
-                {
-                    ActiveEncoding =
-                        null;
-
-                    clearedActiveVisualization =
-                        true;
-                }
-            }
-
-
-            if (clearedActiveVisualization)
-            {
-                ClearLegend();
-            }
-
-
-            Debug.Log(
-                $"Visualization reset for spatial layer: " +
-                $"{spatialLayerId}",
-                this
-            );
-
-
-            return true;
-        }
-
-
-        /// <summary>
-        /// Resets the spatial layer targeted by the currently
-        /// active visualization.
-        /// </summary>
-        public bool ResetActiveVisualization()
-        {
-            EnsureInitialized();
-
-
-            if (ActiveEncoding == null)
-            {
-                return false;
-            }
-
-
-            if (!dataLayerManager.TryGetLayer(
-                    ActiveEncoding.DataLayerId,
-                    out DataLayer dataLayer
-                ))
-            {
-                return false;
-            }
-
-
-            return ResetLayerVisualization(
-                dataLayer.TargetSpatialLayerId
-            );
-        }
-
-
-        // =========================================================
-        // ACTIVE ENCODING VALIDATION
-        // =========================================================
-
-        private void EnsureActiveColorEncoding()
-        {
-            EnsureInitialized();
-
-
-            if (ActiveEncoding == null)
-            {
-                throw new InvalidOperationException(
-                    "There is no active visualization encoding."
+                VisualizationChanged?.Invoke(
+                    ActiveLegend
                 );
             }
-
-
-            if (ActiveEncoding.Channel !=
-                VisualizationChannel.Color)
+            else
             {
-                throw new InvalidOperationException(
-                    "The active visualization is not a " +
-                    "color encoding."
-                );
+                VisualizationCleared?.Invoke();
             }
         }
 
 
         // =========================================================
-        // DEPENDENCY RESOLUTION
+        // DEPENDENCIES
         // =========================================================
 
         private void ResolveDependencies()
@@ -1361,28 +596,29 @@ namespace UrbanAnalytics.Visualization
             if (dataLayerManager == null)
             {
                 dataLayerManager =
-                    FindFirstObjectByType<DataLayerManager>();
+                    FindFirstObjectByType<
+                        DataLayerManager
+                    >();
             }
 
 
             if (geometryManager == null)
             {
                 geometryManager =
-                    FindFirstObjectByType<GeometryManager>();
+                    FindFirstObjectByType<
+                        GeometryManager
+                    >();
             }
         }
 
-
-        // =========================================================
-        // VALIDATION
-        // =========================================================
 
         private void EnsureInitialized()
         {
             if (!IsInitialized)
             {
                 throw new InvalidOperationException(
-                    "VisualizationManager has not finished initialization."
+                    "VisualizationManager has not finished " +
+                    "initialization."
                 );
             }
         }
