@@ -10,10 +10,7 @@ using UrbanAnalytics.Rendering;
 namespace UrbanAnalytics.Visualization
 {
     /// <summary>
-    /// Colors an existing SpatialLayer surface.
-    ///
-    /// This is the equivalent of the old color visualization,
-    /// implemented as one renderer inside the new library.
+    /// Colors an existing analytical SpatialLayer surface.
     /// </summary>
     public sealed class SurfaceRenderer :
         IVisualizationRenderer
@@ -28,11 +25,24 @@ namespace UrbanAnalytics.Visualization
         }
 
 
-        public VisualizationMark Mark =>
-            VisualizationMark.Surface;
+        public bool CanRender(
+            VisualizationLayerSpec spec
+        )
+        {
+            return
+                spec != null &&
+                spec.Mark ==
+                    VisualizationMark.Surface &&
+                spec.Target != null &&
+                spec.Target.Kind ==
+                    VisualizationTargetKind
+                        .SpatialLayer;
+        }
 
 
-        public async Task<VisualizationLayerInstance> RenderAsync(
+        public async Task<
+            VisualizationLayerInstance
+        > RenderAsync(
             VisualizationRenderContext context,
             VisualizationLayerSpec spec,
             CancellationToken cancellationToken
@@ -45,18 +55,20 @@ namespace UrbanAnalytics.Visualization
 
             if (!spec.TryGetEncoding(
                     VisualizationChannel.Color,
-                    out VisualizationEncodingSpec colorEncoding
+                    out VisualizationEncodingSpec
+                        colorEncoding
                 ))
             {
                 throw new InvalidOperationException(
-                    $"Surface visualization layer '{spec.Id}' " +
-                    $"requires a Color encoding."
+                    $"Surface visualization layer " +
+                    $"'{spec.Id}' requires a Color encoding."
                 );
             }
 
 
             if (!colorEncoding.Data.TryGetSingle(
-                    out DataVariableReference colorVariable
+                    out DataVariableReference
+                        colorVariable
                 ))
             {
                 throw new InvalidOperationException(
@@ -83,7 +95,8 @@ namespace UrbanAnalytics.Visualization
                 ))
             {
                 throw new InvalidOperationException(
-                    $"Data layer '{dataLayer.Id}' does not contain " +
+                    $"Data layer '{dataLayer.Id}' " +
+                    $"does not contain " +
                     $"'{colorVariable.VariableId}'."
                 );
             }
@@ -98,18 +111,20 @@ namespace UrbanAnalytics.Visualization
 
 
             GameObject spatialRoot =
-                await context.GetRenderedSpatialLayerAsync(
-                    spec.Target.LayerId,
-                    cancellationToken
-                );
+                await context
+                    .GetRenderedSpatialLayerAsync(
+                        spec.Target.LayerId,
+                        cancellationToken
+                    );
 
 
             SpatialMeshChunk[] chunks =
-                spatialRoot.GetComponentsInChildren<
-                    SpatialMeshChunk
-                >(
-                    true
-                );
+                spatialRoot
+                    .GetComponentsInChildren<
+                        SpatialMeshChunk
+                    >(
+                        true
+                    );
 
 
             var originalStates =
@@ -119,7 +134,9 @@ namespace UrbanAnalytics.Visualization
 
 
             Color32 noDataColor =
-                colorEncoding.Color.NoDataColor;
+                colorEncoding
+                    .Color
+                    .NoDataColor;
 
 
             foreach (
@@ -143,21 +160,20 @@ namespace UrbanAnalytics.Visualization
                     chunk.Mesh;
 
 
-                var state =
+                originalStates.Add(
                     new OriginalChunkState
                     {
-                        Chunk = chunk,
+                        Chunk =
+                            chunk,
 
                         Colors =
                             mesh.colors32,
 
                         Material =
-                            chunk.MeshRenderer.sharedMaterial
-                    };
-
-
-                originalStates.Add(
-                    state
+                            chunk
+                                .MeshRenderer
+                                .sharedMaterial
+                    }
                 );
 
 
@@ -200,21 +216,26 @@ namespace UrbanAnalytics.Visualization
 
 
                         unitColor =
-                            colorEncoding.Color.Evaluate(
-                                normalized
-                            );
+                            colorEncoding
+                                .Color
+                                .Evaluate(
+                                    normalized
+                                );
                     }
 
 
                     for (
-                        int vertexIndex = range.VertexStart;
-                        vertexIndex < range.VertexEndExclusive;
+                        int vertexIndex =
+                            range.VertexStart;
+                        vertexIndex <
+                            range.VertexEndExclusive;
                         vertexIndex++
                     )
                     {
                         colors[
                             vertexIndex
-                        ] = unitColor;
+                        ] =
+                            unitColor;
                     }
                 }
 
@@ -244,7 +265,7 @@ namespace UrbanAnalytics.Visualization
 
             return new VisualizationLayerInstance(
                 spec.Id,
-                Mark,
+                VisualizationMark.Surface,
                 null,
                 new[]
                 {
@@ -267,10 +288,16 @@ namespace UrbanAnalytics.Visualization
 
                             if (state.Colors != null &&
                                 state.Colors.Length ==
-                                state.Chunk.Mesh.vertexCount)
+                                    state
+                                        .Chunk
+                                        .Mesh
+                                        .vertexCount)
                             {
-                                state.Chunk.Mesh.colors32 =
-                                    state.Colors;
+                                state
+                                    .Chunk
+                                    .Mesh
+                                    .colors32 =
+                                        state.Colors;
                             }
 
 
@@ -286,16 +313,18 @@ namespace UrbanAnalytics.Visualization
         }
 
 
-        private static VisualizationLegendInfo CreateLegend(
-            DataLayer dataLayer,
-            DataVariableReference variable,
-            VisualizationEncodingSpec encoding,
-            string spatialLayerId,
-            ResolvedNumericScale scale
-        )
+        private static VisualizationLegendInfo
+            CreateLegend(
+                DataLayer dataLayer,
+                DataVariableReference variable,
+                VisualizationEncodingSpec encoding,
+                string spatialLayerId,
+                ResolvedNumericScale scale
+            )
         {
             string displayName =
                 variable.VariableId;
+
 
             string unit =
                 string.Empty;
@@ -303,7 +332,8 @@ namespace UrbanAnalytics.Visualization
 
             if (dataLayer.TryGetVariableDefinition(
                     variable.VariableId,
-                    out DataVariableDefinition definition
+                    out DataVariableDefinition
+                        definition
                 ))
             {
                 if (!string.IsNullOrWhiteSpace(
@@ -313,6 +343,7 @@ namespace UrbanAnalytics.Visualization
                     displayName =
                         definition.DisplayName;
                 }
+
 
                 unit =
                     definition.Unit
@@ -340,10 +371,11 @@ namespace UrbanAnalytics.Visualization
         )
         {
             if (spec.Target.Kind !=
-                VisualizationTargetKind.SpatialLayer)
+                VisualizationTargetKind
+                    .SpatialLayer)
             {
                 throw new NotSupportedException(
-                    "SurfaceRenderer currently supports " +
+                    "SurfaceRenderer supports " +
                     "SpatialLayer targets only."
                 );
             }
@@ -353,17 +385,18 @@ namespace UrbanAnalytics.Visualization
                 SpatialMappingMode.Direct)
             {
                 throw new NotSupportedException(
-                    "SurfaceRenderer currently supports " +
+                    "SurfaceRenderer supports " +
                     "direct spatial mapping only."
                 );
             }
         }
 
 
-        private static void ValidateDirectSpatialAssociation(
-            DataLayer dataLayer,
-            string spatialLayerId
-        )
+        private static void
+            ValidateDirectSpatialAssociation(
+                DataLayer dataLayer,
+                string spatialLayerId
+            )
         {
             if (!string.Equals(
                     dataLayer.TargetSpatialLayerId,

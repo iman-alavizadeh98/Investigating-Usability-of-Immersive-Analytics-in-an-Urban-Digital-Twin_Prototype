@@ -4,17 +4,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
+using UrbanAnalytics.Associations;
 using UrbanAnalytics.Data;
 using UrbanAnalytics.Rendering;
+using UrbanAnalytics.UrbanContext;
 
 namespace UrbanAnalytics.Visualization
 {
     /// <summary>
-    /// Orchestrates reusable visualization specifications.
-    ///
-    /// The manager itself does not implement geometry algorithms.
-    /// Visualization methods are implemented by registered
-    /// IVisualizationRenderer implementations.
+    /// Main visualization-library orchestrator.
     /// </summary>
     public sealed class VisualizationManager :
         MonoBehaviour
@@ -25,19 +23,33 @@ namespace UrbanAnalytics.Visualization
 
         [Header("Dependencies")]
         [SerializeField]
-        private DataLayerManager dataLayerManager;
+        private DataLayerManager
+            dataLayerManager;
+
 
         [SerializeField]
-        private GeometryManager geometryManager;
+        private GeometryManager
+            geometryManager;
+
+
+        [SerializeField]
+        private UrbanContextManager
+            urbanContextManager;
+
+
+        [SerializeField]
+        private AssociationManager
+            associationManager;
 
 
         // =========================================================
-        // MATERIALS
+        // RENDERING
         // =========================================================
 
         [Header("Rendering")]
         [SerializeField]
-        private Material vertexColorMaterial;
+        private Material
+            vertexColorMaterial;
 
 
         // =========================================================
@@ -46,20 +58,26 @@ namespace UrbanAnalytics.Visualization
 
         [Header("Startup")]
         [SerializeField]
-        private bool applyOnStart = true;
+        private bool applyOnStart =
+            true;
+
 
         [SerializeField]
-        private VisualizationSpec startupVisualization =
-            new VisualizationSpec();
+        private VisualizationSpec
+            startupVisualization =
+                new VisualizationSpec();
 
 
         // =========================================================
         // RUNTIME
         // =========================================================
 
-        private readonly List<VisualizationLayerInstance>
-            activeInstances =
-                new List<VisualizationLayerInstance>();
+        private readonly List<
+            VisualizationLayerInstance
+        > activeInstances =
+            new List<
+                VisualizationLayerInstance
+            >();
 
 
         private CancellationTokenSource
@@ -69,12 +87,17 @@ namespace UrbanAnalytics.Visualization
         private VisualizationRendererRegistry
             rendererRegistry;
 
+
         private VisualizationRenderContext
             renderContext;
 
 
+        private VisualizationRuntimeState
+            runtimeState;
+
+
         // =========================================================
-        // PUBLIC STATE
+        // PUBLIC
         // =========================================================
 
         public bool IsInitialized
@@ -105,24 +128,22 @@ namespace UrbanAnalytics.Visualization
         }
 
 
-        public VisualizationSpec ActiveVisualization
+        public VisualizationSpec
+            ActiveVisualization
         {
             get;
             private set;
         }
 
 
-        public IReadOnlyList<VisualizationLayerInstance>
-            ActiveInstances =>
-                activeInstances;
+        public IReadOnlyList<
+            VisualizationLayerInstance
+        > ActiveInstances =>
+            activeInstances;
 
 
-        /*
-         * Kept for compatibility with the existing legend UI.
-         *
-         * Later this can become a collection of legends.
-         */
-        public VisualizationLegendInfo ActiveLegend
+        public VisualizationLegendInfo
+            ActiveLegend
         {
             get;
             private set;
@@ -133,8 +154,9 @@ namespace UrbanAnalytics.Visualization
         // EVENTS
         // =========================================================
 
-        public event Action<VisualizationLegendInfo>
-            VisualizationChanged;
+        public event Action<
+            VisualizationLegendInfo
+        > VisualizationChanged;
 
 
         public event Action
@@ -152,14 +174,9 @@ namespace UrbanAnalytics.Visualization
 
             if (dataLayerManager == null)
             {
-                Debug.LogError(
-                    "VisualizationManager could not find " +
-                    "DataLayerManager.",
-                    this
+                DisableForMissingDependency(
+                    "DataLayerManager"
                 );
-
-                enabled =
-                    false;
 
                 return;
             }
@@ -167,14 +184,9 @@ namespace UrbanAnalytics.Visualization
 
             if (geometryManager == null)
             {
-                Debug.LogError(
-                    "VisualizationManager could not find " +
-                    "GeometryManager.",
-                    this
+                DisableForMissingDependency(
+                    "GeometryManager"
                 );
-
-                enabled =
-                    false;
 
                 return;
             }
@@ -183,10 +195,11 @@ namespace UrbanAnalytics.Visualization
             if (vertexColorMaterial == null)
             {
                 Debug.LogError(
-                    "VisualizationManager requires a " +
-                    "vertex-color material.",
+                    "VisualizationManager requires " +
+                    "a vertex-color material.",
                     this
                 );
+
 
                 enabled =
                     false;
@@ -197,6 +210,10 @@ namespace UrbanAnalytics.Visualization
 
             lifetimeCancellation =
                 new CancellationTokenSource();
+
+
+            runtimeState =
+                new VisualizationRuntimeState();
 
 
             rendererRegistry =
@@ -227,6 +244,7 @@ namespace UrbanAnalytics.Visualization
             if (lifetimeCancellation != null)
             {
                 lifetimeCancellation.Cancel();
+
                 lifetimeCancellation.Dispose();
 
                 lifetimeCancellation =
@@ -256,18 +274,21 @@ namespace UrbanAnalytics.Visualization
             IsInitializing =
                 true;
 
+
             LastError =
                 null;
 
 
             try
             {
-                /*
-                 * Give all scene Start() methods a chance to
-                 * establish their initialization tasks.
-                 */
-                if (dataLayerManager.InitializationTask == null ||
-                    geometryManager.InitializationTask == null)
+                if (
+                    dataLayerManager
+                        .InitializationTask ==
+                        null ||
+                    geometryManager
+                        .InitializationTask ==
+                        null
+                )
                 {
                     await Task.Yield();
                 }
@@ -277,26 +298,38 @@ namespace UrbanAnalytics.Visualization
                     .ThrowIfCancellationRequested();
 
 
-                if (dataLayerManager.InitializationTask == null)
+                if (
+                    dataLayerManager
+                        .InitializationTask ==
+                        null
+                )
                 {
                     throw new InvalidOperationException(
-                        "DataLayerManager did not start its " +
-                        "initialization task."
+                        "DataLayerManager did not start " +
+                        "its initialization task."
                     );
                 }
 
 
-                if (geometryManager.InitializationTask == null)
+                if (
+                    geometryManager
+                        .InitializationTask ==
+                        null
+                )
                 {
                     throw new InvalidOperationException(
-                        "GeometryManager did not start its " +
-                        "initialization task."
+                        "GeometryManager did not start " +
+                        "its initialization task."
                     );
                 }
 
 
-                await dataLayerManager.InitializationTask;
-                await geometryManager.InitializationTask;
+                await dataLayerManager
+                    .InitializationTask;
+
+
+                await geometryManager
+                    .InitializationTask;
 
 
                 cancellationToken
@@ -306,8 +339,9 @@ namespace UrbanAnalytics.Visualization
                 if (!dataLayerManager.IsInitialized)
                 {
                     throw new InvalidOperationException(
-                        $"DataLayerManager initialization failed. " +
-                        $"Error: {dataLayerManager.LastError}"
+                        $"DataLayerManager initialization " +
+                        $"failed. Error: " +
+                        $"{dataLayerManager.LastError}"
                     );
                 }
 
@@ -315,8 +349,9 @@ namespace UrbanAnalytics.Visualization
                 if (!geometryManager.IsInitialized)
                 {
                     throw new InvalidOperationException(
-                        $"GeometryManager initialization failed. " +
-                        $"Error: {geometryManager.LastError}"
+                        $"GeometryManager initialization " +
+                        $"failed. Error: " +
+                        $"{geometryManager.LastError}"
                     );
                 }
 
@@ -325,7 +360,10 @@ namespace UrbanAnalytics.Visualization
                     new VisualizationRenderContext(
                         dataLayerManager,
                         geometryManager,
-                        vertexColorMaterial
+                        vertexColorMaterial,
+                        urbanContextManager,
+                        associationManager,
+                        runtimeState
                     );
 
 
@@ -334,15 +372,19 @@ namespace UrbanAnalytics.Visualization
 
 
                 Debug.Log(
-                    "VisualizationManager initialized with " +
-                    "modular renderer architecture.",
+                    "VisualizationManager initialized " +
+                    "with target-aware modular " +
+                    "renderer architecture.",
                     this
                 );
 
 
-                if (applyOnStart &&
+                if (
+                    applyOnStart &&
                     startupVisualization != null &&
-                    startupVisualization.IsConfigured)
+                    startupVisualization
+                        .IsConfigured
+                )
                 {
                     await ApplyVisualizationAsync(
                         startupVisualization,
@@ -352,7 +394,7 @@ namespace UrbanAnalytics.Visualization
             }
             catch (OperationCanceledException)
             {
-                // Normal during scene shutdown.
+                // Normal shutdown.
             }
             catch (Exception exception)
             {
@@ -374,7 +416,7 @@ namespace UrbanAnalytics.Visualization
 
 
         // =========================================================
-        // RENDERER REGISTRATION
+        // RENDERERS
         // =========================================================
 
         private void RegisterRenderers()
@@ -389,32 +431,22 @@ namespace UrbanAnalytics.Visualization
             );
 
 
-            /*
-             * Future:
-             *
-             * rendererRegistry.Register(
-             *     new BarGlyphRenderer()
-             * );
-             *
-             * rendererRegistry.Register(
-             *     new StackedBarGlyphRenderer()
-             * );
-             *
-             * rendererRegistry.Register(
-             *     new RadialGlyphRenderer()
-             * );
-             */
+            rendererRegistry.Register(
+                new BuildingSurfaceRenderer()
+            );
         }
 
 
         // =========================================================
-        // APPLY VISUALIZATION
+        // APPLY
         // =========================================================
 
-        public async Task ApplyVisualizationAsync(
-            VisualizationSpec visualization,
-            CancellationToken cancellationToken = default
-        )
+        public async Task
+            ApplyVisualizationAsync(
+                VisualizationSpec visualization,
+                CancellationToken cancellationToken =
+                    default
+            )
         {
             EnsureInitialized();
 
@@ -430,8 +462,8 @@ namespace UrbanAnalytics.Visualization
             if (!visualization.IsConfigured)
             {
                 throw new InvalidOperationException(
-                    "VisualizationSpec contains no configured " +
-                    "visualization layers."
+                    "VisualizationSpec contains " +
+                    "no configured layers."
                 );
             }
 
@@ -460,24 +492,26 @@ namespace UrbanAnalytics.Visualization
                     if (!layer.IsConfigured)
                     {
                         throw new InvalidOperationException(
-                            "Visualization contains an enabled " +
-                            "layer that is not configured."
+                            "Visualization contains an " +
+                            "enabled layer that is not " +
+                            "configured."
                         );
                     }
 
 
                     IVisualizationRenderer renderer =
                         rendererRegistry.Get(
-                            layer.Mark
+                            layer
                         );
 
 
-                    VisualizationLayerInstance instance =
-                        await renderer.RenderAsync(
-                            renderContext,
-                            layer,
-                            cancellationToken
-                        );
+                    VisualizationLayerInstance
+                        instance =
+                            await renderer.RenderAsync(
+                                renderContext,
+                                layer,
+                                cancellationToken
+                            );
 
 
                     activeInstances.Add(
@@ -496,8 +530,10 @@ namespace UrbanAnalytics.Visualization
                 Debug.Log(
                     $"Visualization applied:\n" +
                     $"ID: {visualization.Id}\n" +
-                    $"Name: {visualization.DisplayName}\n" +
-                    $"Runtime layers: {activeInstances.Count}",
+                    $"Name: " +
+                    $"{visualization.DisplayName}\n" +
+                    $"Runtime layers: " +
+                    $"{activeInstances.Count}",
                     this
                 );
             }
@@ -517,30 +553,34 @@ namespace UrbanAnalytics.Visualization
         public void ClearActiveVisualization()
         {
             for (
-                int i = activeInstances.Count - 1;
+                int i =
+                    activeInstances.Count - 1;
                 i >= 0;
                 i--
             )
             {
-                VisualizationLayerInstance instance =
-                    activeInstances[i];
-
-
-                instance?.Dispose();
+                activeInstances[i]
+                    ?.Dispose();
             }
 
 
             activeInstances.Clear();
 
 
+            runtimeState
+                ?.Clear();
+
+
             ActiveVisualization =
                 null;
+
 
             ActiveLegend =
                 null;
 
 
-            VisualizationCleared?.Invoke();
+            VisualizationCleared
+                ?.Invoke();
         }
 
 
@@ -559,9 +599,11 @@ namespace UrbanAnalytics.Visualization
                 in activeInstances
             )
             {
-                if (instance == null ||
+                if (
+                    instance == null ||
                     instance.Legends == null ||
-                    instance.Legends.Count == 0)
+                    instance.Legends.Count == 0
+                )
                 {
                     continue;
                 }
@@ -570,19 +612,22 @@ namespace UrbanAnalytics.Visualization
                 ActiveLegend =
                     instance.Legends[0];
 
+
                 break;
             }
 
 
             if (ActiveLegend != null)
             {
-                VisualizationChanged?.Invoke(
-                    ActiveLegend
-                );
+                VisualizationChanged
+                    ?.Invoke(
+                        ActiveLegend
+                    );
             }
             else
             {
-                VisualizationCleared?.Invoke();
+                VisualizationCleared
+                    ?.Invoke();
             }
         }
 
@@ -609,6 +654,41 @@ namespace UrbanAnalytics.Visualization
                         GeometryManager
                     >();
             }
+
+
+            if (urbanContextManager == null)
+            {
+                urbanContextManager =
+                    FindFirstObjectByType<
+                        UrbanContextManager
+                    >();
+            }
+
+
+            if (associationManager == null)
+            {
+                associationManager =
+                    FindFirstObjectByType<
+                        AssociationManager
+                    >();
+            }
+        }
+
+
+        private void
+            DisableForMissingDependency(
+                string dependencyName
+            )
+        {
+            Debug.LogError(
+                $"VisualizationManager could not " +
+                $"find {dependencyName}.",
+                this
+            );
+
+
+            enabled =
+                false;
         }
 
 
@@ -617,8 +697,8 @@ namespace UrbanAnalytics.Visualization
             if (!IsInitialized)
             {
                 throw new InvalidOperationException(
-                    "VisualizationManager has not finished " +
-                    "initialization."
+                    "VisualizationManager has not " +
+                    "finished initialization."
                 );
             }
         }

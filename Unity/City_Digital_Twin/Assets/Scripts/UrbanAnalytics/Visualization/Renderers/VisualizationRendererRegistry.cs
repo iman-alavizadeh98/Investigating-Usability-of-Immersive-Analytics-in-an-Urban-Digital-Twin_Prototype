@@ -5,12 +5,10 @@ namespace UrbanAnalytics.Visualization
 {
     public sealed class VisualizationRendererRegistry
     {
-        private readonly Dictionary<
-            VisualizationMark,
+        private readonly List<
             IVisualizationRenderer
         > renderers =
-            new Dictionary<
-                VisualizationMark,
+            new List<
                 IVisualizationRenderer
             >();
 
@@ -26,38 +24,99 @@ namespace UrbanAnalytics.Visualization
                 );
             }
 
-            renderers[
-                renderer.Mark
-            ] = renderer;
+
+            renderers.Add(
+                renderer
+            );
         }
 
 
         public IVisualizationRenderer Get(
-            VisualizationMark mark
+            VisualizationLayerSpec spec
         )
         {
-            if (!renderers.TryGetValue(
-                    mark,
-                    out IVisualizationRenderer renderer
-                ))
+            if (spec == null)
             {
-                throw new NotSupportedException(
-                    $"No visualization renderer is registered " +
-                    $"for mark '{mark}'."
+                throw new ArgumentNullException(
+                    nameof(spec)
                 );
             }
 
-            return renderer;
+
+            IVisualizationRenderer match =
+                null;
+
+
+            foreach (
+                IVisualizationRenderer renderer
+                in renderers
+            )
+            {
+                if (!renderer.CanRender(
+                        spec
+                    ))
+                {
+                    continue;
+                }
+
+
+                if (match != null)
+                {
+                    throw new InvalidOperationException(
+                        $"More than one visualization renderer " +
+                        $"can render layer '{spec.Id}' " +
+                        $"(mark={spec.Mark}, " +
+                        $"target={spec.Target.Kind})."
+                    );
+                }
+
+
+                match =
+                    renderer;
+            }
+
+
+            if (match == null)
+            {
+                throw new NotSupportedException(
+                    $"No visualization renderer supports " +
+                    $"layer '{spec.Id}' " +
+                    $"(mark={spec.Mark}, " +
+                    $"target={spec.Target.Kind}, " +
+                    $"targetId={spec.Target.LayerId})."
+                );
+            }
+
+
+            return match;
         }
 
 
         public bool Supports(
-            VisualizationMark mark
+            VisualizationLayerSpec spec
         )
         {
-            return renderers.ContainsKey(
-                mark
-            );
+            if (spec == null)
+            {
+                return false;
+            }
+
+
+            foreach (
+                IVisualizationRenderer renderer
+                in renderers
+            )
+            {
+                if (renderer.CanRender(
+                        spec
+                    ))
+                {
+                    return true;
+                }
+            }
+
+
+            return false;
         }
     }
 }

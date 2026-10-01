@@ -11,14 +11,11 @@ using UrbanAnalytics.Rendering;
 namespace UrbanAnalytics.Visualization
 {
     /// <summary>
-    /// Renders an analytical surface where Height is controlled
-    /// by one variable and Color can independently be controlled
-    /// by another variable.
+    /// Renders an analytical surface whose height is
+    /// controlled by a numerical variable.
     ///
-    /// Example:
-    ///
-    /// Height -> population
-    /// Color  -> income
+    /// Also publishes the actual generated top surface
+    /// for every semantic spatial unit.
     /// </summary>
     public sealed class HeightSurfaceRenderer :
         IVisualizationRenderer
@@ -31,11 +28,25 @@ namespace UrbanAnalytics.Visualization
         }
 
 
-        public VisualizationMark Mark =>
-            VisualizationMark.HeightSurface;
+        public bool CanRender(
+            VisualizationLayerSpec spec
+        )
+        {
+            return
+                spec != null &&
+                spec.Mark ==
+                    VisualizationMark
+                        .HeightSurface &&
+                spec.Target != null &&
+                spec.Target.Kind ==
+                    VisualizationTargetKind
+                        .SpatialLayer;
+        }
 
 
-        public async Task<VisualizationLayerInstance> RenderAsync(
+        public async Task<
+            VisualizationLayerInstance
+        > RenderAsync(
             VisualizationRenderContext context,
             VisualizationLayerSpec spec,
             CancellationToken cancellationToken
@@ -46,28 +57,31 @@ namespace UrbanAnalytics.Visualization
             );
 
 
-            // -----------------------------------------------------
-            // HEIGHT ENCODING
-            // -----------------------------------------------------
+            // =====================================================
+            // HEIGHT
+            // =====================================================
 
             if (!spec.TryGetEncoding(
                     VisualizationChannel.Height,
-                    out VisualizationEncodingSpec heightEncoding
+                    out VisualizationEncodingSpec
+                        heightEncoding
                 ))
             {
                 throw new InvalidOperationException(
-                    $"HeightSurface '{spec.Id}' requires a " +
-                    $"Height encoding."
+                    $"HeightSurface '{spec.Id}' requires " +
+                    $"a Height encoding."
                 );
             }
 
 
             if (!heightEncoding.Data.TryGetSingle(
-                    out DataVariableReference heightVariable
+                    out DataVariableReference
+                        heightVariable
                 ))
             {
                 throw new InvalidOperationException(
-                    "Height currently requires exactly one variable."
+                    "Height currently requires exactly " +
+                    "one variable."
                 );
             }
 
@@ -90,8 +104,10 @@ namespace UrbanAnalytics.Visualization
                 ))
             {
                 throw new InvalidOperationException(
-                    $"Data layer '{heightDataLayer.Id}' does not " +
-                    $"contain '{heightVariable.VariableId}'."
+                    $"Data layer " +
+                    $"'{heightDataLayer.Id}' does not " +
+                    $"contain " +
+                    $"'{heightVariable.VariableId}'."
                 );
             }
 
@@ -104,18 +120,21 @@ namespace UrbanAnalytics.Visualization
                 );
 
 
-            // -----------------------------------------------------
-            // OPTIONAL COLOR ENCODING
-            // -----------------------------------------------------
+            // =====================================================
+            // OPTIONAL COLOR
+            // =====================================================
 
             DataLayer colorDataLayer =
                 null;
 
+
             DataVariableReference colorVariable =
                 null;
 
+
             VisualizationEncodingSpec colorEncoding =
                 null;
+
 
             ResolvedNumericScale? colorScale =
                 null;
@@ -131,7 +150,8 @@ namespace UrbanAnalytics.Visualization
                     ))
                 {
                     throw new InvalidOperationException(
-                        "Color currently requires exactly one variable."
+                        "Color currently requires exactly " +
+                        "one variable."
                     );
                 }
 
@@ -154,8 +174,10 @@ namespace UrbanAnalytics.Visualization
                     ))
                 {
                     throw new InvalidOperationException(
-                        $"Data layer '{colorDataLayer.Id}' does not " +
-                        $"contain '{colorVariable.VariableId}'."
+                        $"Data layer " +
+                        $"'{colorDataLayer.Id}' does not " +
+                        $"contain " +
+                        $"'{colorVariable.VariableId}'."
                     );
                 }
 
@@ -169,38 +191,41 @@ namespace UrbanAnalytics.Visualization
             }
 
 
-            // -----------------------------------------------------
-            // SOURCE GEOMETRY
-            // -----------------------------------------------------
+            // =====================================================
+            // SOURCE
+            // =====================================================
 
             GameObject sourceRoot =
-                await context.GetRenderedSpatialLayerAsync(
-                    spec.Target.LayerId,
-                    cancellationToken
-                );
+                await context
+                    .GetRenderedSpatialLayerAsync(
+                        spec.Target.LayerId,
+                        cancellationToken
+                    );
 
 
             SpatialMeshChunk[] sourceChunks =
-                sourceRoot.GetComponentsInChildren<
-                    SpatialMeshChunk
-                >(
-                    true
-                );
+                sourceRoot
+                    .GetComponentsInChildren<
+                        SpatialMeshChunk
+                    >(
+                        true
+                    );
 
 
             if (sourceChunks == null ||
                 sourceChunks.Length == 0)
             {
                 throw new InvalidOperationException(
-                    $"Spatial layer '{spec.Target.LayerId}' " +
-                    $"contains no rendered mesh chunks."
+                    $"Spatial layer " +
+                    $"'{spec.Target.LayerId}' contains " +
+                    $"no rendered mesh chunks."
                 );
             }
 
 
-            // -----------------------------------------------------
-            // CREATE VISUALIZATION ROOT
-            // -----------------------------------------------------
+            // =====================================================
+            // ROOT
+            // =====================================================
 
             GameObject visualizationRoot =
                 new GameObject(
@@ -219,18 +244,26 @@ namespace UrbanAnalytics.Visualization
 
 
             rootTransform.localPosition =
-                sourceRoot.transform.localPosition;
+                sourceRoot
+                    .transform
+                    .localPosition;
+
 
             rootTransform.localRotation =
-                sourceRoot.transform.localRotation;
+                sourceRoot
+                    .transform
+                    .localRotation;
+
 
             rootTransform.localScale =
-                sourceRoot.transform.localScale;
+                sourceRoot
+                    .transform
+                    .localScale;
 
 
-            // -----------------------------------------------------
-            // HIDE SOURCE RENDERERS
-            // -----------------------------------------------------
+            // =====================================================
+            // HIDE ORIGINAL
+            // =====================================================
 
             var originalRendererStates =
                 new List<RendererState>(
@@ -254,22 +287,33 @@ namespace UrbanAnalytics.Visualization
                     new RendererState
                     {
                         Renderer =
-                            sourceChunk.MeshRenderer,
+                            sourceChunk
+                                .MeshRenderer,
 
                         Enabled =
-                            sourceChunk.MeshRenderer.enabled
+                            sourceChunk
+                                .MeshRenderer
+                                .enabled
                     }
                 );
 
 
-                sourceChunk.MeshRenderer.enabled =
-                    false;
+                sourceChunk
+                    .MeshRenderer
+                    .enabled =
+                        false;
             }
 
 
-            // -----------------------------------------------------
-            // BUILD VISUALIZATION CHUNKS
-            // -----------------------------------------------------
+            // =====================================================
+            // GENERATE
+            // =====================================================
+
+            var surfaceTopOffsets =
+                new Dictionary<string, float>(
+                    StringComparer.Ordinal
+                );
+
 
             try
             {
@@ -290,21 +334,35 @@ namespace UrbanAnalytics.Visualization
                     }
 
 
-                    HeightSurfaceMeshBuilder.Result result =
-                        HeightSurfaceMeshBuilder.Build(
-                            sourceChunk,
+                    HeightSurfaceMeshBuilder.Result
+                        result =
+                            HeightSurfaceMeshBuilder
+                                .Build(
+                                    sourceChunk,
 
-                            heightDataLayer,
-                            heightVariable.VariableId,
-                            heightScale,
-                            heightEncoding.Height,
-                            spec.HeightSurface,
+                                    heightDataLayer,
+                                    heightVariable
+                                        .VariableId,
+                                    heightScale,
+                                    heightEncoding
+                                        .Height,
+                                    spec
+                                        .HeightSurface,
 
-                            colorDataLayer,
-                            colorVariable?.VariableId,
-                            colorScale,
-                            colorEncoding?.Color
-                        );
+                                    colorDataLayer,
+                                    colorVariable
+                                        ?.VariableId,
+                                    colorScale,
+                                    colorEncoding
+                                        ?.Color
+                                );
+
+
+                    CollectActualTopOffsets(
+                        sourceChunk,
+                        result,
+                        surfaceTopOffsets
+                    );
 
 
                     GameObject chunkObject =
@@ -327,8 +385,10 @@ namespace UrbanAnalytics.Visualization
                     chunkTransform.localPosition =
                         Vector3.zero;
 
+
                     chunkTransform.localRotation =
                         Quaternion.identity;
+
 
                     chunkTransform.localScale =
                         Vector3.one;
@@ -353,15 +413,32 @@ namespace UrbanAnalytics.Visualization
 
 
                     ConfigureRenderer(
-                        generatedChunk.MeshRenderer
+                        generatedChunk
+                            .MeshRenderer
                     );
 
 
                     await Task.Yield();
                 }
+
+
+                context
+                    .RuntimeState
+                    .RegisterSurfaceElevation(
+                        spec.Id,
+                        spec.Target.LayerId,
+                        surfaceTopOffsets
+                    );
             }
             catch
             {
+                context
+                    .RuntimeState
+                    .RemoveSurfaceElevation(
+                        spec.Id
+                    );
+
+
                 foreach (
                     RendererState state
                     in originalRendererStates
@@ -384,12 +461,14 @@ namespace UrbanAnalytics.Visualization
             }
 
 
-            // -----------------------------------------------------
-            // LEGENDS
-            // -----------------------------------------------------
+            // =====================================================
+            // LEGEND
+            // =====================================================
 
             var legends =
-                new List<VisualizationLegendInfo>();
+                new List<
+                    VisualizationLegendInfo
+                >();
 
 
             if (colorEncoding != null &&
@@ -412,28 +491,39 @@ namespace UrbanAnalytics.Visualization
             Debug.Log(
                 $"Height visualization rendered:\n" +
                 $"Layer: {spec.Id}\n" +
-                $"Spatial target: {spec.Target.LayerId}\n" +
+                $"Spatial target: " +
+                $"{spec.Target.LayerId}\n" +
                 $"Height: " +
                 $"{heightVariable.DataLayerId}." +
                 $"{heightVariable.VariableId}\n" +
-                $"Method: {spec.HeightSurface.Method}\n" +
+                $"Method: " +
+                $"{spec.HeightSurface.Method}\n" +
                 $"Height range: " +
                 $"[{heightScale.Minimum}, " +
                 $"{heightScale.Maximum}]\n" +
                 $"Max visual height: " +
-                $"{heightEncoding.Height.MaximumVisualHeight}",
+                $"{heightEncoding.Height.MaximumVisualHeight}\n" +
+                $"Published surface offsets: " +
+                $"{surfaceTopOffsets.Count}",
                 visualizationRoot
             );
 
 
             return new VisualizationLayerInstance(
                 spec.Id,
-                Mark,
+                VisualizationMark.HeightSurface,
                 visualizationRoot,
                 legends,
                 cleanup:
                     () =>
                     {
+                        context
+                            .RuntimeState
+                            .RemoveSurfaceElevation(
+                                spec.Id
+                            );
+
+
                         foreach (
                             RendererState state
                             in originalRendererStates
@@ -450,6 +540,143 @@ namespace UrbanAnalytics.Visualization
         }
 
 
+        // =========================================================
+        // GENERATED TOP SURFACE
+        // =========================================================
+
+        private static void
+            CollectActualTopOffsets(
+                SpatialMeshChunk sourceChunk,
+                HeightSurfaceMeshBuilder.Result
+                    result,
+                IDictionary<string, float> output
+            )
+        {
+            if (sourceChunk == null ||
+                result == null ||
+                result.Mesh == null)
+            {
+                return;
+            }
+
+
+            Vector3[] sourceVertices =
+                sourceChunk.Mesh.vertices;
+
+
+            Vector3[] generatedVertices =
+                result.Mesh.vertices;
+
+
+            int count =
+                Mathf.Min(
+                    sourceChunk.UnitRanges.Count,
+                    result.UnitRanges.Count
+                );
+
+
+            for (
+                int i = 0;
+                i < count;
+                i++
+            )
+            {
+                SpatialMeshUnitRange sourceRange =
+                    sourceChunk.UnitRanges[i];
+
+
+                SpatialMeshUnitRange generatedRange =
+                    result.UnitRanges[i];
+
+
+                float sourceTop =
+                    FindMaximumY(
+                        sourceVertices,
+                        sourceRange.VertexStart,
+                        sourceRange.VertexCount
+                    );
+
+
+                float generatedTop =
+                    FindMaximumY(
+                        generatedVertices,
+                        generatedRange.VertexStart,
+                        generatedRange.VertexCount
+                    );
+
+
+                float offset =
+                    Mathf.Max(
+                        0.0f,
+                        generatedTop -
+                        sourceTop
+                    );
+
+
+                output[
+                    sourceRange.UnitId
+                ] =
+                    offset;
+            }
+        }
+
+
+        private static float FindMaximumY(
+            Vector3[] vertices,
+            int start,
+            int count
+        )
+        {
+            if (vertices == null ||
+                vertices.Length == 0 ||
+                count <= 0)
+            {
+                return 0.0f;
+            }
+
+
+            float maximum =
+                float.NegativeInfinity;
+
+
+            int end =
+                Mathf.Min(
+                    vertices.Length,
+                    start + count
+                );
+
+
+            for (
+                int i =
+                    Mathf.Max(
+                        0,
+                        start
+                    );
+                i < end;
+                i++
+            )
+            {
+                maximum =
+                    Mathf.Max(
+                        maximum,
+                        vertices[i].y
+                    );
+            }
+
+
+            return
+                float.IsNegativeInfinity(
+                    maximum
+                )
+                    ? 0.0f
+                    : maximum;
+        }
+
+
+        // =========================================================
+        // RENDERER
+        // =========================================================
+
         private static void ConfigureRenderer(
             MeshRenderer renderer
         )
@@ -463,27 +690,36 @@ namespace UrbanAnalytics.Visualization
             renderer.shadowCastingMode =
                 ShadowCastingMode.Off;
 
+
             renderer.receiveShadows =
                 false;
 
+
             renderer.lightProbeUsage =
                 LightProbeUsage.Off;
+
 
             renderer.reflectionProbeUsage =
                 ReflectionProbeUsage.Off;
         }
 
 
-        private static VisualizationLegendInfo CreateColorLegend(
-            DataLayer dataLayer,
-            DataVariableReference variable,
-            VisualizationEncodingSpec encoding,
-            string spatialLayerId,
-            ResolvedNumericScale scale
-        )
+        // =========================================================
+        // LEGEND
+        // =========================================================
+
+        private static VisualizationLegendInfo
+            CreateColorLegend(
+                DataLayer dataLayer,
+                DataVariableReference variable,
+                VisualizationEncodingSpec encoding,
+                string spatialLayerId,
+                ResolvedNumericScale scale
+            )
         {
             string displayName =
                 variable.VariableId;
+
 
             string unit =
                 string.Empty;
@@ -491,7 +727,8 @@ namespace UrbanAnalytics.Visualization
 
             if (dataLayer.TryGetVariableDefinition(
                     variable.VariableId,
-                    out DataVariableDefinition definition
+                    out DataVariableDefinition
+                        definition
                 ))
             {
                 if (!string.IsNullOrWhiteSpace(
@@ -524,15 +761,20 @@ namespace UrbanAnalytics.Visualization
         }
 
 
+        // =========================================================
+        // VALIDATION
+        // =========================================================
+
         private static void ValidateTarget(
             VisualizationLayerSpec spec
         )
         {
             if (spec.Target.Kind !=
-                VisualizationTargetKind.SpatialLayer)
+                VisualizationTargetKind
+                    .SpatialLayer)
             {
                 throw new NotSupportedException(
-                    "HeightSurfaceRenderer currently supports " +
+                    "HeightSurfaceRenderer supports " +
                     "SpatialLayer targets only."
                 );
             }
@@ -542,17 +784,18 @@ namespace UrbanAnalytics.Visualization
                 SpatialMappingMode.Direct)
             {
                 throw new NotSupportedException(
-                    "HeightSurfaceRenderer currently supports " +
+                    "HeightSurfaceRenderer supports " +
                     "direct spatial mappings only."
                 );
             }
         }
 
 
-        private static void ValidateDirectSpatialAssociation(
-            DataLayer dataLayer,
-            string spatialLayerId
-        )
+        private static void
+            ValidateDirectSpatialAssociation(
+                DataLayer dataLayer,
+                string spatialLayerId
+            )
         {
             if (!string.Equals(
                     dataLayer.TargetSpatialLayerId,
