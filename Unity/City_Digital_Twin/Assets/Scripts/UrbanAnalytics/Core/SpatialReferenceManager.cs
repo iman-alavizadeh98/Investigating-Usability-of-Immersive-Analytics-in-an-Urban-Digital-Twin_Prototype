@@ -1,8 +1,10 @@
+using System;
 using UnityEngine;
 
 namespace UrbanAnalytics.Core
 {
-    public class SpatialReferenceManager : MonoBehaviour
+    public class SpatialReferenceManager :
+        MonoBehaviour
     {
         [SerializeField]
         private ProjectManager projectManager;
@@ -17,6 +19,19 @@ namespace UrbanAnalytics.Core
             projectManager.IsLoaded;
 
 
+        public float MetersToUnity
+        {
+            get
+            {
+                EnsureReady();
+
+                return Manifest
+                    .unityTransform
+                    .metersToUnity;
+            }
+        }
+
+
         private void Awake()
         {
             if (projectManager == null)
@@ -29,7 +44,8 @@ namespace UrbanAnalytics.Core
             if (projectManager == null)
             {
                 Debug.LogError(
-                    "SpatialReferenceManager could not find ProjectManager."
+                    "SpatialReferenceManager could not find " +
+                    "ProjectManager."
                 );
             }
         }
@@ -62,15 +78,18 @@ namespace UrbanAnalytics.Core
 
 
             double localEasting =
-                easting - origin.easting;
+                easting -
+                origin.easting;
 
 
             double localNorthing =
-                northing - origin.northing;
+                northing -
+                origin.northing;
 
 
             double localElevation =
-                elevation - origin.elevation;
+                elevation -
+                origin.elevation;
 
 
             double scale =
@@ -81,19 +100,22 @@ namespace UrbanAnalytics.Core
 
             float x =
                 (float)(
-                    localEasting * scale
+                    localEasting *
+                    scale
                 );
 
 
             float y =
                 (float)(
-                    localElevation * scale
+                    localElevation *
+                    scale
                 );
 
 
             float z =
                 (float)(
-                    localNorthing * scale
+                    localNorthing *
+                    scale
                 );
 
 
@@ -101,6 +123,43 @@ namespace UrbanAnalytics.Core
                 x,
                 y,
                 z
+            );
+        }
+
+
+        /// <summary>
+        /// Converts a source-world distance into Unity units
+        /// without applying the spatial origin.
+        ///
+        /// Example:
+        /// 20 metres -> 0.020 Unity units when scale = 0.001.
+        /// </summary>
+        public float ScaleDistance(
+            double sourceDistance
+        )
+        {
+            EnsureReady();
+
+
+            if (double.IsNaN(
+                    sourceDistance
+                ) ||
+                double.IsInfinity(
+                    sourceDistance
+                ))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(sourceDistance),
+                    "Distance must be finite."
+                );
+            }
+
+
+            return (float)(
+                sourceDistance *
+                Manifest
+                    .unityTransform
+                    .metersToUnity
             );
         }
 
@@ -138,17 +197,33 @@ namespace UrbanAnalytics.Core
             return new SourceCoordinate
             {
                 easting =
-                    origin.easting
-                    + unityPosition.x / scale,
+                    origin.easting +
+                    unityPosition.x /
+                    scale,
 
                 northing =
-                    origin.northing
-                    + unityPosition.z / scale,
+                    origin.northing +
+                    unityPosition.z /
+                    scale,
 
                 elevation =
-                    origin.elevation
-                    + unityPosition.y / scale
+                    origin.elevation +
+                    unityPosition.y /
+                    scale
             };
+        }
+
+
+        private void EnsureReady()
+        {
+            if (!IsReady ||
+                Manifest == null ||
+                Manifest.unityTransform == null)
+            {
+                throw new InvalidOperationException(
+                    "SpatialReferenceManager is not ready."
+                );
+            }
         }
     }
 }

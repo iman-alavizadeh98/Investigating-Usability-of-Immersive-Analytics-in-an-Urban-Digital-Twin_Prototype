@@ -242,8 +242,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6feedfabf60fb8f438125bed09fa69e9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Data.DataLayerManager
-  projectManager: {fileID: 0}
-  spatialLayerManager: {fileID: 0}
+  projectManager: {fileID: 866019404}
+  spatialLayerManager: {fileID: 1490767912}
   loadAllLayersOnStart: 1
 --- !u!1 &194063901
 GameObject:
@@ -368,49 +368,119 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b683a52309251be4390c0a3bd22191dd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Visualization.VisualizationManager
-  dataLayerManager: {fileID: 0}
-  geometryManager: {fileID: 0}
+  dataLayerManager: {fileID: 56677990}
+  geometryManager: {fileID: 564681234}
   vertexColorMaterial: {fileID: 2100000, guid: 7545a7d7d52251943bdbc74bb9e27984, type: 2}
   applyOnStart: 1
-  startupEncoding:
-    dataLayerId: income_2023
-    variableId: median_income
-    channel: 0
-    rangeMode: 1
-    manualMinimum: 0
-    manualMaximum: 700000
-    colorGradient:
-      serializedVersion: 2
-      key0: {r: 0.26666668, g: 0.003921569, b: 0.32941177, a: 1}
-      key1: {r: 0.12941177, g: 0.5686275, b: 0.54901963, a: 1}
-      key2: {r: 0.99215686, g: 0.90588236, b: 0.14509805, a: 0}
-      key3: {r: 0, g: 0, b: 0, a: 0}
-      key4: {r: 0, g: 0, b: 0, a: 0}
-      key5: {r: 0, g: 0, b: 0, a: 0}
-      key6: {r: 0, g: 0, b: 0, a: 0}
-      key7: {r: 0, g: 0, b: 0, a: 0}
-      ctime0: 0
-      ctime1: 32768
-      ctime2: 65535
-      ctime3: 0
-      ctime4: 0
-      ctime5: 0
-      ctime6: 0
-      ctime7: 0
-      atime0: 0
-      atime1: 65535
-      atime2: 0
-      atime3: 0
-      atime4: 0
-      atime5: 0
-      atime6: 0
-      atime7: 0
-      m_Mode: 0
-      m_ColorSpace: -1
-      m_NumColorKeys: 3
-      m_NumAlphaKeys: 2
-    noDataColor: {r: 0.35, g: 0.35, b: 0.35, a: 1}
-    reverseGradient: 0
+  startupVisualization:
+    id: income_test
+    displayName: Income Test
+    layers:
+    - id: income_surface
+      enabled: 1
+      mark: 1
+      target:
+        kind: 0
+        layerId: ruta_250
+        mapping:
+          mode: 0
+          associationId: 
+      encodings:
+      - channel: 0
+        role: 0
+        data:
+          mode: 0
+          variables:
+          - dataLayerId: income_2023
+            variableId: median_income
+        scale:
+          domainMode: 0
+          manualMinimum: 0
+          manualMaximum: 0
+        color:
+          gradient:
+            serializedVersion: 2
+            key0: {r: 0.282353, g: 0.2392157, b: 0.5450981, a: 1}
+            key1: {r: 0.4862745, g: 0.9882354, b: 0, a: 1}
+            key2: {r: 1, g: 0, b: 0, a: 1}
+            key3: {r: 0, g: 0, b: 0, a: 1}
+            key4: {r: 0, g: 0, b: 0, a: 1}
+            key5: {r: 0, g: 0, b: 0, a: 0}
+            key6: {r: 0, g: 0, b: 0, a: 0}
+            key7: {r: 0, g: 0, b: 0, a: 0}
+            ctime0: 0
+            ctime1: 33230
+            ctime2: 65535
+            ctime3: 0
+            ctime4: 0
+            ctime5: 0
+            ctime6: 0
+            ctime7: 0
+            atime0: 0
+            atime1: 32151
+            atime2: 39707
+            atime3: 53276
+            atime4: 65535
+            atime5: 0
+            atime6: 0
+            atime7: 0
+            m_Mode: 2
+            m_ColorSpace: -1
+            m_NumColorKeys: 3
+            m_NumAlphaKeys: 5
+          noDataColor: {r: 1, g: 1, b: 1, a: 1}
+          reverse: 0
+        height:
+          maximumVisualHeight: 0
+      - channel: 1
+        role: 0
+        data:
+          mode: 0
+          variables:
+          - dataLayerId: income_2023
+            variableId: median_income
+        scale:
+          domainMode: 1
+          manualMinimum: 0
+          manualMaximum: 700000
+        color:
+          gradient:
+            serializedVersion: 2
+            key0: {r: 0.282353, g: 0.2392157, b: 0.5450981, a: 1}
+            key1: {r: 0.4862745, g: 0.9882354, b: 0, a: 1}
+            key2: {r: 1, g: 0, b: 0, a: 1}
+            key3: {r: 0, g: 0, b: 0, a: 1}
+            key4: {r: 0, g: 0, b: 0, a: 1}
+            key5: {r: 0, g: 0, b: 0, a: 0}
+            key6: {r: 0, g: 0, b: 0, a: 0}
+            key7: {r: 0, g: 0, b: 0, a: 0}
+            ctime0: 0
+            ctime1: 33230
+            ctime2: 65535
+            ctime3: 0
+            ctime4: 0
+            ctime5: 0
+            ctime6: 0
+            ctime7: 0
+            atime0: 0
+            atime1: 32151
+            atime2: 39707
+            atime3: 53276
+            atime4: 65535
+            atime5: 0
+            atime6: 0
+            atime7: 0
+            m_Mode: 2
+            m_ColorSpace: -1
+            m_NumColorKeys: 3
+            m_NumAlphaKeys: 5
+          noDataColor: {r: 1, g: 1, b: 1, a: 1}
+          reverse: 0
+        height:
+          maximumVisualHeight: 1
+      heightSurface:
+        method: 0
+        insetFactor: 0.8
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -498,7 +568,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 20066, y: 915, z: 2055}
+  m_LocalPosition: {x: 10, y: 7, z: -15}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -620,6 +690,50 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 351184840}
   m_CullTransparentMesh: 1
+--- !u!1 &356883000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 356883001}
+  - component: {fileID: 356883002}
+  m_Layer: 0
+  m_Name: AssociationSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &356883001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 356883000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1167897303}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &356883002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 356883000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fc921726681af04491d27d6dc3d4659, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Associations.AssociationManager
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -823,8 +937,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eda978f3a6c92d44e9088bebad33c44b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Rendering.GeometryManager
-  spatialLayerManager: {fileID: 0}
-  spatialReferenceManager: {fileID: 0}
+  spatialLayerManager: {fileID: 1490767912}
+  spatialReferenceManager: {fileID: 1641907867}
   renderParent: {fileID: 0}
   spatialLayerMaterial: {fileID: 0}
   renderVisibleLayersOnStart: 1
@@ -911,58 +1025,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 654433833}
   m_CullTransparentMesh: 1
---- !u!1 &799676455
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 799676456}
-  - component: {fileID: 799676457}
-  m_Layer: 0
-  m_Name: GeometrySystem
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &799676456
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 799676455}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1167897303}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &799676457
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 799676455}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: eda978f3a6c92d44e9088bebad33c44b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Rendering.GeometryManager
-  spatialLayerManager: {fileID: 0}
-  spatialReferenceManager: {fileID: 0}
-  renderParent: {fileID: 0}
-  spatialLayerMaterial: {fileID: 0}
-  renderVisibleLayersOnStart: 1
-  unitsPerChunk: 200
-  surfaceYOffset: 0.002
-  enableMeshColliders: 0
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -1057,6 +1119,64 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1167897303}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &971600324
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 971600325}
+  - component: {fileID: 971600326}
+  m_Layer: 0
+  m_Name: UrbanContextSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &971600325
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 971600324}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1167897303}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &971600326
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 971600324}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8ca3ca12c73464e4d9f39d49fe719b9b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.UrbanContext.UrbanContextManager
+  projectManager: {fileID: 866019404}
+  spatialReferenceManager: {fileID: 1641907867}
+  associationManager: {fileID: 356883002}
+  renderParent: {fileID: 0}
+  loadBuildingsOnStart: 1
+  buildingsBinaryPath: buildings_runtime_ruta.bin
+  buildingToRutaAssociationId: buildings_to_ruta
+  coordinatesRelativeToHeaderOrigin: 1
+  useGroundElevationFromBinary: 0
+  fallbackRutaLayerId: ruta_250
+  buildingMaterial: {fileID: 0}
+  buildingsPerChunk: 750
+  enableBuildingColliders: 0
+  chunksBeforeYield: 1
 --- !u!1 &1167897302
 GameObject:
   m_ObjectHideFlags: 0
@@ -1091,8 +1211,9 @@ Transform:
   - {fileID: 1490767911}
   - {fileID: 564681233}
   - {fileID: 56677989}
-  - {fileID: 799676456}
   - {fileID: 283758036}
+  - {fileID: 971600325}
+  - {fileID: 356883001}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1177611750

@@ -1,0 +1,27 @@
+VisualizationSpec
+│
+├── Spatial Target
+│   ├── ruta_250
+│   ├── buildings
+│   └── centroid points
+│
+├── Data Bindings
+│   ├── single variable
+│   ├── multiple variables
+│   └── transferred/aggregated values
+│
+├── Visual Marks / Methods
+│   ├── Surface
+│   ├── ExtrudedSurface
+│   ├── BuildingFill
+│   ├── Bar
+│   ├── StackedBar
+│   └── RadialGlyph
+│
+└── Encodings
+    ├── Color
+    ├── HeightUp
+    ├── HeightDown
+    ├── Opacity
+    ├── SegmentFill
+    └── others later
