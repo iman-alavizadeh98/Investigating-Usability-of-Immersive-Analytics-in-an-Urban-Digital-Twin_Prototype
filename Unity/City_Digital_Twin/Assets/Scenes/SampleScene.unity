@@ -397,10 +397,17 @@ MonoBehaviour:
           - dataLayerId: income_2023
             variableId: median_income
         scale:
-          domainMode: 0
+          domainMode: 2
           manualMinimum: 0
           manualMaximum: 0
+          lowerPercentile: 2
+          upperPercentile: 98
+          type: 0
+          divergingCenterMode: 0
+          divergingCenter: 0
+          quantileClasses: 5
         color:
+          paletteId: 
           gradient:
             serializedVersion: 2
             key0: {r: 0.282353, g: 0.2392157, b: 0.5450981, a: 1}
@@ -446,7 +453,14 @@ MonoBehaviour:
           domainMode: 1
           manualMinimum: 0
           manualMaximum: 700000
+          lowerPercentile: 2
+          upperPercentile: 98
+          type: 0
+          divergingCenterMode: 0
+          divergingCenter: 0
+          quantileClasses: 5
         color:
+          paletteId: 
           gradient:
             serializedVersion: 2
             key0: {r: 0.282353, g: 0.2392157, b: 0.5450981, a: 1}
@@ -505,10 +519,17 @@ MonoBehaviour:
           - dataLayerId: income_2023
             variableId: median_income
         scale:
-          domainMode: 0
+          domainMode: 2
           manualMinimum: 0
           manualMaximum: 0
+          lowerPercentile: 2
+          upperPercentile: 98
+          type: 0
+          divergingCenterMode: 0
+          divergingCenter: 0
+          quantileClasses: 5
         color:
+          paletteId: 
           gradient:
             serializedVersion: 2
             key0: {r: 0.282353, g: 0.2392157, b: 0.5450981, a: 1}

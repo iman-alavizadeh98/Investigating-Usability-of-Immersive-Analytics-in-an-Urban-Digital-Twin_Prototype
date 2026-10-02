@@ -493,7 +493,7 @@ namespace UrbanAnalytics.Visualization
                 colorScale.HasValue)
             {
                 legends.Add(
-                    CreateLegend(
+                    VisualizationLegendInfo.ForColorEncoding(
                         colorDataLayer,
                         colorVariable,
                         colorEncoding,
@@ -758,63 +758,6 @@ namespace UrbanAnalytics.Visualization
 
 
             return colors;
-        }
-
-
-        // =========================================================
-        // LEGEND
-        // =========================================================
-
-        private static VisualizationLegendInfo
-            CreateLegend(
-                DataLayer dataLayer,
-                DataVariableReference variable,
-                VisualizationEncodingSpec encoding,
-                string targetLayerId,
-                ResolvedNumericScale scale
-            )
-        {
-            string displayName =
-                variable.VariableId;
-
-
-            string unit =
-                string.Empty;
-
-
-            if (dataLayer.TryGetVariableDefinition(
-                    variable.VariableId,
-                    out DataVariableDefinition
-                        definition
-                ))
-            {
-                if (!string.IsNullOrWhiteSpace(
-                        definition.DisplayName
-                    ))
-                {
-                    displayName =
-                        definition.DisplayName;
-                }
-
-
-                unit =
-                    definition.Unit
-                    ?? string.Empty;
-            }
-
-
-            return new VisualizationLegendInfo(
-                dataLayer.Id,
-                variable.VariableId,
-                displayName,
-                unit,
-                targetLayerId,
-                scale.Minimum,
-                scale.Maximum,
-                encoding.Color.GetGradient(),
-                encoding.Color.Reverse,
-                encoding.Color.NoDataColor
-            );
         }
 
 

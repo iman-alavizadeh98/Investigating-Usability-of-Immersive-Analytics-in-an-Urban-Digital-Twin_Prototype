@@ -268,7 +268,7 @@ namespace UrbanAnalytics.Visualization
 
 
             VisualizationLegendInfo legend =
-                CreateLegend(
+                VisualizationLegendInfo.ForColorEncoding(
                     dataLayer,
                     colorVariable,
                     colorEncoding,
@@ -332,59 +332,6 @@ namespace UrbanAnalytics.Visualization
                     );
                 }
             }
-        }
-
-
-        private static VisualizationLegendInfo
-            CreateLegend(
-                DataLayer dataLayer,
-                DataVariableReference variable,
-                VisualizationEncodingSpec encoding,
-                string spatialLayerId,
-                ResolvedNumericScale scale
-            )
-        {
-            string displayName =
-                variable.VariableId;
-
-
-            string unit =
-                string.Empty;
-
-
-            if (dataLayer.TryGetVariableDefinition(
-                    variable.VariableId,
-                    out DataVariableDefinition
-                        definition
-                ))
-            {
-                if (!string.IsNullOrWhiteSpace(
-                        definition.DisplayName
-                    ))
-                {
-                    displayName =
-                        definition.DisplayName;
-                }
-
-
-                unit =
-                    definition.Unit
-                    ?? string.Empty;
-            }
-
-
-            return new VisualizationLegendInfo(
-                dataLayer.Id,
-                variable.VariableId,
-                displayName,
-                unit,
-                spatialLayerId,
-                scale.Minimum,
-                scale.Maximum,
-                encoding.Color.GetGradient(),
-                encoding.Color.Reverse,
-                encoding.Color.NoDataColor
-            );
         }
 
 

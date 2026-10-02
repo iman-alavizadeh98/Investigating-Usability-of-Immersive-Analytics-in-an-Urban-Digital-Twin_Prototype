@@ -60,10 +60,57 @@ namespace UrbanAnalytics.Visualization
     }
 
 
+    /// <summary>
+    /// How the [minimum, maximum] input range of a scale is
+    /// chosen. Ignored by Quantile scales, which use the whole
+    /// data distribution.
+    /// </summary>
     public enum ScaleDomainMode
     {
         DataMinMax = 0,
-        Manual = 1
+        Manual = 1,
+
+        /// <summary>
+        /// Lower/upper percentile of the valid data values, so a
+        /// few outliers cannot squash everything else into one
+        /// colour. Values outside are clamped to the ends.
+        /// </summary>
+        Percentile = 2
+    }
+
+
+    /// <summary>
+    /// How a value inside the domain maps to [0, 1].
+    /// </summary>
+    public enum ScaleType
+    {
+        Linear = 0,
+
+        /// <summary>
+        /// log10. Needs a positive domain; values ≤ 0 clamp to
+        /// the low end.
+        /// </summary>
+        Log = 1,
+
+        /// <summary>
+        /// Centre value maps to 0.5. Symmetric: equal distances
+        /// above and below the centre map to equal distances
+        /// from 0.5, so the two sides are visually comparable.
+        /// </summary>
+        Diverging = 2,
+
+        /// <summary>
+        /// N classes holding (about) equal numbers of units.
+        /// Output is stepped: class i of N maps to i / (N - 1).
+        /// </summary>
+        Quantile = 3
+    }
+
+
+    public enum DivergingCenterMode
+    {
+        Manual = 0,
+        DataMedian = 1
     }
 
 
@@ -608,6 +655,40 @@ namespace UrbanAnalytics.Visualization
         private double manualMaximum =
             1.0;
 
+        [Tooltip(
+            "Percentile domain only: lower and upper " +
+            "percentiles (0-100) of the valid data values."
+        )]
+        [SerializeField]
+        private double lowerPercentile =
+            2.0;
+
+        [SerializeField]
+        private double upperPercentile =
+            98.0;
+
+        [SerializeField]
+        private ScaleType type =
+            ScaleType.Linear;
+
+        [Tooltip(
+            "Diverging only: where the centre value comes from."
+        )]
+        [SerializeField]
+        private DivergingCenterMode divergingCenterMode =
+            DivergingCenterMode.Manual;
+
+        [SerializeField]
+        private double divergingCenter =
+            0.0;
+
+        [Tooltip(
+            "Quantile only: number of classes (2-12)."
+        )]
+        [SerializeField]
+        private int quantileClasses =
+            5;
+
 
         public ScaleDomainMode DomainMode =>
             domainMode;
@@ -619,6 +700,30 @@ namespace UrbanAnalytics.Visualization
 
         public double ManualMaximum =>
             manualMaximum;
+
+
+        public double LowerPercentile =>
+            lowerPercentile;
+
+
+        public double UpperPercentile =>
+            upperPercentile;
+
+
+        public ScaleType Type =>
+            type;
+
+
+        public DivergingCenterMode DivergingCenterMode =>
+            divergingCenterMode;
+
+
+        public double DivergingCenter =>
+            divergingCenter;
+
+
+        public int QuantileClasses =>
+            quantileClasses;
     }
 
 
@@ -629,6 +734,14 @@ namespace UrbanAnalytics.Visualization
     [Serializable]
     public sealed class ColorEncodingSettings
     {
+        [Tooltip(
+            "ID from ColorPaletteLibrary (e.g. viridis, ylorrd, " +
+            "rdbu, tableau10). Empty = use the custom Gradient " +
+            "below."
+        )]
+        [SerializeField]
+        private string paletteId;
+
         [SerializeField]
         private Gradient gradient =
             CreateDefaultGradient();
@@ -650,12 +763,46 @@ namespace UrbanAnalytics.Visualization
             gradient;
 
 
+        public string PaletteId =>
+            paletteId;
+
+
         public Color NoDataColor =>
             noDataColor;
 
 
         public bool Reverse =>
             reverse;
+
+
+        /// <summary>
+        /// The library palette in use, or null when the custom
+        /// gradient is used. Throws for an unknown ID so a typo
+        /// cannot silently fall back to another colour map.
+        /// </summary>
+        public ColorPalette ResolvePalette()
+        {
+            if (string.IsNullOrWhiteSpace(
+                    paletteId
+                ))
+            {
+                return null;
+            }
+
+
+            if (!ColorPaletteLibrary.TryGet(
+                    paletteId,
+                    out ColorPalette palette
+                ))
+            {
+                throw new InvalidOperationException(
+                    $"Unknown colour palette '{paletteId}'."
+                );
+            }
+
+
+            return palette;
+        }
 
 
         public Gradient GetGradient()
@@ -686,6 +833,18 @@ namespace UrbanAnalytics.Visualization
                 t =
                     1.0f -
                     t;
+            }
+
+
+            ColorPalette palette =
+                ResolvePalette();
+
+
+            if (palette != null)
+            {
+                return palette.Evaluate(
+                    t
+                );
             }
 
 

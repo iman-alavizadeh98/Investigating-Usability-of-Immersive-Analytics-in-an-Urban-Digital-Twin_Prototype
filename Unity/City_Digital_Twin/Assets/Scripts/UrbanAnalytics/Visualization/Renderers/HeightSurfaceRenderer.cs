@@ -112,6 +112,20 @@ namespace UrbanAnalytics.Visualization
             }
 
 
+            // A diverging centre at half height would read as
+            // "medium", not "zero"; signed heights need the
+            // (not yet implemented) bidirectional height mark.
+            if (heightEncoding.Scale.Type ==
+                ScaleType.Diverging)
+            {
+                throw new NotSupportedException(
+                    $"HeightSurface '{spec.Id}': a Diverging " +
+                    $"scale is not supported for Height. Use " +
+                    $"Linear, Log or Quantile."
+                );
+            }
+
+
             ResolvedNumericScale heightScale =
                 VisualizationScaleUtility.Resolve(
                     heightDataLayer,
@@ -507,7 +521,7 @@ namespace UrbanAnalytics.Visualization
                 colorScale.HasValue)
             {
                 legends.Add(
-                    CreateColorLegend(
+                    VisualizationLegendInfo.ForColorEncoding(
                         colorDataLayer,
                         colorVariable,
                         colorEncoding,
@@ -772,63 +786,6 @@ namespace UrbanAnalytics.Visualization
 
             renderer.reflectionProbeUsage =
                 ReflectionProbeUsage.Off;
-        }
-
-
-        // =========================================================
-        // LEGEND
-        // =========================================================
-
-        private static VisualizationLegendInfo
-            CreateColorLegend(
-                DataLayer dataLayer,
-                DataVariableReference variable,
-                VisualizationEncodingSpec encoding,
-                string spatialLayerId,
-                ResolvedNumericScale scale
-            )
-        {
-            string displayName =
-                variable.VariableId;
-
-
-            string unit =
-                string.Empty;
-
-
-            if (dataLayer.TryGetVariableDefinition(
-                    variable.VariableId,
-                    out DataVariableDefinition
-                        definition
-                ))
-            {
-                if (!string.IsNullOrWhiteSpace(
-                        definition.DisplayName
-                    ))
-                {
-                    displayName =
-                        definition.DisplayName;
-                }
-
-
-                unit =
-                    definition.Unit
-                    ?? string.Empty;
-            }
-
-
-            return new VisualizationLegendInfo(
-                dataLayer.Id,
-                variable.VariableId,
-                displayName,
-                unit,
-                spatialLayerId,
-                scale.Minimum,
-                scale.Maximum,
-                encoding.Color.GetGradient(),
-                encoding.Color.Reverse,
-                encoding.Color.NoDataColor
-            );
         }
 
 

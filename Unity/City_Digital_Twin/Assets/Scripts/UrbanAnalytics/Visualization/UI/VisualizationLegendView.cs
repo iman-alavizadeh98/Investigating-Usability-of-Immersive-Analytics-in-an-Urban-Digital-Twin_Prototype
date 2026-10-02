@@ -182,8 +182,19 @@ namespace UrbanAnalytics.Visualization
 
             if (unitText != null)
             {
+                // e.g. "SEK · 2-98 percentile"
                 unitText.text =
-                    info.Unit;
+                    string.IsNullOrWhiteSpace(
+                        info.ScaleDescription
+                    )
+                        ? info.Unit
+                        : string.IsNullOrWhiteSpace(
+                            info.Unit
+                        )
+                            ? info.ScaleDescription
+                            : info.Unit +
+                              " · " +
+                              info.ScaleDescription;
             }
 
 
@@ -264,13 +275,23 @@ namespace UrbanAnalytics.Visualization
                 gradientTexture.wrapMode =
                     TextureWrapMode.Clamp;
 
-                gradientTexture.filterMode =
-                    FilterMode.Bilinear;
-
 
                 gradientImage.texture =
                     gradientTexture;
             }
+
+
+            // Stepped scales must show crisp class edges.
+            gradientTexture.filterMode =
+                info.ScaleType == ScaleType.Quantile
+                    ? FilterMode.Point
+                    : FilterMode.Bilinear;
+
+
+            // The ramp already has the scale, palette and reversal
+            // applied; resample it to the texture width.
+            int rampCount =
+                info.Ramp.Count;
 
 
             for (
@@ -286,23 +307,19 @@ namespace UrbanAnalytics.Visualization
                           (float)(width - 1);
 
 
-                if (info.ReverseGradient)
-                {
-                    t =
-                        1.0f - t;
-                }
-
-
-                Color color =
-                    info.Gradient.Evaluate(
-                        t
+                int index =
+                    Mathf.Min(
+                        rampCount - 1,
+                        Mathf.FloorToInt(
+                            t * rampCount
+                        )
                     );
 
 
                 gradientTexture.SetPixel(
                     x,
                     0,
-                    color
+                    info.Ramp[index]
                 );
             }
 

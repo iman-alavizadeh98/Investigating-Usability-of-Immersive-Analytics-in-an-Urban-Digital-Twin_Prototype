@@ -349,6 +349,33 @@ namespace UrbanAnalytics.Data
         }
 
 
+        /// <summary>
+        /// Returns all valid, finite values of a numeric variable
+        /// (a new array, unordered). Used by distribution-based
+        /// scales such as percentile and quantile.
+        /// </summary>
+        public bool TryGetNumericValues(
+            string variableId,
+            out double[] values)
+        {
+            values = null;
+
+            if (string.IsNullOrWhiteSpace(variableId))
+                return false;
+
+            if (!columns.TryGetValue(
+                    variableId,
+                    out DataColumn column))
+            {
+                return false;
+            }
+
+            return column.TryGetNumericValues(
+                out values
+            );
+        }
+
+
         // ---------------------------------------------------------
         // Internal lookup
         // ---------------------------------------------------------
@@ -425,6 +452,23 @@ namespace UrbanAnalytics.Data
 
             return false;
         }
+
+
+        public virtual bool TryGetNumericValues(
+            out double[] values)
+        {
+            values = null;
+
+            return false;
+        }
+
+
+        protected bool IsUsable(int rowIndex)
+        {
+            return validMask == null ||
+                   validMask.Length == 0 ||
+                   validMask[rowIndex];
+        }
     }
 
 
@@ -462,6 +506,31 @@ namespace UrbanAnalytics.Data
             maximum = this.maximum;
 
             return hasRange;
+        }
+
+
+        public override bool TryGetNumericValues(
+            out double[] values)
+        {
+            var result = new List<double>(Values.Length);
+
+            for (int i = 0; i < Values.Length; i++)
+            {
+                double value = Values[i];
+
+                if (!IsUsable(i) ||
+                    double.IsNaN(value) ||
+                    double.IsInfinity(value))
+                {
+                    continue;
+                }
+
+                result.Add(value);
+            }
+
+            values = result.ToArray();
+
+            return true;
         }
 
 
@@ -547,6 +616,25 @@ namespace UrbanAnalytics.Data
             maximum = this.maximum;
 
             return hasRange;
+        }
+
+
+        public override bool TryGetNumericValues(
+            out double[] values)
+        {
+            var result = new List<double>(Values.Length);
+
+            for (int i = 0; i < Values.Length; i++)
+            {
+                if (!IsUsable(i))
+                    continue;
+
+                result.Add(Values[i]);
+            }
+
+            values = result.ToArray();
+
+            return true;
         }
 
 
