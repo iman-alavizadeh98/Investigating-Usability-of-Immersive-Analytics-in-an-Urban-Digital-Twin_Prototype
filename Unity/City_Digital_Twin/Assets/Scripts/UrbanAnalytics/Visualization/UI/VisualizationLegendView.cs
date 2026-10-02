@@ -198,21 +198,29 @@ namespace UrbanAnalytics.Visualization
             }
 
 
+            // Categorical legends label the first and last block;
+            // the full list is in the unit line (description).
             if (minimumText != null)
             {
                 minimumText.text =
-                    FormatNumber(
-                        info.Minimum
-                    );
+                    info.IsCategorical
+                        ? info.Categories[0].Label
+                        : FormatNumber(
+                            info.Minimum
+                        );
             }
 
 
             if (maximumText != null)
             {
                 maximumText.text =
-                    FormatNumber(
-                        info.Maximum
-                    );
+                    info.IsCategorical
+                        ? info.Categories[
+                            info.Categories.Count - 1
+                        ].Label
+                        : FormatNumber(
+                            info.Maximum
+                        );
             }
 
 
@@ -283,6 +291,7 @@ namespace UrbanAnalytics.Visualization
 
             // Stepped scales must show crisp class edges.
             gradientTexture.filterMode =
+                info.IsCategorical ||
                 info.ScaleType == ScaleType.Quantile
                     ? FilterMode.Point
                     : FilterMode.Bilinear;

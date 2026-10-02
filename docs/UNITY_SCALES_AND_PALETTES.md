@@ -44,7 +44,7 @@ zero height; scales never see them.
 |---|---|---|
 | `Linear` (0) | `(v − min) / (max − min)` | Default; old specs without `type` are Linear. |
 | `Log` (1) | `log10` | Needs a positive domain. A data-driven domain whose minimum is ≤ 0 starts at the smallest positive value instead; values ≤ 0 clamp to the low end and are counted in `ClampedLow`. A manual minimum ≤ 0 is an error. |
-| `Diverging` (2) | centre → 0.5 | Centre from `divergingCenter` (`divergingCenterMode = Manual`) or the data median (`DataMedian`). **Symmetric:** the range becomes centre ± the larger of the two distances, so equal distances above and below the centre look equally strong. The legend shows that symmetric range. **Not allowed for Height** (a centre at half height would read as "medium"; signed heights need the future bidirectional-height mark). |
+| `Diverging` (2) | centre → 0.5 | Centre from `divergingCenter` (`divergingCenterMode = Manual`) or the data median (`DataMedian`). **Symmetric:** the range becomes centre ± the larger of the two distances, so equal distances above and below the centre look equally strong. The legend shows that symmetric range. **On a Height encoding it gives a signed (bidirectional) height:** the centre sits at the base, above goes up, below goes down — see [UNITY_GLYPHS_AND_BIDIRECTIONAL_HEIGHT.md](UNITY_GLYPHS_AND_BIDIRECTIONAL_HEIGHT.md). |
 | `Quantile` (3) | stepped | `quantileClasses` (2–12) classes with (about) equal unit counts. Class *i* of *N* maps to *i / (N − 1)*. Ignores `domainMode`: the classes come from the whole distribution. Ties can leave a class empty. |
 
 `ResolvedNumericScale` also reports `ClampedLow` / `ClampedHigh` (valid values
@@ -114,6 +114,6 @@ Diverging around the median:
 | Percentile bounds not `0 ≤ lower < upper ≤ 100` | throws |
 | Log with no positive value / manual min ≤ 0 | throws |
 | Quantile classes outside 2–12 | throws |
-| Diverging scale on Height | throws `NotSupportedException` |
+| Diverging scale on Height with DownwardExtrusion | throws `NotSupportedException` (other methods render a signed height) |
 | Unknown `paletteId` | throws |
 | All values equal (min = max) | every unit maps to 0.5 |

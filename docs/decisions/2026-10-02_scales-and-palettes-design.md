@@ -22,7 +22,9 @@ scales.
    Quantile). Linear is the default, so existing specs behave exactly as before
    (verified: identical colours on all 201,594 buildings).
 2. **Diverging is always symmetric** about its centre, so the two sides are
-   visually comparable; it is rejected for Height.
+   visually comparable. It was first rejected for Height; later the same day it
+   became the signed bidirectional height (see
+   [2026-10-02_glyph-and-bidirectional-encoding-rules.md](2026-10-02_glyph-and-bidirectional-encoding-rules.md)).
 3. **Quantile is stepped** and uses the whole distribution (ignores the domain).
 4. **Palettes are code-defined presets addressed by string ID**
    (`ColorEncodingSettings.paletteId`), not ScriptableObject assets. An empty ID

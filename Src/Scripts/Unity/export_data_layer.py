@@ -97,6 +97,16 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--restrict-to-spatial-layer",
+        default=None,
+        help=(
+            "Optional runtime spatial-layer geometry.json. Rows whose "
+            "unit ID is not in that layer are dropped and reported "
+            "(the Unity runtime rejects data units without geometry)."
+        ),
+    )
+
+    parser.add_argument(
         "--variable",
         action="append",
         required=True,
@@ -218,6 +228,75 @@ def apply_filter(gdf, filter_field, filter_value):
         raise ValueError("Filtering removed all rows.")
 
     return filtered
+
+
+def load_spatial_unit_ids(geometry_path):
+    path = Path(geometry_path)
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Spatial layer geometry not found: {path}"
+        )
+
+    with path.open("r", encoding="utf-8") as file:
+        geometry = json.load(file)
+
+    unit_ids = {
+        unit["id"]
+        for unit in geometry.get("units", [])
+    }
+
+    if not unit_ids:
+        raise ValueError(
+            f"Spatial layer geometry {path} contains no units."
+        )
+
+    return geometry.get("spatialLayerId"), unit_ids
+
+
+def restrict_to_spatial_units(gdf, id_field, target_layer, geometry_path):
+    """
+    Drop rows whose semantic unit ID has no geometry in the target
+    runtime spatial layer. Every dropped ID is reported, never
+    silently discarded.
+    """
+    layer_id, spatial_ids = load_spatial_unit_ids(geometry_path)
+
+    if layer_id != target_layer:
+        raise ValueError(
+            f"--restrict-to-spatial-layer points at layer '{layer_id}', "
+            f"but --target-spatial-layer is '{target_layer}'."
+        )
+
+    semantic = gdf[id_field].map(
+        lambda raw: make_semantic_id(target_layer, raw)
+    )
+
+    keep = semantic.isin(spatial_ids)
+    dropped = sorted(semantic[~keep].tolist())
+
+    print(
+        f"Restrict to layer: {layer_id} ({len(spatial_ids)} units)"
+    )
+    print(
+        f"  kept:            {int(keep.sum())}"
+    )
+    print(
+        f"  dropped:         {len(dropped)} (no geometry in the "
+        f"spatial layer)"
+    )
+
+    if dropped:
+        print(
+            f"  dropped IDs:     {dropped}"
+        )
+
+    if not keep.any():
+        raise ValueError(
+            "No rows match the spatial layer's unit IDs."
+        )
+
+    return gdf[keep].copy()
 
 
 def is_missing(value):
@@ -539,6 +618,20 @@ def export_data_layer(args):
     if (raw_ids == "").any():
         raise ValueError(
             f"ID field '{args.id_field}' contains empty values."
+        )
+
+    if args.restrict_to_spatial_layer:
+        gdf = restrict_to_spatial_units(
+            gdf,
+            args.id_field,
+            args.target_spatial_layer,
+            args.restrict_to_spatial_layer,
+        )
+
+        raw_ids = (
+            gdf[args.id_field]
+            .astype(str)
+            .str.strip()
         )
 
     duplicates = raw_ids[

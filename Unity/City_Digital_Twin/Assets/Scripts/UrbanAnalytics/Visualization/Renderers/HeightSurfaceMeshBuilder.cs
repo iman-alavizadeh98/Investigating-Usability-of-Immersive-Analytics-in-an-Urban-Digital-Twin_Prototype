@@ -3,20 +3,49 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-using UrbanAnalytics.Data;
 using UrbanAnalytics.Rendering;
 
 namespace UrbanAnalytics.Visualization
 {
     /// <summary>
+    /// Colours of one unit's height mark: Upper for the part
+    /// above the base, Lower for the part below it (bidirectional
+    /// marks). Unidirectional marks use Upper only.
+    /// </summary>
+    internal readonly struct UnitHeightColors
+    {
+        public readonly Color32 Upper;
+
+        public readonly Color32 Lower;
+
+
+        public UnitHeightColors(
+            Color32 upper,
+            Color32 lower
+        )
+        {
+            Upper =
+                upper;
+
+            Lower =
+                lower;
+        }
+    }
+
+
+    /// <summary>
     /// Generates one data-driven height mesh from an existing
     /// flat SpatialMeshChunk.
     ///
+    /// Data lookup and colouring are supplied by the caller
+    /// (HeightSurfaceRenderer), so this class is geometry only.
+    ///
     /// Supported:
-    /// - SurfaceDisplacement
-    /// - FullExtrusion
-    /// - InsetExtrusion
-    /// - DownwardExtrusion
+    /// - SurfaceDisplacement (plateau at the signed height)
+    /// - FullExtrusion / InsetExtrusion (column from Bottom to
+    ///   Top; a bidirectional column is split at the base into
+    ///   an upper and a lower part with their own colours)
+    /// - DownwardExtrusion (column from -Top to the base)
     /// </summary>
     internal static class HeightSurfaceMeshBuilder
     {
@@ -42,17 +71,9 @@ namespace UrbanAnalytics.Visualization
 
         public static Result Build(
             SpatialMeshChunk sourceChunk,
-
-            DataLayer heightDataLayer,
-            string heightVariableId,
-            ResolvedNumericScale heightScale,
-            HeightEncodingSettings heightSettings,
-            HeightSurfaceSettings surfaceSettings,
-
-            DataLayer colorDataLayer,
-            string colorVariableId,
-            ResolvedNumericScale? colorScale,
-            ColorEncodingSettings colorSettings
+            Func<string, HeightExtent> extentOf,
+            Func<SpatialMeshUnitRange, Color32[], UnitHeightColors> colorsOf,
+            HeightSurfaceSettings surfaceSettings
         )
         {
             if (sourceChunk == null)
@@ -121,25 +142,19 @@ namespace UrbanAnalytics.Visualization
                     triangles.Count / 3;
 
 
-                float height =
-                    ResolveHeight(
-                        range.UnitId,
-                        heightDataLayer,
-                        heightVariableId,
-                        heightScale,
-                        heightSettings
+                // Missing data → zero extent (flat), as before.
+                HeightExtent extent =
+                    extentOf(
+                        range.UnitId
                     );
 
 
-                Color32 unitColor =
-                    ResolveColor(
-                        sourceMesh,
-                        sourceColors,
+                UnitHeightColors unitColors =
+                    colorsOf(
                         range,
-                        colorDataLayer,
-                        colorVariableId,
-                        colorScale,
-                        colorSettings
+                        sourceColors.Length == sourceMesh.vertexCount
+                            ? sourceColors
+                            : null
                     );
 
 
@@ -147,8 +162,8 @@ namespace UrbanAnalytics.Visualization
                     sourceVertices,
                     sourceTriangles,
                     range,
-                    height,
-                    unitColor,
+                    extent,
+                    unitColors,
                     surfaceSettings,
                     vertices,
                     triangles,
@@ -226,117 +241,6 @@ namespace UrbanAnalytics.Visualization
 
 
         // =========================================================
-        // HEIGHT
-        // =========================================================
-
-        private static float ResolveHeight(
-            string unitId,
-            DataLayer dataLayer,
-            string variableId,
-            ResolvedNumericScale scale,
-            HeightEncodingSettings settings
-        )
-        {
-            if (!dataLayer.TryGetDouble(
-                    unitId,
-                    variableId,
-                    out double value
-                ))
-            {
-                return 0.0f;
-            }
-
-
-            float normalized =
-                scale.Normalize(
-                    value
-                );
-
-
-            return normalized *
-                   Mathf.Max(
-                       0.0f,
-                       settings.MaximumVisualHeight
-                   );
-        }
-
-
-        // =========================================================
-        // COLOR
-        // =========================================================
-
-        private static Color32 ResolveColor(
-            Mesh sourceMesh,
-            Color32[] sourceColors,
-            SpatialMeshUnitRange range,
-            DataLayer colorDataLayer,
-            string colorVariableId,
-            ResolvedNumericScale? colorScale,
-            ColorEncodingSettings colorSettings
-        )
-        {
-            /*
-             * If this height visualization has an explicit Color
-             * encoding, use it.
-             */
-            if (colorDataLayer != null &&
-                !string.IsNullOrWhiteSpace(
-                    colorVariableId
-                ) &&
-                colorScale.HasValue &&
-                colorSettings != null)
-            {
-                if (colorDataLayer.TryGetDouble(
-                        range.UnitId,
-                        colorVariableId,
-                        out double value
-                    ))
-                {
-                    float normalized =
-                        colorScale.Value.Normalize(
-                            value
-                        );
-
-
-                    return colorSettings.Evaluate(
-                        normalized
-                    );
-                }
-
-
-                return colorSettings.NoDataColor;
-            }
-
-
-            /*
-             * Otherwise preserve any existing source vertex color.
-             *
-             * This allows a Surface color renderer to be composed
-             * before a HeightSurface renderer if desired.
-             */
-            if (sourceColors != null &&
-                sourceColors.Length ==
-                sourceMesh.vertexCount &&
-                range.VertexStart >= 0 &&
-                range.VertexStart <
-                sourceColors.Length)
-            {
-                return sourceColors[
-                    range.VertexStart
-                ];
-            }
-
-
-            return new Color32(
-                255,
-                255,
-                255,
-                255
-            );
-        }
-
-
-        // =========================================================
         // UNIT GEOMETRY
         // =========================================================
 
@@ -344,8 +248,8 @@ namespace UrbanAnalytics.Visualization
             Vector3[] sourceVertices,
             int[] sourceTriangles,
             SpatialMeshUnitRange range,
-            float height,
-            Color32 color,
+            HeightExtent extent,
+            UnitHeightColors unitColors,
             HeightSurfaceSettings settings,
             List<Vector3> outputVertices,
             List<int> outputTriangles,
@@ -357,12 +261,15 @@ namespace UrbanAnalytics.Visualization
             {
                 case HeightVisualizationMethod.SurfaceDisplacement:
                     {
+                        // Exactly one of Top / Bottom is non-zero.
                         AppendSurfaceDisplacement(
                             sourceVertices,
                             sourceTriangles,
                             range,
-                            height,
-                            color,
+                            extent.Top + extent.Bottom,
+                            extent.IsBelowBase
+                                ? unitColors.Lower
+                                : unitColors.Upper,
                             outputVertices,
                             outputTriangles,
                             outputColors,
@@ -374,42 +281,52 @@ namespace UrbanAnalytics.Visualization
 
 
                 case HeightVisualizationMethod.FullExtrusion:
-                    {
-                        AppendExtrusion(
-                            sourceVertices,
-                            sourceTriangles,
-                            range,
-                            height,
-                            1.0f,
-                            false,
-                            color,
-                            outputVertices,
-                            outputTriangles,
-                            outputColors,
-                            triangleUnitIds
-                        );
-
-                        return;
-                    }
-
-
                 case HeightVisualizationMethod.InsetExtrusion:
                     {
-                        AppendExtrusion(
-                            sourceVertices,
-                            sourceTriangles,
-                            range,
-                            height,
+                        float inset =
                             ResolveInsetFactor(
                                 settings
-                            ),
-                            false,
-                            color,
-                            outputVertices,
-                            outputTriangles,
-                            outputColors,
-                            triangleUnitIds
-                        );
+                            );
+
+
+                        // Upper part (always emitted, so every unit
+                        // keeps at least one prism even at zero
+                        // height — needed for picking and ranges).
+                        if (extent.Top > 0.0f ||
+                            !extent.IsBelowBase)
+                        {
+                            AppendPrism(
+                                sourceVertices,
+                                sourceTriangles,
+                                range,
+                                0.0f,
+                                extent.Top,
+                                inset,
+                                unitColors.Upper,
+                                outputVertices,
+                                outputTriangles,
+                                outputColors,
+                                triangleUnitIds
+                            );
+                        }
+
+
+                        if (extent.IsBelowBase)
+                        {
+                            AppendPrism(
+                                sourceVertices,
+                                sourceTriangles,
+                                range,
+                                extent.Bottom,
+                                0.0f,
+                                inset,
+                                unitColors.Lower,
+                                outputVertices,
+                                outputTriangles,
+                                outputColors,
+                                triangleUnitIds
+                            );
+                        }
 
                         return;
                     }
@@ -417,14 +334,14 @@ namespace UrbanAnalytics.Visualization
 
                 case HeightVisualizationMethod.DownwardExtrusion:
                     {
-                        AppendExtrusion(
+                        AppendPrism(
                             sourceVertices,
                             sourceTriangles,
                             range,
-                            height,
+                            -extent.Top,
+                            0.0f,
                             1.0f,
-                            true,
-                            color,
+                            unitColors.Upper,
                             outputVertices,
                             outputTriangles,
                             outputColors,
@@ -535,16 +452,21 @@ namespace UrbanAnalytics.Visualization
 
 
         // =========================================================
-        // EXTRUSION
+        // PRISM (EXTRUSION)
         // =========================================================
 
-        private static void AppendExtrusion(
+        /// <summary>
+        /// Extrudes the unit polygon (optionally inset about its
+        /// centroid) between source-y + bottomOffset and
+        /// source-y + topOffset.
+        /// </summary>
+        private static void AppendPrism(
             Vector3[] sourceVertices,
             int[] sourceTriangles,
             SpatialMeshUnitRange range,
-            float height,
+            float bottomOffset,
+            float topOffset,
             float insetFactor,
-            bool downward,
             Color32 color,
             List<Vector3> vertices,
             List<int> triangles,
@@ -572,25 +494,18 @@ namespace UrbanAnalytics.Visualization
                 i++
             )
             {
-                Vector3 source =
-                    sourceVertices[
-                        range.VertexStart + i
-                    ];
-
-
                 Vector3 transformed =
                     ApplyInset(
-                        source,
+                        sourceVertices[
+                            range.VertexStart + i
+                        ],
                         centroid,
                         insetFactor
                     );
 
 
-                if (downward)
-                {
-                    transformed.y -=
-                        height;
-                }
+                transformed.y +=
+                    bottomOffset;
 
 
                 vertices.Add(
@@ -616,25 +531,18 @@ namespace UrbanAnalytics.Visualization
                 i++
             )
             {
-                Vector3 source =
-                    sourceVertices[
-                        range.VertexStart + i
-                    ];
-
-
                 Vector3 transformed =
                     ApplyInset(
-                        source,
+                        sourceVertices[
+                            range.VertexStart + i
+                        ],
                         centroid,
                         insetFactor
                     );
 
 
-                if (!downward)
-                {
-                    transformed.y +=
-                        height;
-                }
+                transformed.y +=
+                    topOffset;
 
 
                 vertices.Add(

@@ -5,8 +5,10 @@ using System.Threading.Tasks;
 using UnityEngine;
 
 using UrbanAnalytics.Associations;
+using UrbanAnalytics.Core;
 using UrbanAnalytics.Data;
 using UrbanAnalytics.Rendering;
+using UrbanAnalytics.Spatial;
 using UrbanAnalytics.UrbanContext;
 
 namespace UrbanAnalytics.Visualization
@@ -40,6 +42,16 @@ namespace UrbanAnalytics.Visualization
         [SerializeField]
         private AssociationManager
             associationManager;
+
+
+        // Needed for derived anchors (glyph layers). Resolved at
+        // runtime; not serialized.
+        private SpatialLayerManager
+            spatialLayerManager;
+
+
+        private SpatialReferenceManager
+            spatialReferenceManager;
 
 
         // =========================================================
@@ -398,7 +410,9 @@ namespace UrbanAnalytics.Visualization
                         urbanContextManager,
                         associationManager,
                         runtimeState,
-                        buildingVertexColorMaterial
+                        buildingVertexColorMaterial,
+                        spatialLayerManager,
+                        spatialReferenceManager
                     );
 
 
@@ -468,6 +482,21 @@ namespace UrbanAnalytics.Visualization
 
             rendererRegistry.Register(
                 new BuildingSurfaceRenderer()
+            );
+
+
+            rendererRegistry.Register(
+                new BarGlyphRenderer()
+            );
+
+
+            rendererRegistry.Register(
+                new StackedBarGlyphRenderer()
+            );
+
+
+            rendererRegistry.Register(
+                new RadialGlyphRenderer()
             );
         }
 
@@ -801,6 +830,18 @@ namespace UrbanAnalytics.Visualization
                         AssociationManager
                     >();
             }
+
+
+            spatialLayerManager =
+                FindFirstObjectByType<
+                    SpatialLayerManager
+                >();
+
+
+            spatialReferenceManager =
+                FindFirstObjectByType<
+                    SpatialReferenceManager
+                >();
         }
 
 

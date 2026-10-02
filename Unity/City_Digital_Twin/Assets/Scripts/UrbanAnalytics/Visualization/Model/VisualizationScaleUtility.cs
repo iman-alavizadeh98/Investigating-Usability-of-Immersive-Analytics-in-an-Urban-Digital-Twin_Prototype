@@ -372,6 +372,25 @@ namespace UrbanAnalytics.Visualization
             NumericScaleSpec spec
         )
         {
+            return Resolve(
+                values,
+                spec,
+                false
+            );
+        }
+
+
+        /// <summary>
+        /// includeZero: for Linear scales, extend the domain to
+        /// contain 0 so mark lengths are proportional to values
+        /// (used by bar-like glyphs). No effect on other types.
+        /// </summary>
+        public static ResolvedNumericScale Resolve(
+            double[] values,
+            NumericScaleSpec spec,
+            bool includeZero
+        )
+        {
             if (values == null)
             {
                 throw new ArgumentNullException(
@@ -526,6 +545,26 @@ namespace UrbanAnalytics.Visualization
                     {
                         description =
                             domainText;
+
+
+                        if (includeZero &&
+                            (minimum > 0.0 || maximum < 0.0))
+                        {
+                            minimum =
+                                Math.Min(
+                                    minimum,
+                                    0.0
+                                );
+
+                            maximum =
+                                Math.Max(
+                                    maximum,
+                                    0.0
+                                );
+
+                            description +=
+                                ", from zero";
+                        }
 
                         break;
                     }

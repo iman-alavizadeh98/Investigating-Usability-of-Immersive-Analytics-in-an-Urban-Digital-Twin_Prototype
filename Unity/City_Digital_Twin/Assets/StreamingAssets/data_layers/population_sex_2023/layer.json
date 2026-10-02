@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0",
+  "id": "population_sex_2023",
+  "displayName": "Population by sex 2023",
+  "description": "SCB Tab2 Befolkning efter kön (population by sex), 250 m Ruta cells, 2023.",
+  "targetSpatialLayerId": "ruta_250",
+  "dataFile": "values.json",
+  "temporalMode": "Static",
+  "variables": [
+    {
+      "id": "men",
+      "displayName": "Men",
+      "description": "Man",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "women",
+      "displayName": "Women",
+      "description": "Kvinnor",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "total",
+      "displayName": "Total population",
+      "description": "Totalt",
+      "valueType": "Integer",
+      "unit": "persons"
+    }
+  ]
+}

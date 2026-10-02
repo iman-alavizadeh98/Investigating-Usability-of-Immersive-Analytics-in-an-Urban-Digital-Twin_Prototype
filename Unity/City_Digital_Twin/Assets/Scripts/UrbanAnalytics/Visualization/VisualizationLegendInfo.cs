@@ -6,6 +6,34 @@ using UrbanAnalytics.Data;
 
 namespace UrbanAnalytics.Visualization
 {
+    /// <summary>One entry of a categorical legend.</summary>
+    public readonly struct LegendCategory
+    {
+        public string Label
+        {
+            get;
+        }
+
+        public Color32 Color
+        {
+            get;
+        }
+
+
+        public LegendCategory(
+            string label,
+            Color32 color
+        )
+        {
+            Label =
+                label ?? string.Empty;
+
+            Color =
+                color;
+        }
+    }
+
+
     /// <summary>
     /// Runtime information describing the currently active
     /// visualization for presentation in UI components.
@@ -48,6 +76,16 @@ namespace UrbanAnalytics.Visualization
         public IReadOnlyList<double> ClassBreaks { get; }
 
         public Color NoDataColor { get; }
+
+        /// <summary>
+        /// Non-empty for categorical legends (glyph segments,
+        /// up/down colours). Ramp then holds one block per entry.
+        /// </summary>
+        public IReadOnlyList<LegendCategory> Categories { get; private set; }
+            = Array.Empty<LegendCategory>();
+
+        public bool IsCategorical =>
+            Categories.Count > 0;
 
 
         public VisualizationLegendInfo(
@@ -110,6 +148,70 @@ namespace UrbanAnalytics.Visualization
                 ?? Array.Empty<double>();
 
             NoDataColor = noDataColor;
+        }
+
+
+        /// <summary>
+        /// Categorical legend: one colour per labelled entry (e.g.
+        /// stacked-bar segments, or the up/down parts of a
+        /// bidirectional mark). Minimum/Maximum are not meaningful
+        /// and are set to 0.
+        /// </summary>
+        public static VisualizationLegendInfo ForCategories(
+            string dataLayerId,
+            string title,
+            string unit,
+            string targetLayerId,
+            IReadOnlyList<LegendCategory> categories,
+            string description,
+            Color noDataColor
+        )
+        {
+            if (categories == null ||
+                categories.Count == 0)
+            {
+                throw new ArgumentException(
+                    "A categorical legend needs at least one entry.",
+                    nameof(categories)
+                );
+            }
+
+
+            var ramp =
+                new Color32[
+                    categories.Count
+                ];
+
+
+            for (
+                int i = 0;
+                i < categories.Count;
+                i++
+            )
+            {
+                ramp[i] =
+                    categories[i].Color;
+            }
+
+
+            return new VisualizationLegendInfo(
+                dataLayerId,
+                title,
+                title,
+                unit,
+                targetLayerId,
+                0.0,
+                0.0,
+                ramp,
+                description,
+                ScaleType.Quantile,
+                null,
+                noDataColor
+            )
+            {
+                Categories =
+                    categories
+            };
         }
 
 

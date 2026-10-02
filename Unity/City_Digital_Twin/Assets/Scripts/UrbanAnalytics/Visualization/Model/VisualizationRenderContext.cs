@@ -5,8 +5,10 @@ using System.Threading.Tasks;
 using UnityEngine;
 
 using UrbanAnalytics.Associations;
+using UrbanAnalytics.Core;
 using UrbanAnalytics.Data;
 using UrbanAnalytics.Rendering;
+using UrbanAnalytics.Spatial;
 using UrbanAnalytics.UrbanContext;
 
 namespace UrbanAnalytics.Visualization
@@ -62,6 +64,25 @@ namespace UrbanAnalytics.Visualization
         }
 
 
+        public SpatialLayerManager SpatialLayers
+        {
+            get;
+        }
+
+
+        public SpatialReferenceManager SpatialReference
+        {
+            get;
+        }
+
+
+        private readonly Dictionary<string, DerivedAnchorSet>
+            anchorCache =
+                new Dictionary<string, DerivedAnchorSet>(
+                    StringComparer.Ordinal
+                );
+
+
         public VisualizationRenderContext(
             DataLayerManager dataLayers,
             GeometryManager geometry,
@@ -69,9 +90,17 @@ namespace UrbanAnalytics.Visualization
             UrbanContextManager urbanContext,
             AssociationManager associations,
             VisualizationRuntimeState runtimeState,
-            Material buildingVertexColorMaterial = null
+            Material buildingVertexColorMaterial = null,
+            SpatialLayerManager spatialLayers = null,
+            SpatialReferenceManager spatialReference = null
         )
         {
+            SpatialLayers =
+                spatialLayers;
+
+            SpatialReference =
+                spatialReference;
+
             DataLayers =
                 dataLayers
                 ?? throw new ArgumentNullException(
@@ -167,6 +196,71 @@ namespace UrbanAnalytics.Visualization
 
 
             return root;
+        }
+
+
+        /// <summary>
+        /// One anchor per unit of a spatial layer (cached). The
+        /// layer is rendered first so anchors sit on its surface.
+        /// </summary>
+        public async Task<DerivedAnchorSet>
+            GetDerivedAnchorsAsync(
+                string spatialLayerId,
+                CancellationToken cancellationToken
+            )
+        {
+            if (anchorCache.TryGetValue(
+                    spatialLayerId,
+                    out DerivedAnchorSet cached
+                ))
+            {
+                return cached;
+            }
+
+
+            if (SpatialLayers == null ||
+                SpatialReference == null)
+            {
+                throw new InvalidOperationException(
+                    "Derived anchors need SpatialLayerManager " +
+                    "and SpatialReferenceManager in the render " +
+                    "context."
+                );
+            }
+
+
+            GameObject root =
+                await GetRenderedSpatialLayerAsync(
+                    spatialLayerId,
+                    cancellationToken
+                );
+
+
+            if (!SpatialLayers.TryGetLayer(
+                    spatialLayerId,
+                    out SpatialLayer layer
+                ))
+            {
+                throw new InvalidOperationException(
+                    $"Spatial layer '{spatialLayerId}' is not " +
+                    $"loaded."
+                );
+            }
+
+
+            DerivedAnchorSet anchors =
+                DerivedAnchorSet.Build(
+                    layer,
+                    root.transform,
+                    SpatialReference
+                );
+
+
+            anchorCache[spatialLayerId] =
+                anchors;
+
+
+            return anchors;
         }
 
 

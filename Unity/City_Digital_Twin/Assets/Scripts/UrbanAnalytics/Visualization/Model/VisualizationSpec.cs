@@ -268,10 +268,31 @@ namespace UrbanAnalytics.Visualization
             heightSurface =
                 new HeightSurfaceSettings();
 
+        [Tooltip(
+            "Placement of urban-context layers (buildings) and " +
+            "glyph layers: Fixed, or on top of a HeightSurface."
+        )]
         [SerializeField]
         private UrbanContextPlacementSettings
             urbanContextPlacement =
                 new UrbanContextPlacementSettings();
+
+        [Tooltip(
+            "Glyph marks (Bar / StackedBar / Radial) only."
+        )]
+        [SerializeField]
+        private GlyphSettings
+            glyph =
+                new GlyphSettings();
+
+        [Tooltip(
+            "Bidirectional height only (Positive/Negative height " +
+            "roles, or a Diverging height scale)."
+        )]
+        [SerializeField]
+        private BidirectionalHeightSettings
+            bidirectional =
+                new BidirectionalHeightSettings();
 
 
         public string Id =>
@@ -302,6 +323,14 @@ namespace UrbanAnalytics.Visualization
         public UrbanContextPlacementSettings
             UrbanContextPlacement =>
                 urbanContextPlacement;
+
+
+        public GlyphSettings Glyph =>
+            glyph ?? (glyph = new GlyphSettings());
+
+
+        public BidirectionalHeightSettings Bidirectional =>
+            bidirectional ?? (bidirectional = new BidirectionalHeightSettings());
 
 
         public bool IsConfigured =>
@@ -572,6 +601,48 @@ namespace UrbanAnalytics.Visualization
 
             variable =
                 variables[0];
+
+
+            return true;
+        }
+
+
+        /// <summary>
+        /// Two or more configured variables, in declared order
+        /// (the order segments are stacked / placed around a
+        /// radial glyph). Mode must be Multiple.
+        /// </summary>
+        public bool TryGetMultiple(
+            out IReadOnlyList<DataVariableReference> result
+        )
+        {
+            result =
+                null;
+
+
+            if (mode != DataBindingMode.Multiple ||
+                variables == null ||
+                variables.Count < 2)
+            {
+                return false;
+            }
+
+
+            foreach (
+                DataVariableReference variable
+                in variables
+            )
+            {
+                if (variable == null ||
+                    !variable.IsConfigured)
+                {
+                    return false;
+                }
+            }
+
+
+            result =
+                variables;
 
 
             return true;
@@ -937,6 +1008,100 @@ namespace UrbanAnalytics.Visualization
 
         public float MaximumVisualHeight =>
             maximumVisualHeight;
+    }
+
+
+    /// <summary>
+    /// Size of glyphs relative to the anchor spacing (the median
+    /// cell size of the anchor layer), so glyphs scale with the
+    /// grid and stay uniform across clipped boundary cells.
+    /// </summary>
+    [Serializable]
+    public sealed class GlyphSettings
+    {
+        [Tooltip(
+            "Bar / stacked-bar footprint width as a fraction of " +
+            "the typical anchor cell size."
+        )]
+        [SerializeField]
+        [Range(0.05f, 1.0f)]
+        private float widthFraction =
+            0.5f;
+
+        [Tooltip(
+            "Radial glyph: maximum radius as a fraction of the " +
+            "typical anchor cell size (0.5 touches the cell edge)."
+        )]
+        [SerializeField]
+        [Range(0.05f, 0.5f)]
+        private float radiusFraction =
+            0.45f;
+
+        [Tooltip(
+            "Radial glyph: thickness of the flat wedges, in Unity " +
+            "units (0.002 = 2 m)."
+        )]
+        [SerializeField]
+        [Min(0.0001f)]
+        private float radialThickness =
+            0.002f;
+
+        [Tooltip(
+            "Radial glyph: arc subdivisions per wedge."
+        )]
+        [SerializeField]
+        [Range(2, 32)]
+        private int arcSteps =
+            8;
+
+        [Tooltip(
+            "Bar colour when the layer has no Color encoding " +
+            "(and is not bidirectional)."
+        )]
+        [SerializeField]
+        private Color defaultColor =
+            new Color32(0x4e, 0x79, 0xa7, 255);
+
+
+        public float WidthFraction =>
+            widthFraction;
+
+        public float RadiusFraction =>
+            radiusFraction;
+
+        public float RadialThickness =>
+            radialThickness;
+
+        public int ArcSteps =>
+            arcSteps;
+
+        public Color32 DefaultColor =>
+            defaultColor;
+    }
+
+
+    /// <summary>
+    /// Colours of the upward and downward parts of a
+    /// bidirectional height mark when no Color encoding is set.
+    /// Defaults are the two ends of the ColorBrewer RdBu palette.
+    /// </summary>
+    [Serializable]
+    public sealed class BidirectionalHeightSettings
+    {
+        [SerializeField]
+        private Color positiveColor =
+            new Color32(0x21, 0x66, 0xac, 255);
+
+        [SerializeField]
+        private Color negativeColor =
+            new Color32(0xb2, 0x18, 0x2b, 255);
+
+
+        public Color32 PositiveColor =>
+            positiveColor;
+
+        public Color32 NegativeColor =>
+            negativeColor;
     }
 
 

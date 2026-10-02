@@ -35,6 +35,14 @@
   {
     "id": "income_2023",
     "definition": "data_layers/income_2023/layer.json"
+  },
+  {
+    "id": "population_age_2023",
+    "definition": "data_layers/population_age_2023/layer.json"
+  },
+  {
+    "id": "population_sex_2023",
+    "definition": "data_layers/population_sex_2023/layer.json"
   }
 ],
   "associations": []

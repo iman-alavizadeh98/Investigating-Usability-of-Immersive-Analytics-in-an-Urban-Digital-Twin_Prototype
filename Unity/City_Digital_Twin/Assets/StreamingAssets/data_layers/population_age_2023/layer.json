@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "1.0",
+  "id": "population_age_2023",
+  "displayName": "Population by age 2023",
+  "description": "SCB Tab1 Befolkning efter ålder (population by age), 250 m Ruta cells, 2023.",
+  "targetSpatialLayerId": "ruta_250",
+  "dataFile": "values.json",
+  "temporalMode": "Static",
+  "variables": [
+    {
+      "id": "age_0_6",
+      "displayName": "Age 0–6",
+      "description": "Alder_0_6",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "age_7_15",
+      "displayName": "Age 7–15",
+      "description": "Alder_7_15",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "age_16_19",
+      "displayName": "Age 16–19",
+      "description": "Alder_16_1 (truncated DBF name)",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "age_20_24",
+      "displayName": "Age 20–24",
+      "description": "Alder_20_2 (truncated DBF name)",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "age_25_44",
+      "displayName": "Age 25–44",
+      "description": "Alder_25_4 (truncated DBF name)",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "age_45_64",
+      "displayName": "Age 45–64",
+      "description": "Alder_45_6 (truncated DBF name)",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "age_65_plus",
+      "displayName": "Age 65+",
+      "description": "Alder_65",
+      "valueType": "Integer",
+      "unit": "persons"
+    },
+    {
+      "id": "total",
+      "displayName": "Total population",
+      "description": "Totalt",
+      "valueType": "Integer",
+      "unit": "persons"
+    }
+  ]
+}

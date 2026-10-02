@@ -61,77 +61,50 @@ namespace UrbanAnalytics.Visualization
             // HEIGHT
             // =====================================================
 
-            if (!spec.TryGetEncoding(
-                    VisualizationChannel.Height,
-                    out VisualizationEncodingSpec
-                        heightEncoding
-                ))
-            {
-                throw new InvalidOperationException(
-                    $"HeightSurface '{spec.Id}' requires " +
-                    $"a Height encoding."
-                );
-            }
-
-
-            if (!heightEncoding.Data.TryGetSingle(
-                    out DataVariableReference
-                        heightVariable
-                ))
-            {
-                throw new InvalidOperationException(
-                    "Height currently requires exactly " +
-                    "one variable."
-                );
-            }
-
-
-            DataLayer heightDataLayer =
-                await context.GetDataLayerAsync(
-                    heightVariable.DataLayerId,
+            // Unidirectional, Signed (Diverging scale: centre at the
+            // base, above goes up, below goes down) or TwoSided
+            // (Positive role up, Negative role down).
+            ResolvedHeightBinding height =
+                await ResolvedHeightBinding.ResolveAsync(
+                    context,
+                    spec,
+                    spec.Target.LayerId,
+                    false,
                     cancellationToken
                 );
 
 
-            ValidateDirectSpatialAssociation(
-                heightDataLayer,
-                spec.Target.LayerId
-            );
+            HeightVisualizationMethod method =
+                spec.HeightSurface.Method;
 
 
-            if (!heightDataLayer.ContainsVariable(
-                    heightVariable.VariableId
-                ))
-            {
-                throw new InvalidOperationException(
-                    $"Data layer " +
-                    $"'{heightDataLayer.Id}' does not " +
-                    $"contain " +
-                    $"'{heightVariable.VariableId}'."
-                );
-            }
-
-
-            // A diverging centre at half height would read as
-            // "medium", not "zero"; signed heights need the
-            // (not yet implemented) bidirectional height mark.
-            if (heightEncoding.Scale.Type ==
-                ScaleType.Diverging)
+            if (height.IsBidirectional &&
+                method ==
+                    HeightVisualizationMethod
+                        .DownwardExtrusion)
             {
                 throw new NotSupportedException(
-                    $"HeightSurface '{spec.Id}': a Diverging " +
-                    $"scale is not supported for Height. Use " +
-                    $"Linear, Log or Quantile."
+                    $"HeightSurface '{spec.Id}': " +
+                    $"DownwardExtrusion cannot show a " +
+                    $"bidirectional height. Use FullExtrusion " +
+                    $"or InsetExtrusion."
                 );
             }
 
 
-            ResolvedNumericScale heightScale =
-                VisualizationScaleUtility.Resolve(
-                    heightDataLayer,
-                    heightVariable.VariableId,
-                    heightEncoding.Scale
+            if (height.Mode ==
+                    HeightBindingMode.TwoSided &&
+                method ==
+                    HeightVisualizationMethod
+                        .SurfaceDisplacement)
+            {
+                throw new NotSupportedException(
+                    $"HeightSurface '{spec.Id}': a displaced " +
+                    $"plateau has one level, so it cannot show " +
+                    $"two sides. Use FullExtrusion or " +
+                    $"InsetExtrusion."
                 );
+            }
 
 
             // =====================================================
@@ -345,6 +318,70 @@ namespace UrbanAnalytics.Visualization
                 );
 
 
+            // Colour per unit: the Color encoding if any (whole
+            // column); otherwise bidirectional marks use the
+            // positive/negative colours and unidirectional marks
+            // keep the source surface colour (so a Surface colour
+            // layer placed before this one shows through).
+            BidirectionalHeightSettings directionColors =
+                spec.Bidirectional;
+
+
+            UnitHeightColors ColorsOf(
+                SpatialMeshUnitRange range,
+                Color32[] sourceColors
+            )
+            {
+                if (colorDataLayer != null &&
+                    colorScale.HasValue)
+                {
+                    Color32 dataColor =
+                        colorDataLayer.TryGetDouble(
+                            range.UnitId,
+                            colorVariable.VariableId,
+                            out double value
+                        )
+                            ? colorEncoding.Color.Evaluate(
+                                colorScale.Value.Normalize(
+                                    value
+                                )
+                            )
+                            : (Color32)colorEncoding
+                                .Color
+                                .NoDataColor;
+
+
+                    return new UnitHeightColors(
+                        dataColor,
+                        dataColor
+                    );
+                }
+
+
+                if (height.IsBidirectional)
+                {
+                    return new UnitHeightColors(
+                        directionColors.PositiveColor,
+                        directionColors.NegativeColor
+                    );
+                }
+
+
+                Color32 sourceColor =
+                    sourceColors != null &&
+                    range.VertexStart >= 0 &&
+                    range.VertexStart < sourceColors.Length
+                        ? sourceColors[range.VertexStart]
+                        : new Color32(255, 255, 255, 255);
+
+
+                return new UnitHeightColors(
+                    sourceColor,
+                    sourceColor
+                );
+            }
+
+
             try
             {
                 foreach (
@@ -369,22 +406,9 @@ namespace UrbanAnalytics.Visualization
                             HeightSurfaceMeshBuilder
                                 .Build(
                                     sourceChunk,
-
-                                    heightDataLayer,
-                                    heightVariable
-                                        .VariableId,
-                                    heightScale,
-                                    heightEncoding
-                                        .Height,
-                                    spec
-                                        .HeightSurface,
-
-                                    colorDataLayer,
-                                    colorVariable
-                                        ?.VariableId,
-                                    colorScale,
-                                    colorEncoding
-                                        ?.Color
+                                    height.Evaluate,
+                                    ColorsOf,
+                                    spec.HeightSurface
                                 );
 
 
@@ -530,6 +554,15 @@ namespace UrbanAnalytics.Visualization
                     )
                 );
             }
+            else if (height.IsBidirectional)
+            {
+                legends.Add(
+                    height.CreateDirectionLegend(
+                        spec.Target.LayerId,
+                        spec.Bidirectional
+                    )
+                );
+            }
 
 
             Debug.Log(
@@ -537,16 +570,15 @@ namespace UrbanAnalytics.Visualization
                 $"Layer: {spec.Id}\n" +
                 $"Spatial target: " +
                 $"{spec.Target.LayerId}\n" +
-                $"Height: " +
-                $"{heightVariable.DataLayerId}." +
-                $"{heightVariable.VariableId}\n" +
+                $"Height ({height.Mode}): " +
+                $"{height.Describe()}\n" +
                 $"Method: " +
                 $"{spec.HeightSurface.Method}\n" +
                 $"Height range: " +
-                $"[{heightScale.Minimum}, " +
-                $"{heightScale.Maximum}]\n" +
+                $"[{height.Scale.Minimum}, " +
+                $"{height.Scale.Maximum}]\n" +
                 $"Max visual height: " +
-                $"{heightEncoding.Height.MaximumVisualHeight}\n" +
+                $"{height.MaximumHeight}\n" +
                 $"Published surface offsets: " +
                 $"{surfaceTopOffsets.Count}",
                 visualizationRoot
