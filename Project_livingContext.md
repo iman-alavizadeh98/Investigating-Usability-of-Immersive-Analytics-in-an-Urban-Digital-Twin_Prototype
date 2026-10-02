@@ -10,6 +10,10 @@ The current project direction is pipeline-first. The modular architecture is now
 
 The main intent is to preserve Swedish source semantics while creating processed English-facing outputs for development, analytics, and runtime use. The key interaction pattern remains building-level spatial lookup: a building can later be linked to demographic, geographic, and metadata layers.
 
+The repo has two halves (updated 2026-10-02):
+- **Unity runtime (`Unity/City_Digital_Twin/`, `UrbanAnalytics` module) — the actual thesis prototype.** A spec-driven urban immersive-analytics engine ("Matplotlib for spatial urban data in 3D"), target device Meta Quest 3S. It loads a runtime package from `StreamingAssets/` and **generates all geometry at runtime**. This code is hand-written and was not tracked in this file until 2026-10-02 — check `git log -- Unity` for anything newer.
+- **Python (`Src/`) — data preparation.** Its job toward Unity is to export runtime packages. The Python **mesh-generation pipeline is discarded** (pre-built meshes were too heavy to import and use) but is **kept as a documented failed attempt** — see [docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md).
+
 ## Current Status
 
 The current work is centered on the modular pipeline system and its downstream mesh and analytics workflows, with a new focus on LOD1 input enrichment via LiDAR height estimation and strategy-based mesh generation.
@@ -21,9 +25,15 @@ Current status:
 - validation and profiling are part of the workflow;
 - an optional postprocess snapshot step can be generated for deduplicated outputs;
 - a new LiDAR height estimation pipeline enriches buildings with accurate heights from laserdata_nh/ LAZ tiles (NEW);
-- mesh generation exists as a separate layer from schema standardization;
+- mesh generation exists as a separate layer from schema standardization — **discarded for the runtime (2026-10-02), kept as a failed attempt**;
 - spatial joins and analytics payload preparation are part of the downstream chain;
 - legacy phase docs still exist, but they should be treated as older snapshots unless a newer code/doc update says otherwise.
+
+Unity runtime status (2026-10-02, per the October 2026 development report, checked against the code):
+- **tested:** project manifest loading, EPSG:3006 → Unity transform, cross-platform `RuntimeAssetReader`, `ruta_250` spatial layer (3,919 units, 20 chunks), `income_2023` data layer, surface colouring, all four height methods, loading 201,594 buildings in 269 chunks, building → Ruta association (190,356 matched / 11,238 unmatched);
+- **implemented, pending visual validation:** building colouring through the association (`BuildingSurfaceRenderer`) and buildings following an analytical height surface (`FollowHeightSurface`). Note: the saved `SampleScene` startup spec contains only the `income_surface` layer, not the building layer, so this has not been run from the saved scene;
+- **not implemented:** glyph renderers (Bar / StackedBar / Radial), bidirectional height, percentile/quantile scales, multiple legends, interaction/selection, XR/Quest support (no XR package installed), temporal playback, the table/workspace concept, scenario configuration outside the Inspector, study logging;
+- **runtime data is test data.** The data pipeline feeding Unity will be rebuilt; do not tune code to the current values.
 
 Important note:
 - if phase notes, handoff docs, and code disagree, use the newest dated source or the current code path first;
@@ -33,6 +43,24 @@ Important note:
 
 Check these first when updating context or reasoning about the project:
 
+Unity runtime (current prototype; paths under `Unity/City_Digital_Twin/Assets/`):
+- `Scenes/SampleScene.unity` — the only scene. `/UrbanAnalytics` holds the eight system managers, `/CityRoot` is the parent for runtime-generated geometry, `/VisualizationUI` holds the colour legend
+- `StreamingAssets/project_manifest.json` — runtime package root: CRS, Unity origin/scale/axes, spatial and data layer list
+- `Scripts/UrbanAnalytics/Core/` — `ProjectManager`, `ProjectManifest`, `SpatialReferenceManager` (the only CRS ⇄ Unity conversion)
+- `Scripts/UrbanAnalytics/IO/RuntimeAssetReader.cs` — all package file reads (Editor, Windows, Android/Quest)
+- `Scripts/UrbanAnalytics/Spatial/` — spatial layers, units and geometry model (`SpatialLayerManager`, loaders, `Geometry/`)
+- `Scripts/UrbanAnalytics/Data/` — data layers (`DataLayerManager`, loader, definitions)
+- `Scripts/UrbanAnalytics/Rendering/` — `GeometryManager`, `ProceduralPolygonMeshBuilder`, `PolygonTriangulator`, `SpatialMeshChunk`
+- `Scripts/UrbanAnalytics/UrbanContext/` — `UrbanContextManager` (buildings from `GBLD` binary), `BuildingMeshChunk`
+- `Scripts/UrbanAnalytics/Associations/AssociationManager.cs` — generic entity → entity links (e.g. `buildings_to_ruta`)
+- `Scripts/UrbanAnalytics/Visualization/` — `VisualizationManager`, `Model/VisualizationSpec.cs` (the spec schema), `Renderers/`, `UI/VisualizationLegendView.cs`
+- [Src/Scripts/Unity/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/Unity) — Python exporters that write the runtime package (`export_polygon_spatial_layer.py`, `export_data_layer.py`)
+- [docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md) — why geometry is generated at runtime
+- The October 2026 development report (`urban_digital_twin_development_report_complete.html`) is the most detailed status write-up, but it is held **outside the repo**
+
+**Discarded approach, kept for reference:** every mesh-generation entry below (`Src/mesh_generation/*`, `run_mesh_generation.py`, `validate_meshes.py`, `MESH_GENERATION_USAGE.md`, `UNITY_PLY_IMPORTER.md`, `CityMeshLoader.cs`, `PlyParser.cs`) belongs to the failed pre-built-mesh attempt. Read it for history; do not extend it.
+
+Python and shared docs:
 - [docs/MODULAR_ARCHITECTURE.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/MODULAR_ARCHITECTURE.md)
 - [CLAUDE.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/CLAUDE.md)
 - [Project_livingContext.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Project_livingContext.md)
@@ -71,7 +99,43 @@ Check these first when updating context or reasoning about the project:
 
 ## Architecture
 
-The repository is organized into layered workflows, but the modular architecture document is now the best high-level map of the current structure.
+The repository is organized into layered workflows, but the modular architecture document is now the best high-level map of the current structure. Note that `MODULAR_ARCHITECTURE.md` (May 2026) predates the Unity runtime and still names modules that do not exist (`pipelines/byggnad/` loaders, `population/`, `utils/logger.py`).
+
+### Unity Runtime — UrbanAnalytics (CURRENT)
+
+Unity 6000.3.14f1, URP 17.3, Input System. Target device: Meta Quest 3S (no XR package installed yet). Hand-written C#, about 24k lines.
+
+**Design goal:** keep city geometry, spatial units, analytical data and visualization methods independent, so any variable can drive any visual channel on any target. A visualization is declared, not coded.
+
+Runtime package (`Assets/StreamingAssets/`, read only through `RuntimeAssetReader`):
+```
+project_manifest.json                      CRS, origin, metersToUnity, axis mapping, layer list
+spatial_layers/<id>/layer.json + geometry.json      e.g. ruta_250, 3,919 polygons
+data_layers/<id>/layer.json + values.json           e.g. income_2023 → ruta_250, column-wise values
+buildings_runtime_ruta.bin                 GBLD v2 footprints + heights + Ruta index (gitignored;
+                                           path set on UrbanContextManager, not in the manifest)
+```
+
+Manager chain (each lives on its own GameObject under `/UrbanAnalytics`, finds dependencies via `FindFirstObjectByType` if unassigned, and exposes `InitializationTask` / `IsInitialized` / `LastError`):
+```
+ProjectManager → SpatialReferenceManager
+  → SpatialLayerManager → GeometryManager        flat polygon chunks (200 units, Morton-ordered)
+  → DataLayerManager                             validates unit IDs against the spatial layer
+  → UrbanContextManager → AssociationManager     buildings in 750-building chunks; building → Ruta
+  → VisualizationManager                         applies the startup VisualizationSpec
+       → renderer registry → VisualizationLegendView
+```
+
+`VisualizationSpec` → `VisualizationLayerSpec[]`, each with mark, target (`SpatialLayer` / `UrbanContextLayer` / `DerivedAnchors`), mapping (`Direct` / `Association`), encodings (channel + role + data binding + scale + colour/height settings) and placement (`Fixed` / `FollowHeightSurface`). The registry picks a renderer by asking each one `CanRender(layerSpec)`, so mark + target decide together:
+- `SurfaceRenderer` — vertex colours on an existing spatial-layer mesh;
+- `HeightSurfaceRenderer` + `HeightSurfaceMeshBuilder` — `SurfaceDisplacement`, `FullExtrusion`, `InsetExtrusion`, `DownwardExtrusion`; publishes each unit's actual top offset into `VisualizationRuntimeState`;
+- `BuildingSurfaceRenderer` — Surface mark on target `buildings`; colours via building → Ruta → data value, and can follow a HeightSurface's published offsets.
+
+Semantic identity is kept inside batched meshes: `SpatialMeshChunk` / `BuildingMeshChunk` store per-entity vertex/triangle ranges, ready for future `RaycastHit.triangleIndex` → entity ID selection. No GameObject per Ruta cell or per building.
+
+Older Unity code, **not in the scene**:
+- `Scripts/Ruta/RutaCityLoader.cs` (reads `ruta_2023_unity.json`), `Scripts/Building/BuildingRuntimeLoader.cs`, `Scripts/PolyExtruder/` — earlier hand-written prototypes that `UrbanAnalytics` replaced;
+- `Scripts/IO/` — the discarded pre-built mesh import path (see Mesh Generation Layer).
 
 ### Data Pipeline Layer
 
@@ -110,7 +174,9 @@ Use it for:
 - categorical distributions;
 - Markdown and HTML report exports.
 
-### Mesh Generation Layer
+### Mesh Generation Layer (DISCARDED — kept as a failed attempt)
+
+> **Status 2026-10-02:** pre-built meshes proved too heavy to import and use in Unity. The runtime now generates geometry itself (see Unity Runtime above and the [decision note](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md)). This layer and its Unity counterpart (`Scripts/IO/`) are kept deliberately, as a record of what was tried. Do not delete them and do not extend them. The description below is historical.
 
 Mesh generation is intentionally separated from the buildings data-prep pipeline.
 
@@ -228,6 +294,22 @@ These assumptions should be changed only when code or newer handoff docs explici
 
 EPSG:3006 is the default spatial reference for the project. Any exception must be documented explicitly and converted deliberately.
 
+### Unity Runtime Coordinates (UrbanAnalytics)
+
+Defined in `StreamingAssets/project_manifest.json` and applied only by `SpatialReferenceManager`:
+
+```
+origin (EPSG:3006) = (298000.0, 6383000.0, 0.0)
+metersToUnity      = 0.001          1 Unity unit = 1 km
+Unity X = easting, Unity Z = northing, Unity Y = elevation
+X = (E - originE) * scale,  Z = (N - originN) * scale,  Y = (elev - originElev) * scale
+```
+
+- Use `ToUnity()`, `ToSourceCRS()` and `ScaleDistance()`. Never hard-code `0.001` or an origin in a renderer or loader.
+- This origin is **not** the Python mesh-grid anchor `(298000, 6383500)`. Both are multiples of 500 m, so they lie on the same lattice; they are simply different local origins. The Python anchor applies to the discarded mesh path and the cell-attribute pipeline only.
+- Semantic IDs are strings, never Unity instance IDs or indices: spatial units are `<layerId>:<sourceId>` (e.g. `ruta_250:3175006390000`), buildings are `building:<id>`. Data layers key values by the spatial unit ID.
+- Building `ground_z` from the binary is ignored (`useGroundElevationFromBinary = false`) until its meaning is validated.
+
 ### Analytical Grid Anchor (frozen — do not derive from data)
 
 The 500 m analytical grid is the join key between mesh geometry and every statistical layer. Its anchor is **fixed** in [Src/mesh_generation/grid_reference.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/mesh_generation/grid_reference.py) and must **never** be derived from a dataset's extent:
@@ -240,7 +322,7 @@ cell id = "grid_{col:+04d}_{row:+04d}"     signed, anchor-relative
 
 - Multiple of both 500 and 1000, so every SCB `Ruta` cell size (100/250/500/1000 m) nests exactly — this is what makes attribute joins integer arithmetic rather than spatial interpolation.
 - Cell intervals are **half-open**: a point on a boundary belongs to the cell above/right (`floor()` division). All strategies must break ties this way.
-- Deriving the origin from `total_bounds` (the pre-2026-08-05 behaviour) makes cell ids mean different ground between runs. Same applies in Unity: `CityMeshLoader` must use the manifest's `grid_reference.anchor_*`, not the run's own SW corner, or interaction logs stop being comparable across sessions.
+- Deriving the origin from `total_bounds` (the pre-2026-08-05 behaviour) makes cell ids mean different ground between runs. Same applies in Unity: `CityMeshLoader` must use the manifest's `grid_reference.anchor_*`, not the run's own SW corner, or interaction logs stop being comparable across sessions. (`CityMeshLoader` is part of the discarded mesh path; the current runtime takes its origin from `project_manifest.json`.)
 
 ### Building ownership
 
@@ -301,8 +383,13 @@ Typical outputs from the LiDAR height pipeline include (NEW):
 - [Processed_data/buildings_lidar_added.parquet](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_lidar_added.parquet)
 - [Processed_data/building_lidar_qc.csv](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/building_lidar_qc.csv)
 
-Current mesh runs (Gothenburg, EPSG:3006, PLY primary — newest first):
-- `Processed_data/Gothenburg/building_meshes_grid_500m_anchored/` (2026-08-05) — **CURRENT.** 500 m grid on the frozen lattice, **2,160 cells**, 2.50M verts / 4.20M tris / 110 MB. Zero duplicated buildings; every cell on the 500 m lattice; manifest carries `grid_reference` + per-group `cell`. This is what Unity's `CityMeshLoader` defaults to.
+Unity runtime package (current) — `Unity/City_Digital_Twin/Assets/StreamingAssets/`:
+- `project_manifest.json`, `spatial_layers/ruta_250/`, `data_layers/income_2023/` (tracked, written by `Src/Scripts/Unity/export_*.py`);
+- `buildings_runtime_ruta.bin` (gitignored, `GBLD` v2). **No writer for this file exists in the repo**; it is test data and will be replaced by the rebuilt data pipeline;
+- `buildings_runtime.bin` and `ruta_2023_unity.json` serve only the older, unused loaders.
+
+Mesh runs from the **discarded** pre-built mesh pipeline (Gothenburg, EPSG:3006, PLY primary — newest first; historical, not used by the runtime):
+- `Processed_data/Gothenburg/building_meshes_grid_500m_anchored/` (2026-08-05) — the last and best run. 500 m grid on the frozen lattice, **2,160 cells**, 2.50M verts / 4.20M tris / 110 MB. Zero duplicated buildings; every cell on the 500 m lattice; manifest carries `grid_reference` + per-group `cell`. `CityMeshLoader` defaults to it.
 - `Processed_data/Gothenburg/building_meshes_grid_500m/` (2026-08-05) — **SUPERSEDED, kept for rollback.** Built on the `intersects` bug (9,690 duplicated buildings, 5.0% inflation) and an off-lattice origin. Do not use for analytics.
 - `Processed_data/analytics/cell_attributes_500m/` (2026-08-05) — 10 SCB Ruta layers aggregated onto the same lattice; `.gpkg` / `.parquet` / `.json` (runtime, keyed by `cell_id`) / `_metadata.json` / `_qc.csv`.
 - `Processed_data/analytics/building_to_cell_500m.parquet` — 201,594 buildings → owning cell, same rule as mesh partitioning.
@@ -328,7 +415,9 @@ Use this pipeline when you need to:
 Typical entrypoint:
 - [Src/Scripts/run_buildings_pipeline.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/run_buildings_pipeline.py)
 
-If the task is about mesh creation rather than schema analysis, the relevant entrypoint usually shifts to:
+For anything the Unity runtime consumes, the relevant entry points are the exporters in `Src/Scripts/Unity/`; Unity builds the geometry itself. The mesh-generation entry points below are the **discarded** approach, kept for reference only.
+
+If the task is about the historical mesh pipeline rather than schema analysis, the relevant entrypoint is:
 - [Src/Scripts/run_mesh_generation.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/run_mesh_generation.py)
 - [Src/mesh_generation/generator.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/mesh_generation/generator.py)
 
@@ -400,14 +489,17 @@ Keep this log short and dated. Record only changes that affect how future agents
 
 | 2026-08-26 | **Unity version-control policy: source only, data never** — rewrote `.gitignore` + `.gitattributes`, added an enforcing pre-commit hook | Decision note: [docs/decisions/2026-08-26_unity-version-control-policy.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/decisions/2026-08-26_unity-version-control-policy.md). **The problem found:** the working copy of `Assets/Scenes/SampleScene.unity` was **220,929,539 bytes** against **11,413 bytes at HEAD**. `CityMeshLoader` builds meshes at edit time and attaches them as `sharedMesh` on runtime-created GameObjects; they have no asset backing, so saving the scene serialized all of them into the scene YAML — 10 embedded `Mesh` objects (`!u!43`), 20 lines carrying 220.8M chars of hex vertex data. `git add -A` would have committed it, and every load-and-save would have added another ~220 MB blob. Also found: `core.autocrlf=true` with no attributes rules was rewriting Unity's LF YAML to CRLF on checkout (Unity saves it back as LF → whole-file phantom diffs), and the ignore file still listed `Unity/GISTesting/` + `Unity/DigitalTwinPerview/`, removed 2026-07-17. **Policy (per user):** track source only — Python code, Unity C# + `.asmdef`, `ProjectSettings/`, `Packages/manifest.json` + lock, the clean template scene, settings assets, configs, docs, tests. **Never track `Raw_data/` or `Processed_data/`, or any mesh/point-cloud/raster payload anywhere in the tree, including inside `Assets/` — none of it is publishable.** **(1) `.gitignore` rewritten**: data patterns carry no leading slash so they match at any depth (Unity included) and each payload extension is paired with its `.meta` twin — the rule is *ignore an asset and its `.meta` together, never one without the other*, or Unity churns GUIDs across machines. Unity section now covers `[Ll]ibrary/` (1.8 GB here), `[Tt]emp/`, `[Bb]uild[s]/`, Unity 6's `Bee/` + `artifacts/`, Addressables output, build products, baked lighting, and `Assets/Scenes/Generated/`. **(2) `.gitattributes` rewritten**: Unity YAML gets `text eol=lf` (overrides `core.autocrlf`, ends the CRLF churn) plus `merge=unityyamlmerge` — verified experimentally that git falls back to its normal 3-way merge when the driver is unregistered, so the attribute is safe without SmartMerge set up; binaries marked `binary`. **Git LFS deliberately not used** — no data is tracked, so nothing warrants it. **(3) New `.githooks/pre-commit`** (enable per clone: `git config core.hooksPath .githooks`) rejects staged data paths, blobs > 5 MB (`hooks.maxfilesize` to override), and Unity asset/`.meta` orphans; folder `.meta`s pass if the directory exists, since git cannot track directories. All three checks tested firing, and a clean staging passes. **Scene workflow:** `SampleScene.unity` stays a clean ~11 KB template (camera, light, `CityMeshLoader`); load the city, then Save As into the gitignored `Assets/Scenes/Generated/`. The 220 MB working copy was left in place (editor state, regenerable) — the hook now blocks it; `git restore` the path when convenient. `Assets/Meshes/Buildings_500/.gitkeep` added so the folder survives a clone and its tracked `.meta` is not orphaned. **Consequence:** a fresh clone gets a working Unity project but **no city geometry** — regenerate it by running the mesh pipeline into `Processed_data/`. **Flagged, not fixed:** `.git/` is **2.5 GB** because `Raw_data/` LAZ tiles (7 blobs of 29-47 MB) were committed in earlier history; removing them needs a `git filter-repo` history rewrite that invalidates every commit hash, so it is left as a deliberate decision. |
 
+| 2026-10-02 | **Living context caught up with the Unity runtime; pre-built mesh pipeline marked discarded** | The Unity `UrbanAnalytics` module (hand-written, not previously recorded here) is the actual thesis prototype: spec-driven visualization engine, runtime package in `StreamingAssets/`, all geometry generated at runtime, target Meta Quest 3S. Added: Unity Runtime architecture section, Unity coordinate/ID contract, runtime status (tested / pending / not implemented, from the October 2026 development report checked against code), canonical Unity files. **Pre-built meshes were too heavy to import and use**, so `Src/mesh_generation/`, `run_mesh_generation.py`, `validate_meshes.py` and Unity `Scripts/IO/` are now a **documented failed attempt — kept, not deleted, not to be extended**. Decision note: [docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md). Current runtime data is test data; the data pipeline will be rebuilt (the `GBLD` building-binary writer is not in the repo). Also: the Unity CLI is set up — `com.unity.pipeline` added to `Packages/manifest.json` (commit `b029e51`), so agents can drive the open Editor with `unity status` / `unity command <name>`. |
+
 ## Open Questions
 
 Keep this list small. Only include questions that affect the next implementation decision.
 
 - Which dataset pipeline beyond buildings should become the next canonical example, if any?
 - Should the old phase-based docs be archived, or kept as historical references in place?
-- Is the default mesh strategy still district grouping, or should that be moved into a dedicated config reference?
 - Should future dataset pipelines follow the same structure as the modular architecture exactly, or only loosely?
+- How should the rebuilt data pipeline produce the Unity runtime package, including the building binary (currently no writer in the repo), and should building → Ruta association be computed there instead of being baked into the binary?
+- Should study scenarios (VisualizationSpecs) move out of the Inspector into external files, so evaluation conditions are reproducible?
 
 ## Notes For Future Agents
 
@@ -421,3 +513,9 @@ Recommended reasoning order:
 5. update this living context section only after confirming the change is stable enough to matter.
 
 If the repo changes in a way that affects file layout, naming, or data flow, add a short note here so future agents do not need to rediscover the new pattern from scratch.
+
+Unity-specific notes (2026-10-02):
+- Unity code is written by hand, so this file can lag behind it. Before Unity work, run `git log --oneline -- Unity` and compare with the Unity Runtime section.
+- The live scene is the source of truth for what runs. The startup `VisualizationSpec` is serialized on `/UrbanAnalytics/VisualizationSystem`. If the Editor is open, prefer the Unity CLI (`unity command get_scene_hierarchy`, `console`, `list_open_scenes`) over reading scene YAML, and never hand-edit `.unity` files while an Editor is connected.
+- Console error `DirectoryNotFoundException ... com.unity.collections@.../System.Runtime.CompilerServices.Unsafe.dll` is harmless. The path is 270 characters, over Windows' 260 limit (`LongPathsEnabled = 0`), during package assembly validation. It is not a project compile error.
+- Do not tune code or scales to the current runtime data; it is test data.
