@@ -139,117 +139,131 @@ namespace UrbanAnalytics.Visualization
                     .NoDataColor;
 
 
-            foreach (
-                SpatialMeshChunk chunk
-                in chunks
-            )
+            // Chunks are modified in place, one per frame. If this
+            // render is cancelled or fails part-way, restore the
+            // chunks already changed before rethrowing.
+            try
             {
-                cancellationToken
-                    .ThrowIfCancellationRequested();
-
-
-                if (chunk == null ||
-                    !chunk.IsInitialized ||
-                    chunk.Mesh == null)
-                {
-                    continue;
-                }
-
-
-                Mesh mesh =
-                    chunk.Mesh;
-
-
-                originalStates.Add(
-                    new OriginalChunkState
-                    {
-                        Chunk =
-                            chunk,
-
-                        Colors =
-                            mesh.colors32,
-
-                        Material =
-                            chunk
-                                .MeshRenderer
-                                .sharedMaterial
-                    }
-                );
-
-
-                Color32[] colors =
-                    new Color32[
-                        mesh.vertexCount
-                    ];
-
-
-                for (
-                    int i = 0;
-                    i < colors.Length;
-                    i++
-                )
-                {
-                    colors[i] =
-                        noDataColor;
-                }
-
-
                 foreach (
-                    SpatialMeshUnitRange range
-                    in chunk.UnitRanges
+                    SpatialMeshChunk chunk
+                    in chunks
                 )
                 {
-                    Color32 unitColor =
-                        noDataColor;
+                    cancellationToken
+                        .ThrowIfCancellationRequested();
 
 
-                    if (dataLayer.TryGetDouble(
-                            range.UnitId,
-                            colorVariable.VariableId,
-                            out double value
-                        ))
+                    if (chunk == null ||
+                        !chunk.IsInitialized ||
+                        chunk.Mesh == null)
                     {
-                        float normalized =
-                            scale.Normalize(
-                                value
-                            );
-
-
-                        unitColor =
-                            colorEncoding
-                                .Color
-                                .Evaluate(
-                                    normalized
-                                );
+                        continue;
                     }
+
+
+                    Mesh mesh =
+                        chunk.Mesh;
+
+
+                    originalStates.Add(
+                        new OriginalChunkState
+                        {
+                            Chunk =
+                                chunk,
+
+                            Colors =
+                                mesh.colors32,
+
+                            Material =
+                                chunk
+                                    .MeshRenderer
+                                    .sharedMaterial
+                        }
+                    );
+
+
+                    Color32[] colors =
+                        new Color32[
+                            mesh.vertexCount
+                        ];
 
 
                     for (
-                        int vertexIndex =
-                            range.VertexStart;
-                        vertexIndex <
-                            range.VertexEndExclusive;
-                        vertexIndex++
+                        int i = 0;
+                        i < colors.Length;
+                        i++
                     )
                     {
-                        colors[
-                            vertexIndex
-                        ] =
-                            unitColor;
+                        colors[i] =
+                            noDataColor;
                     }
+
+
+                    foreach (
+                        SpatialMeshUnitRange range
+                        in chunk.UnitRanges
+                    )
+                    {
+                        Color32 unitColor =
+                            noDataColor;
+
+
+                        if (dataLayer.TryGetDouble(
+                                range.UnitId,
+                                colorVariable.VariableId,
+                                out double value
+                            ))
+                        {
+                            float normalized =
+                                scale.Normalize(
+                                    value
+                                );
+
+
+                            unitColor =
+                                colorEncoding
+                                    .Color
+                                    .Evaluate(
+                                        normalized
+                                    );
+                        }
+
+
+                        for (
+                            int vertexIndex =
+                                range.VertexStart;
+                            vertexIndex <
+                                range.VertexEndExclusive;
+                            vertexIndex++
+                        )
+                        {
+                            colors[
+                                vertexIndex
+                            ] =
+                                unitColor;
+                        }
+                    }
+
+
+                    mesh.colors32 =
+                        colors;
+
+
+                    chunk.SetMaterial(
+                        context.VertexColorMaterial
+                    );
+
+
+                    await Task.Yield();
                 }
-
-
-                mesh.colors32 =
-                    colors;
-
-
-                chunk.SetMaterial(
-                    context.VertexColorMaterial
+            }
+            catch
+            {
+                RestoreChunks(
+                    originalStates
                 );
 
-
-                await Task.Yield();
+                throw;
             }
 
 
@@ -273,43 +287,51 @@ namespace UrbanAnalytics.Visualization
                 },
                 cleanup:
                     () =>
-                    {
-                        foreach (
-                            OriginalChunkState state
-                            in originalStates
+                        RestoreChunks(
+                            originalStates
                         )
-                        {
-                            if (state.Chunk == null ||
-                                state.Chunk.Mesh == null)
-                            {
-                                continue;
-                            }
-
-
-                            if (state.Colors != null &&
-                                state.Colors.Length ==
-                                    state
-                                        .Chunk
-                                        .Mesh
-                                        .vertexCount)
-                            {
-                                state
-                                    .Chunk
-                                    .Mesh
-                                    .colors32 =
-                                        state.Colors;
-                            }
-
-
-                            if (state.Material != null)
-                            {
-                                state.Chunk.SetMaterial(
-                                    state.Material
-                                );
-                            }
-                        }
-                    }
             );
+        }
+
+
+        private static void RestoreChunks(
+            List<OriginalChunkState> originalStates
+        )
+        {
+            foreach (
+                OriginalChunkState state
+                in originalStates
+            )
+            {
+                if (state.Chunk == null ||
+                    state.Chunk.Mesh == null)
+                {
+                    continue;
+                }
+
+
+                if (state.Colors != null &&
+                    state.Colors.Length ==
+                        state
+                            .Chunk
+                            .Mesh
+                            .vertexCount)
+                {
+                    state
+                        .Chunk
+                        .Mesh
+                        .colors32 =
+                            state.Colors;
+                }
+
+
+                if (state.Material != null)
+                {
+                    state.Chunk.SetMaterial(
+                        state.Material
+                    );
+                }
+            }
         }
 
 

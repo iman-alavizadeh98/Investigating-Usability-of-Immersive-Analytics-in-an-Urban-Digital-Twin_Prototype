@@ -400,10 +400,8 @@ namespace UrbanAnalytics.Visualization
                             sourceTriangles,
                             range,
                             height,
-                            Mathf.Clamp(
-                                settings.InsetFactor,
-                                0.1f,
-                                1.0f
+                            ResolveInsetFactor(
+                                settings
                             ),
                             false,
                             color,
@@ -817,7 +815,34 @@ namespace UrbanAnalytics.Visualization
         // HELPERS
         // =========================================================
 
-        private static Vector3 CalculateCentroid(
+        /// <summary>
+        /// Horizontal scale applied to each unit's column, about
+        /// CalculateCentroid. 1 = no inset. Shared with
+        /// HeightSurfaceRenderer so buildings following an inset
+        /// surface are scaled identically.
+        /// </summary>
+        internal static float ResolveInsetFactor(
+            HeightSurfaceSettings settings
+        )
+        {
+            if (settings == null ||
+                settings.Method !=
+                    HeightVisualizationMethod
+                        .InsetExtrusion)
+            {
+                return 1.0f;
+            }
+
+
+            return Mathf.Clamp(
+                settings.InsetFactor,
+                0.1f,
+                1.0f
+            );
+        }
+
+
+        internal static Vector3 CalculateCentroid(
             Vector3[] vertices,
             SpatialMeshUnitRange range
         )

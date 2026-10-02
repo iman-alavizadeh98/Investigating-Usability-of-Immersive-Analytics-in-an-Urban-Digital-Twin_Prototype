@@ -182,115 +182,132 @@ namespace UrbanAnalytics.Visualization
                 0;
 
 
+            int insetBuildings =
+                0;
+
+
             // =====================================================
             // CHUNKS
             // =====================================================
 
-            foreach (
-                BuildingMeshChunk chunk
-                in chunks
-            )
+            // Chunks are modified in place, one per frame. If this
+            // render is cancelled (e.g. a newer visualization was
+            // requested) or fails part-way, restore the chunks
+            // already changed before rethrowing.
+            try
             {
-                cancellationToken
-                    .ThrowIfCancellationRequested();
-
-
-                if (chunk == null ||
-                    !chunk.IsInitialized ||
-                    chunk.Mesh == null)
+                foreach (
+                    BuildingMeshChunk chunk
+                    in chunks
+                )
                 {
-                    continue;
-                }
+                    cancellationToken
+                        .ThrowIfCancellationRequested();
 
 
-                Mesh mesh =
-                    chunk.Mesh;
-
-
-                Vector3[] originalVertices =
-                    mesh.vertices;
-
-
-                Color32[] originalColors =
-                    mesh.colors32;
-
-
-                originalStates.Add(
-                    new OriginalChunkState
+                    if (chunk == null ||
+                        !chunk.IsInitialized ||
+                        chunk.Mesh == null)
                     {
-                        Chunk =
-                            chunk,
-
-                        Vertices =
-                            originalVertices,
-
-                        Colors =
-                            originalColors,
-
-                        Material =
-                            chunk
-                                .MeshRenderer
-                                .sharedMaterial
+                        continue;
                     }
-                );
 
 
-                Vector3[] outputVertices =
-                    (Vector3[])
-                    originalVertices.Clone();
+                    Mesh mesh =
+                        chunk.Mesh;
 
 
-                Color32[] outputColors =
-                    CreateInitialColorBuffer(
-                        mesh,
-                        originalColors,
-                        hasColorEncoding
-                            ? colorEncoding
-                                .Color
-                                .NoDataColor
-                            : (Color32)Color.white
+                    Vector3[] originalVertices =
+                        mesh.vertices;
+
+
+                    Color32[] originalColors =
+                        mesh.colors32;
+
+
+                    originalStates.Add(
+                        new OriginalChunkState
+                        {
+                            Chunk =
+                                chunk,
+
+                            Vertices =
+                                originalVertices,
+
+                            Colors =
+                                originalColors,
+
+                            Material =
+                                chunk
+                                    .MeshRenderer
+                                    .sharedMaterial
+                        }
                     );
 
 
-                // =============================================
-                // BUILDINGS IN THIS CHUNK
-                // =============================================
+                    Vector3[] outputVertices =
+                        (Vector3[])
+                        originalVertices.Clone();
 
-                foreach (
-                    BuildingMeshUnitRange range
-                    in chunk.UnitRanges
-                )
-                {
-                    string spatialUnitId =
-                        ResolveAssociatedSpatialUnitId(
-                            context,
-                            spec,
-                            range
+
+                    Color32[] outputColors =
+                        CreateInitialColorBuffer(
+                            mesh,
+                            originalColors,
+                            hasColorEncoding
+                                ? colorEncoding
+                                    .Color
+                                    .NoDataColor
+                                : (Color32)Color.white
                         );
 
 
-                    bool hasAssociation =
-                        !string.IsNullOrWhiteSpace(
-                            spatialUnitId
-                        );
+                    // =============================================
+                    // BUILDINGS IN THIS CHUNK
+                    // =============================================
 
-
-                    // -----------------------------------------
-                    // POSITION
-                    // -----------------------------------------
-
-                    if (elevationField != null &&
-                        hasAssociation &&
-                        elevationField.TryGetTopOffset(
-                            spatialUnitId,
-                            out float topOffset
-                        ))
+                    foreach (
+                        BuildingMeshUnitRange range
+                        in chunk.UnitRanges
+                    )
                     {
-                        if (Mathf.Abs(
-                                topOffset
-                            ) >
-                            0.000001f)
+                        string spatialUnitId =
+                            ResolveAssociatedSpatialUnitId(
+                                context,
+                                spec,
+                                range
+                            );
+
+
+                        bool hasAssociation =
+                            !string.IsNullOrWhiteSpace(
+                                spatialUnitId
+                            );
+
+
+                        // -----------------------------------------
+                        // POSITION
+                        // -----------------------------------------
+
+                        // Inset surface: the column top is the
+                        // cell shrunk about an anchor. Shrink the
+                        // building's footprint and position about
+                        // the same anchor so it stays on the column.
+                        if (elevationField != null &&
+                            hasAssociation &&
+                            elevationField.TryGetHorizontalInset(
+                                spatialUnitId,
+                                out Vector3 anchorWorld,
+                                out float insetScale
+                            ))
                         {
+                            Vector3 anchor =
+                                chunk.transform
+                                    .InverseTransformPoint(
+                                        anchorWorld
+                                    );
+
+
                             for (
                                 int vertexIndex =
                                     range.VertexStart;
@@ -300,104 +317,163 @@ namespace UrbanAnalytics.Visualization
                                 vertexIndex++
                             )
                             {
+                                Vector3 vertex =
+                                    outputVertices[
+                                        vertexIndex
+                                    ];
+
+
+                                vertex.x =
+                                    anchor.x +
+                                    (vertex.x - anchor.x) *
+                                    insetScale;
+
+
+                                vertex.z =
+                                    anchor.z +
+                                    (vertex.z - anchor.z) *
+                                    insetScale;
+
+
                                 outputVertices[
                                     vertexIndex
-                                ].y +=
-                                    topOffset;
+                                ] =
+                                    vertex;
                             }
 
 
-                            liftedBuildings++;
+                            insetBuildings++;
+                        }
+
+
+                        if (elevationField != null &&
+                            hasAssociation &&
+                            elevationField.TryGetTopOffset(
+                                spatialUnitId,
+                                out float topOffset
+                            ))
+                        {
+                            if (Mathf.Abs(
+                                    topOffset
+                                ) >
+                                0.000001f)
+                            {
+                                for (
+                                    int vertexIndex =
+                                        range.VertexStart;
+                                    vertexIndex <
+                                        range
+                                            .VertexEndExclusive;
+                                    vertexIndex++
+                                )
+                                {
+                                    outputVertices[
+                                        vertexIndex
+                                    ].y +=
+                                        topOffset;
+                                }
+
+
+                                liftedBuildings++;
+                            }
+                        }
+
+
+                        // -----------------------------------------
+                        // COLOR
+                        // -----------------------------------------
+
+                        if (hasColorEncoding)
+                        {
+                            Color32 buildingColor =
+                                colorEncoding
+                                    .Color
+                                    .NoDataColor;
+
+
+                            if (hasAssociation &&
+                                colorDataLayer.TryGetDouble(
+                                    spatialUnitId,
+                                    colorVariable
+                                        .VariableId,
+                                    out double value
+                                ))
+                            {
+                                buildingColor =
+                                    colorEncoding
+                                        .Color
+                                        .Evaluate(
+                                            colorScale
+                                                .Value
+                                                .Normalize(
+                                                    value
+                                                )
+                                        );
+
+
+                                coloredBuildings++;
+                            }
+                            else
+                            {
+                                noDataBuildings++;
+                            }
+
+
+                            for (
+                                int vertexIndex =
+                                    range.VertexStart;
+                                vertexIndex <
+                                    range
+                                        .VertexEndExclusive;
+                                vertexIndex++
+                            )
+                            {
+                                outputColors[
+                                    vertexIndex
+                                ] =
+                                    buildingColor;
+                            }
                         }
                     }
 
 
-                    // -----------------------------------------
-                    // COLOR
-                    // -----------------------------------------
+                    // =============================================
+                    // APPLY
+                    // =============================================
+
+                    if (elevationField != null)
+                    {
+                        mesh.vertices =
+                            outputVertices;
+
+
+                        mesh.RecalculateBounds();
+                    }
+
 
                     if (hasColorEncoding)
                     {
-                        Color32 buildingColor =
-                            colorEncoding
-                                .Color
-                                .NoDataColor;
+                        mesh.colors32 =
+                            outputColors;
 
 
-                        if (hasAssociation &&
-                            colorDataLayer.TryGetDouble(
-                                spatialUnitId,
-                                colorVariable
-                                    .VariableId,
-                                out double value
-                            ))
-                        {
-                            buildingColor =
-                                colorEncoding
-                                    .Color
-                                    .Evaluate(
-                                        colorScale
-                                            .Value
-                                            .Normalize(
-                                                value
-                                            )
-                                    );
-
-
-                            coloredBuildings++;
-                        }
-                        else
-                        {
-                            noDataBuildings++;
-                        }
-
-
-                        for (
-                            int vertexIndex =
-                                range.VertexStart;
-                            vertexIndex <
-                                range
-                                    .VertexEndExclusive;
-                            vertexIndex++
-                        )
-                        {
-                            outputColors[
-                                vertexIndex
-                            ] =
-                                buildingColor;
-                        }
+                        chunk.SetMaterial(
+                            context
+                                .BuildingVertexColorMaterial
+                        );
                     }
+
+
+                    await Task.Yield();
                 }
+            }
+            catch
+            {
+                RestoreChunks(
+                    originalStates
+                );
 
-
-                // =============================================
-                // APPLY
-                // =============================================
-
-                if (elevationField != null)
-                {
-                    mesh.vertices =
-                        outputVertices;
-
-
-                    mesh.RecalculateBounds();
-                }
-
-
-                if (hasColorEncoding)
-                {
-                    mesh.colors32 =
-                        outputColors;
-
-
-                    chunk.SetMaterial(
-                        context
-                            .BuildingVertexColorMaterial
-                    );
-                }
-
-
-                await Task.Yield();
+                throw;
             }
 
 
@@ -451,6 +527,7 @@ namespace UrbanAnalytics.Visualization
                 $"Follow source: {followSource}\n" +
                 $"Colored buildings: {coloredBuildings}\n" +
                 $"Lifted buildings: {liftedBuildings}\n" +
+                $"Inset-scaled buildings: {insetBuildings}\n" +
                 $"No-data/unmatched buildings: {noDataBuildings}"
             );
 
@@ -466,64 +543,76 @@ namespace UrbanAnalytics.Visualization
                 legends,
                 cleanup:
                     () =>
-                    {
-                        foreach (
-                            OriginalChunkState state
-                            in originalStates
+                        RestoreChunks(
+                            originalStates
                         )
-                        {
-                            if (state.Chunk == null ||
-                                state.Chunk.Mesh == null)
-                            {
-                                continue;
-                            }
-
-
-                            if (state.Vertices != null &&
-                                state.Vertices.Length ==
-                                    state
-                                        .Chunk
-                                        .Mesh
-                                        .vertexCount)
-                            {
-                                state
-                                    .Chunk
-                                    .Mesh
-                                    .vertices =
-                                        state.Vertices;
-
-
-                                state
-                                    .Chunk
-                                    .Mesh
-                                    .RecalculateBounds();
-                            }
-
-
-                            if (state.Colors != null &&
-                                state.Colors.Length ==
-                                    state
-                                        .Chunk
-                                        .Mesh
-                                        .vertexCount)
-                            {
-                                state
-                                    .Chunk
-                                    .Mesh
-                                    .colors32 =
-                                        state.Colors;
-                            }
-
-
-                            if (state.Material != null)
-                            {
-                                state.Chunk.SetMaterial(
-                                    state.Material
-                                );
-                            }
-                        }
-                    }
             );
+        }
+
+
+        // =========================================================
+        // RESTORE
+        // =========================================================
+
+        private static void RestoreChunks(
+            List<OriginalChunkState> originalStates
+        )
+        {
+            foreach (
+                OriginalChunkState state
+                in originalStates
+            )
+            {
+                if (state.Chunk == null ||
+                    state.Chunk.Mesh == null)
+                {
+                    continue;
+                }
+
+
+                if (state.Vertices != null &&
+                    state.Vertices.Length ==
+                        state
+                            .Chunk
+                            .Mesh
+                            .vertexCount)
+                {
+                    state
+                        .Chunk
+                        .Mesh
+                        .vertices =
+                            state.Vertices;
+
+
+                    state
+                        .Chunk
+                        .Mesh
+                        .RecalculateBounds();
+                }
+
+
+                if (state.Colors != null &&
+                    state.Colors.Length ==
+                        state
+                            .Chunk
+                            .Mesh
+                            .vertexCount)
+                {
+                    state
+                        .Chunk
+                        .Mesh
+                        .colors32 =
+                            state.Colors;
+                }
+
+
+                if (state.Material != null)
+                {
+                    state.Chunk.SetMaterial(
+                        state.Material
+                    );
+                }
+            }
         }
 
 

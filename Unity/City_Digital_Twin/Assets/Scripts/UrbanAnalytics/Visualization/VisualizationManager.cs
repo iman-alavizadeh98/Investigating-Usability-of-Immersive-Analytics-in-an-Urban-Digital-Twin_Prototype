@@ -95,6 +95,17 @@ namespace UrbanAnalytics.Visualization
             lifetimeCancellation;
 
 
+        // Only one apply runs at a time. A new apply (or a
+        // clear) cancels the one in flight and waits for it to
+        // unwind before touching the scene.
+        private CancellationTokenSource
+            applyCancellation;
+
+
+        private Task applyTask =
+            Task.CompletedTask;
+
+
         private VisualizationRendererRegistry
             rendererRegistry;
 
@@ -492,7 +503,82 @@ namespace UrbanAnalytics.Visualization
             }
 
 
-            ClearActiveVisualization();
+            // Cancel the apply in flight (if any). Its renderers
+            // restore whatever they had already changed.
+            applyCancellation?.Cancel();
+
+
+            var cancellation =
+                CancellationTokenSource
+                    .CreateLinkedTokenSource(
+                        cancellationToken,
+                        lifetimeCancellation != null
+                            ? lifetimeCancellation.Token
+                            : CancellationToken.None
+                    );
+
+
+            applyCancellation =
+                cancellation;
+
+
+            Task previous =
+                applyTask;
+
+
+            Task current =
+                ApplyAfterAsync(
+                    previous,
+                    visualization,
+                    cancellation.Token
+                );
+
+
+            applyTask =
+                current;
+
+
+            try
+            {
+                await current;
+            }
+            finally
+            {
+                if (applyCancellation == cancellation)
+                {
+                    applyCancellation =
+                        null;
+                }
+
+
+                cancellation.Dispose();
+            }
+        }
+
+
+        private async Task ApplyAfterAsync(
+            Task previous,
+            VisualizationSpec visualization,
+            CancellationToken cancellationToken
+        )
+        {
+            try
+            {
+                await previous;
+            }
+            catch
+            {
+                // The previous request reports its own
+                // outcome to its caller; here we only wait
+                // for it to finish unwinding.
+            }
+
+
+            cancellationToken
+                .ThrowIfCancellationRequested();
+
+
+            ClearInstances();
 
 
             try
@@ -544,6 +630,12 @@ namespace UrbanAnalytics.Visualization
                 }
 
 
+                // A clear or newer apply may have arrived while
+                // the last layer rendered.
+                cancellationToken
+                    .ThrowIfCancellationRequested();
+
+
                 ActiveVisualization =
                     visualization;
 
@@ -563,7 +655,7 @@ namespace UrbanAnalytics.Visualization
             }
             catch
             {
-                ClearActiveVisualization();
+                ClearInstances();
 
                 throw;
             }
@@ -574,7 +666,20 @@ namespace UrbanAnalytics.Visualization
         // CLEAR
         // =========================================================
 
+        /// <summary>
+        /// Removes the active visualization and cancels any
+        /// apply still in flight.
+        /// </summary>
         public void ClearActiveVisualization()
+        {
+            applyCancellation?.Cancel();
+
+
+            ClearInstances();
+        }
+
+
+        private void ClearInstances()
         {
             for (
                 int i =

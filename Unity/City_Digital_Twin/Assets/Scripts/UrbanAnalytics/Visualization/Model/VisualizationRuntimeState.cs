@@ -1,20 +1,41 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using UnityEngine;
 
 namespace UrbanAnalytics.Visualization
 {
     /// <summary>
-    /// Describes the top-surface offset produced by one
+    /// Describes the top surface produced by one
     /// HeightSurface visualization.
     ///
-    /// Values are Unity-local Y offsets relative to the
+    /// Top offsets are Unity-local Y offsets relative to the
     /// original analytical surface.
+    ///
+    /// For InsetExtrusion the top is also smaller than the
+    /// unit: it is the unit scaled horizontally by
+    /// HorizontalScale about a per-unit anchor (world space).
+    /// Context entities following the surface apply the same
+    /// scale so they stay on the column.
     /// </summary>
     public sealed class SurfaceElevationField
     {
         private readonly IReadOnlyDictionary<string, float>
             topOffsets;
+
+
+        private readonly IReadOnlyDictionary<string, Vector3>
+            horizontalAnchors;
+
+
+        /// <summary>
+        /// Horizontal scale of the top surface about each
+        /// unit's anchor. 1 = top covers the whole unit.
+        /// </summary>
+        public float HorizontalScale
+        {
+            get;
+        }
 
 
         public string VisualizationLayerId
@@ -37,7 +58,9 @@ namespace UrbanAnalytics.Visualization
         public SurfaceElevationField(
             string visualizationLayerId,
             string spatialLayerId,
-            IDictionary<string, float> topOffsets
+            IDictionary<string, float> topOffsets,
+            float horizontalScale = 1.0f,
+            IDictionary<string, Vector3> horizontalAnchors = null
         )
         {
             if (string.IsNullOrWhiteSpace(
@@ -87,6 +110,77 @@ namespace UrbanAnalytics.Visualization
                         StringComparer.Ordinal
                     )
                 );
+
+
+            if (horizontalScale <= 0.0f ||
+                horizontalScale > 1.0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(horizontalScale),
+                    "Horizontal scale must be in (0, 1]."
+                );
+            }
+
+
+            if (horizontalScale < 1.0f &&
+                horizontalAnchors == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(horizontalAnchors),
+                    "An inset surface needs per-unit anchors."
+                );
+            }
+
+
+            HorizontalScale =
+                horizontalScale;
+
+
+            this.horizontalAnchors =
+                new ReadOnlyDictionary<string, Vector3>(
+                    horizontalAnchors != null
+                        ? new Dictionary<string, Vector3>(
+                            horizontalAnchors,
+                            StringComparer.Ordinal
+                        )
+                        : new Dictionary<string, Vector3>(
+                            StringComparer.Ordinal
+                        )
+                );
+        }
+
+
+        /// <summary>
+        /// True when the top surface of this unit is smaller
+        /// than the unit (InsetExtrusion). The anchor is in
+        /// world space.
+        /// </summary>
+        public bool TryGetHorizontalInset(
+            string spatialUnitId,
+            out Vector3 anchorWorld,
+            out float scale
+        )
+        {
+            anchorWorld =
+                default;
+
+            scale =
+                HorizontalScale;
+
+
+            if (HorizontalScale >= 1.0f ||
+                string.IsNullOrWhiteSpace(
+                    spatialUnitId
+                ))
+            {
+                return false;
+            }
+
+
+            return horizontalAnchors.TryGetValue(
+                spatialUnitId.Trim(),
+                out anchorWorld
+            );
         }
 
 
@@ -142,14 +236,18 @@ namespace UrbanAnalytics.Visualization
         public void RegisterSurfaceElevation(
             string visualizationLayerId,
             string spatialLayerId,
-            IDictionary<string, float> topOffsets
+            IDictionary<string, float> topOffsets,
+            float horizontalScale = 1.0f,
+            IDictionary<string, Vector3> horizontalAnchors = null
         )
         {
             var field =
                 new SurfaceElevationField(
                     visualizationLayerId,
                     spatialLayerId,
-                    topOffsets
+                    topOffsets,
+                    horizontalScale,
+                    horizontalAnchors
                 );
 
 

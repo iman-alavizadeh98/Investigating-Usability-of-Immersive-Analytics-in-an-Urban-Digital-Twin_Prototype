@@ -487,6 +487,68 @@ MonoBehaviour:
       urbanContextPlacement:
         mode: 0
         sourceVisualizationLayerId: 
+    - id: buildings_income
+      enabled: 1
+      mark: 0
+      target:
+        kind: 1
+        layerId: buildings
+        mapping:
+          mode: 1
+          associationId: buildings_to_ruta
+      encodings:
+      - channel: 0
+        role: 0
+        data:
+          mode: 0
+          variables:
+          - dataLayerId: income_2023
+            variableId: median_income
+        scale:
+          domainMode: 0
+          manualMinimum: 0
+          manualMaximum: 0
+        color:
+          gradient:
+            serializedVersion: 2
+            key0: {r: 0.282353, g: 0.2392157, b: 0.5450981, a: 1}
+            key1: {r: 0.4862745, g: 0.9882354, b: 0, a: 1}
+            key2: {r: 1, g: 0, b: 0, a: 1}
+            key3: {r: 0, g: 0, b: 0, a: 1}
+            key4: {r: 0, g: 0, b: 0, a: 1}
+            key5: {r: 0, g: 0, b: 0, a: 0}
+            key6: {r: 0, g: 0, b: 0, a: 0}
+            key7: {r: 0, g: 0, b: 0, a: 0}
+            ctime0: 0
+            ctime1: 33230
+            ctime2: 65535
+            ctime3: 0
+            ctime4: 0
+            ctime5: 0
+            ctime6: 0
+            ctime7: 0
+            atime0: 0
+            atime1: 32151
+            atime2: 39707
+            atime3: 53276
+            atime4: 65535
+            atime5: 0
+            atime6: 0
+            atime7: 0
+            m_Mode: 2
+            m_ColorSpace: -1
+            m_NumColorKeys: 3
+            m_NumAlphaKeys: 5
+          noDataColor: {r: 1, g: 1, b: 1, a: 1}
+          reverse: 0
+        height:
+          maximumVisualHeight: 0
+      heightSurface:
+        method: 0
+        insetFactor: 0.8
+      urbanContextPlacement:
+        mode: 1
+        sourceVisualizationLayerId: income_surface
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0

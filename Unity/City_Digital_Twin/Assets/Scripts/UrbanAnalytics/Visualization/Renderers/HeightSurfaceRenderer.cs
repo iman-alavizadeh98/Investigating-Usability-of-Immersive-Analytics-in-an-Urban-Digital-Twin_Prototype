@@ -315,6 +315,22 @@ namespace UrbanAnalytics.Visualization
                 );
 
 
+            // InsetExtrusion shrinks each column about its unit
+            // centroid; publish that anchor (world space) so
+            // following context layers can shrink identically.
+            float horizontalScale =
+                HeightSurfaceMeshBuilder
+                    .ResolveInsetFactor(
+                        spec.HeightSurface
+                    );
+
+
+            var horizontalAnchors =
+                new Dictionary<string, Vector3>(
+                    StringComparer.Ordinal
+                );
+
+
             try
             {
                 foreach (
@@ -418,6 +434,16 @@ namespace UrbanAnalytics.Visualization
                     );
 
 
+                    if (horizontalScale < 1.0f)
+                    {
+                        CollectHorizontalAnchors(
+                            sourceChunk,
+                            chunkTransform,
+                            horizontalAnchors
+                        );
+                    }
+
+
                     await Task.Yield();
                 }
 
@@ -427,7 +453,11 @@ namespace UrbanAnalytics.Visualization
                     .RegisterSurfaceElevation(
                         spec.Id,
                         spec.Target.LayerId,
-                        surfaceTopOffsets
+                        surfaceTopOffsets,
+                        horizontalScale,
+                        horizontalScale < 1.0f
+                            ? horizontalAnchors
+                            : null
                     );
             }
             catch
@@ -617,6 +647,47 @@ namespace UrbanAnalytics.Visualization
                     sourceRange.UnitId
                 ] =
                     offset;
+            }
+        }
+
+
+        /// <summary>
+        /// World-space inset anchor per unit: the same centroid
+        /// HeightSurfaceMeshBuilder shrinks the column about,
+        /// transformed by the generated chunk (which shares the
+        /// source chunk's local space).
+        /// </summary>
+        private static void
+            CollectHorizontalAnchors(
+                SpatialMeshChunk sourceChunk,
+                Transform generatedChunkTransform,
+                IDictionary<string, Vector3> output
+            )
+        {
+            Vector3[] sourceVertices =
+                sourceChunk.Mesh.vertices;
+
+
+            foreach (
+                SpatialMeshUnitRange range
+                in sourceChunk.UnitRanges
+            )
+            {
+                Vector3 centroidLocal =
+                    HeightSurfaceMeshBuilder
+                        .CalculateCentroid(
+                            sourceVertices,
+                            range
+                        );
+
+
+                output[
+                    range.UnitId
+                ] =
+                    generatedChunkTransform
+                        .TransformPoint(
+                            centroidLocal
+                        );
             }
         }
 
