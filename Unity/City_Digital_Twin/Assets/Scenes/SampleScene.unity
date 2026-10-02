@@ -370,6 +370,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Visualization.VisualizationManager
   dataLayerManager: {fileID: 56677990}
   geometryManager: {fileID: 564681234}
+  urbanContextManager: {fileID: 971600326}
+  associationManager: {fileID: 356883002}
   vertexColorMaterial: {fileID: 2100000, guid: 7545a7d7d52251943bdbc74bb9e27984, type: 2}
   applyOnStart: 1
   startupVisualization:
@@ -481,6 +483,9 @@ MonoBehaviour:
       heightSurface:
         method: 0
         insetFactor: 0.8
+      urbanContextPlacement:
+        mode: 0
+        sourceVisualizationLayerId: 
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
