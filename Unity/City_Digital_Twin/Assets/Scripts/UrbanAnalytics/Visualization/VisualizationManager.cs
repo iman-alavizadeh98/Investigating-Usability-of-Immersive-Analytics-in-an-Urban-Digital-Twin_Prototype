@@ -52,6 +52,17 @@ namespace UrbanAnalytics.Visualization
             vertexColorMaterial;
 
 
+        [Tooltip(
+            "Material for data-coloured buildings. Should use " +
+            "UrbanAnalytics/BuildingVertexColorShaded so walls " +
+            "and roofs stay distinguishable. Falls back to " +
+            "Vertex Color Material when empty."
+        )]
+        [SerializeField]
+        private Material
+            buildingVertexColorMaterial;
+
+
         // =========================================================
         // STARTUP
         // =========================================================
@@ -356,6 +367,18 @@ namespace UrbanAnalytics.Visualization
                 }
 
 
+                if (buildingVertexColorMaterial == null)
+                {
+                    Debug.LogWarning(
+                        "VisualizationManager: Building Vertex " +
+                        "Color Material is not assigned; " +
+                        "data-coloured buildings will use the " +
+                        "unlit surface material and lose shading.",
+                        this
+                    );
+                }
+
+
                 renderContext =
                     new VisualizationRenderContext(
                         dataLayerManager,
@@ -363,7 +386,8 @@ namespace UrbanAnalytics.Visualization
                         vertexColorMaterial,
                         urbanContextManager,
                         associationManager,
-                        runtimeState
+                        runtimeState,
+                        buildingVertexColorMaterial
                     );
 
 

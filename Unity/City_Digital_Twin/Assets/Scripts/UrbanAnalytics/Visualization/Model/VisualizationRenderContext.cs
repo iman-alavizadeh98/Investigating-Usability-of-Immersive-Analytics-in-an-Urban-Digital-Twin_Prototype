@@ -52,13 +52,24 @@ namespace UrbanAnalytics.Visualization
         }
 
 
+        /// <summary>
+        /// Shaded vertex-colour material for buildings.
+        /// Falls back to VertexColorMaterial.
+        /// </summary>
+        public Material BuildingVertexColorMaterial
+        {
+            get;
+        }
+
+
         public VisualizationRenderContext(
             DataLayerManager dataLayers,
             GeometryManager geometry,
             Material vertexColorMaterial,
             UrbanContextManager urbanContext,
             AssociationManager associations,
-            VisualizationRuntimeState runtimeState
+            VisualizationRuntimeState runtimeState,
+            Material buildingVertexColorMaterial = null
         )
         {
             DataLayers =
@@ -80,6 +91,12 @@ namespace UrbanAnalytics.Visualization
                 ?? throw new ArgumentNullException(
                     nameof(vertexColorMaterial)
                 );
+
+
+            BuildingVertexColorMaterial =
+                buildingVertexColorMaterial != null
+                    ? buildingVertexColorMaterial
+                    : VertexColorMaterial;
 
 
             UrbanContext =

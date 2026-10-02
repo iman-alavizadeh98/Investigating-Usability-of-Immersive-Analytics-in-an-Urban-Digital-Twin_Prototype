@@ -78,7 +78,9 @@ namespace UrbanAnalytics.Visualization
                 spatialLayerId.Trim();
 
 
-            topOffsets =
+            // "this." is required: the parameter has the same
+            // name, and assigning without it left the field null.
+            this.topOffsets =
                 new ReadOnlyDictionary<string, float>(
                     new Dictionary<string, float>(
                         topOffsets,

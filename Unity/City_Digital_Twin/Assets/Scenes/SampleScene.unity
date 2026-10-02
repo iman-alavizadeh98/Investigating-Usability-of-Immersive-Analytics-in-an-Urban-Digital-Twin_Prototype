@@ -373,6 +373,7 @@ MonoBehaviour:
   urbanContextManager: {fileID: 971600326}
   associationManager: {fileID: 356883002}
   vertexColorMaterial: {fileID: 2100000, guid: 7545a7d7d52251943bdbc74bb9e27984, type: 2}
+  buildingVertexColorMaterial: {fileID: 2100000, guid: ca599e2f7cad3a0498cc0bf62e7fecc4, type: 2}
   applyOnStart: 1
   startupVisualization:
     id: income_test
@@ -1171,6 +1172,7 @@ MonoBehaviour:
   projectManager: {fileID: 866019404}
   spatialReferenceManager: {fileID: 1641907867}
   associationManager: {fileID: 356883002}
+  geometryManager: {fileID: 0}
   renderParent: {fileID: 0}
   loadBuildingsOnStart: 1
   buildingsBinaryPath: buildings_runtime_ruta.bin
@@ -1181,6 +1183,7 @@ MonoBehaviour:
   buildingMaterial: {fileID: 0}
   buildingsPerChunk: 750
   enableBuildingColliders: 0
+  alignBaseWithAnalyticalSurface: 1
   chunksBeforeYield: 1
 --- !u!1 &1167897302
 GameObject:

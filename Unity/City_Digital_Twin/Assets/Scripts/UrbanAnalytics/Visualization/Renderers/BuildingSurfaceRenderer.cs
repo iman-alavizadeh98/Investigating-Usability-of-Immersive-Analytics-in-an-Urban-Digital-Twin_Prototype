@@ -392,7 +392,7 @@ namespace UrbanAnalytics.Visualization
 
                     chunk.SetMaterial(
                         context
-                            .VertexColorMaterial
+                            .BuildingVertexColorMaterial
                     );
                 }
 

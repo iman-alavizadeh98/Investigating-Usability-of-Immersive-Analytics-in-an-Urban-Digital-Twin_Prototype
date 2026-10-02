@@ -49,6 +49,14 @@ namespace UrbanAnalytics.UrbanContext
             associationManager;
 
         [Tooltip(
+            "Optional. Used to align the building base with " +
+            "the analytical surface plane."
+        )]
+        [SerializeField]
+        private GeometryManager
+            geometryManager;
+
+        [Tooltip(
             "Usually CityRoot."
         )]
         [SerializeField]
@@ -115,6 +123,16 @@ namespace UrbanAnalytics.UrbanContext
         [SerializeField]
         private bool enableBuildingColliders =
             false;
+
+        [Tooltip(
+            "Lift the Buildings root by GeometryManager's " +
+            "Surface Y Offset so buildings stand on the " +
+            "analytical surface instead of starting below it. " +
+            "Surface-following lifts are measured from that plane."
+        )]
+        [SerializeField]
+        private bool alignBaseWithAnalyticalSurface =
+            true;
 
         [SerializeField]
         [Min(1)]
@@ -1009,6 +1027,15 @@ namespace UrbanAnalytics.UrbanContext
                     ring.Coordinates;
 
 
+            // The wall winding below faces outward for
+            // counter-clockwise rings. Clockwise rings must be
+            // flipped, otherwise their walls face inward and are
+            // back-face culled from outside.
+            bool flipWalls =
+                ring.Orientation ==
+                RingOrientation.Clockwise;
+
+
             for (
                 int i = 0;
                 i < ringCoordinates.Count;
@@ -1102,31 +1129,47 @@ namespace UrbanAnalytics.UrbanContext
                 );
 
 
-                // Same wall winding as the previous
-                // BuildingRuntimeLoader.
+                // Outward winding for counter-clockwise rings
+                // (same as the previous BuildingRuntimeLoader);
+                // swapped for clockwise rings.
+                int second =
+                    flipWalls
+                        ? offset + 1
+                        : offset + 2;
+
+                int third =
+                    flipWalls
+                        ? offset + 2
+                        : offset + 1;
+
+
                 triangles.Add(
                     offset
                 );
 
                 triangles.Add(
-                    offset + 2
+                    second
                 );
+
+                triangles.Add(
+                    third
+                );
+
 
                 triangles.Add(
                     offset + 1
                 );
 
-
                 triangles.Add(
-                    offset + 1
+                    flipWalls
+                        ? offset + 3
+                        : offset + 2
                 );
 
                 triangles.Add(
-                    offset + 2
-                );
-
-                triangles.Add(
-                    offset + 3
+                    flipWalls
+                        ? offset + 2
+                        : offset + 3
                 );
             }
         }
@@ -1451,6 +1494,45 @@ namespace UrbanAnalytics.UrbanContext
                 buildingsRoot =
                     buildingsObject.transform;
             }
+
+
+            buildingsRoot.localPosition =
+                new Vector3(
+                    0.0f,
+                    ResolveBuildingBaseYOffset(),
+                    0.0f
+                );
+        }
+
+
+        /// <summary>
+        /// GeometryManager raises every analytical layer by
+        /// Surface Y Offset (default 0.002 = 2 m). Buildings
+        /// built at y = 0 would start below that plane: the
+        /// lowest 2 m are hidden and 2 m roofs z-fight with it.
+        /// </summary>
+        private float ResolveBuildingBaseYOffset()
+        {
+            if (!alignBaseWithAnalyticalSurface)
+            {
+                return 0.0f;
+            }
+
+
+            if (geometryManager == null)
+            {
+                Debug.LogWarning(
+                    "UrbanContextManager: no GeometryManager " +
+                    "found, so buildings are not aligned with " +
+                    "the analytical surface.",
+                    this
+                );
+
+                return 0.0f;
+            }
+
+
+            return geometryManager.SurfaceYOffset;
         }
 
 
@@ -1585,6 +1667,15 @@ namespace UrbanAnalytics.UrbanContext
                 associationManager =
                     FindFirstObjectByType<
                         AssociationManager
+                    >();
+            }
+
+
+            if (geometryManager == null)
+            {
+                geometryManager =
+                    FindFirstObjectByType<
+                        GeometryManager
                     >();
             }
         }

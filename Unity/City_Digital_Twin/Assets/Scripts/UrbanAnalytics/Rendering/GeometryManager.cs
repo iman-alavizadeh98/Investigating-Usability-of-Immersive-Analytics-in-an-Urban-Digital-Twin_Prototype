@@ -158,6 +158,14 @@ namespace UrbanAnalytics.Rendering
             renderedLayers.Count;
 
 
+        /// <summary>
+        /// Y offset (Unity units) of every rendered spatial-layer
+        /// root. Urban context uses it to stand on the same plane.
+        /// </summary>
+        public float SurfaceYOffset =>
+            surfaceYOffset;
+
+
         // =========================================================
         // UNITY LIFECYCLE
         // =========================================================
