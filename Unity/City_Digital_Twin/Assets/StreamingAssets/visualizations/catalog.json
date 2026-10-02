@@ -1,0 +1,39 @@
+{
+  "visualizations": [
+    {
+      "id": "population_bars",
+      "displayName": "Population (bars on income map)",
+      "file": "population_bars.json"
+    },
+    {
+      "id": "men_women_bars",
+      "displayName": "Men up / women down (bars)",
+      "file": "men_women_bars.json"
+    },
+    {
+      "id": "income_vs_median_bars",
+      "displayName": "Income above / below median (bars)",
+      "file": "income_vs_median_bars.json"
+    },
+    {
+      "id": "age_stacked_bars",
+      "displayName": "Age groups (stacked bars)",
+      "file": "age_stacked_bars.json"
+    },
+    {
+      "id": "age_radial",
+      "displayName": "Age groups (radial glyphs)",
+      "file": "age_radial.json"
+    },
+    {
+      "id": "men_women_columns_buildings",
+      "displayName": "Men / women columns + buildings",
+      "file": "men_women_columns_buildings.json"
+    },
+    {
+      "id": "income_columns_age_bars",
+      "displayName": "Income columns + age stacked bars",
+      "file": "income_columns_age_bars.json"
+    }
+  ]
+}

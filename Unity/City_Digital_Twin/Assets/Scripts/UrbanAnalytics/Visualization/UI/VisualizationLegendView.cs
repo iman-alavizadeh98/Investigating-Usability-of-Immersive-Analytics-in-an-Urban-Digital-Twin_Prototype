@@ -1,4 +1,5 @@
 using System;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -23,16 +24,16 @@ namespace UrbanAnalytics.Visualization
         private GameObject contentRoot;
 
         [SerializeField]
-        private Text titleText;
+        private TMP_Text titleText;
 
         [SerializeField]
-        private Text unitText;
+        private TMP_Text unitText;
 
         [SerializeField]
-        private Text minimumText;
+        private TMP_Text minimumText;
 
         [SerializeField]
-        private Text maximumText;
+        private TMP_Text maximumText;
 
         [SerializeField]
         private RawImage gradientImage;

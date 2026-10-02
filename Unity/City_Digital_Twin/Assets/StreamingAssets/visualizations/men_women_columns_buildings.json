@@ -1,0 +1,106 @@
+{
+  "id": "men_women_columns_buildings",
+  "displayName": "Men / women columns + buildings",
+  "layers": [
+    {
+      "id": "pop_surface",
+      "enabled": true,
+      "mark": 1,
+      "target": {
+        "kind": 0,
+        "layerId": "ruta_250",
+        "mapping": {
+          "mode": 0,
+          "associationId": ""
+        }
+      },
+      "encodings": [
+        {
+          "channel": 1,
+          "role": 1,
+          "data": {
+            "mode": 0,
+            "variables": [
+              {
+                "dataLayerId": "population_sex_2023",
+                "variableId": "men"
+              }
+            ]
+          },
+          "scale": {
+            "domainMode": 0,
+            "type": 0
+          },
+          "height": {
+            "maximumVisualHeight": 0.3
+          }
+        },
+        {
+          "channel": 1,
+          "role": 2,
+          "data": {
+            "mode": 0,
+            "variables": [
+              {
+                "dataLayerId": "population_sex_2023",
+                "variableId": "women"
+              }
+            ]
+          },
+          "scale": {
+            "domainMode": 0,
+            "type": 0
+          },
+          "height": {
+            "maximumVisualHeight": 0.3
+          }
+        }
+      ],
+      "heightSurface": {
+        "method": 1,
+        "insetFactor": 0.8
+      }
+    },
+    {
+      "id": "buildings_follow",
+      "enabled": true,
+      "mark": 0,
+      "target": {
+        "kind": 1,
+        "layerId": "buildings",
+        "mapping": {
+          "mode": 1,
+          "associationId": "buildings_to_ruta"
+        }
+      },
+      "encodings": [
+        {
+          "channel": 0,
+          "role": 0,
+          "data": {
+            "mode": 0,
+            "variables": [
+              {
+                "dataLayerId": "income_2023",
+                "variableId": "median_income"
+              }
+            ]
+          },
+          "scale": {
+            "domainMode": 2,
+            "lowerPercentile": 2,
+            "upperPercentile": 98,
+            "type": 0
+          },
+          "color": {
+            "paletteId": "viridis"
+          }
+        }
+      ],
+      "urbanContextPlacement": {
+        "mode": 1,
+        "sourceVisualizationLayerId": "pop_surface"
+      }
+    }
+  ]
+}

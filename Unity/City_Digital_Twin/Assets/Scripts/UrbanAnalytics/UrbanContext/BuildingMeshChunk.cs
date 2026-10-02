@@ -47,6 +47,15 @@ namespace UrbanAnalytics.UrbanContext
         }
 
 
+        /// <summary>
+        /// Source building height in metres (NaN if unknown).
+        /// </summary>
+        public float HeightMeters
+        {
+            get;
+        }
+
+
         public int VertexEndExclusive =>
             VertexStart +
             VertexCount;
@@ -63,9 +72,13 @@ namespace UrbanAnalytics.UrbanContext
             int vertexStart,
             int vertexCount,
             int triangleStart,
-            int triangleCount
+            int triangleCount,
+            float heightMeters = float.NaN
         )
         {
+            HeightMeters =
+                heightMeters;
+
             BuildingId =
                 buildingId
                 ?? throw new ArgumentNullException(
@@ -150,6 +163,25 @@ namespace UrbanAnalytics.UrbanContext
             Mesh != null &&
             MeshFilter != null &&
             MeshRenderer != null;
+
+
+        /// <summary>
+        /// Incremented whenever the mesh vertices are moved
+        /// (e.g. buildings following a height surface), so
+        /// derived data such as picking colliders can tell they
+        /// are stale. Colour changes do not count.
+        /// </summary>
+        public int GeometryVersion
+        {
+            get;
+            private set;
+        }
+
+
+        public void NotifyGeometryChanged()
+        {
+            GeometryVersion++;
+        }
 
 
         public void Initialize(

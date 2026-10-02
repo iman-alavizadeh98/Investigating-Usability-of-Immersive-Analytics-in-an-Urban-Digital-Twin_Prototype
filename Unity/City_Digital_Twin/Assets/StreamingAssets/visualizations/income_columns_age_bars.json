@@ -1,0 +1,110 @@
+{
+  "id": "income_columns_age_bars",
+  "displayName": "Income columns + age stacked bars",
+  "layers": [
+    {
+      "id": "income_height",
+      "enabled": true,
+      "mark": 1,
+      "target": {
+        "kind": 0,
+        "layerId": "ruta_250",
+        "mapping": {
+          "mode": 0,
+          "associationId": ""
+        }
+      },
+      "encodings": [
+        {
+          "channel": 1,
+          "role": 0,
+          "data": {
+            "mode": 0,
+            "variables": [
+              {
+                "dataLayerId": "income_2023",
+                "variableId": "median_income"
+              }
+            ]
+          },
+          "scale": {
+            "domainMode": 1,
+            "manualMinimum": 0,
+            "manualMaximum": 700000,
+            "type": 0
+          },
+          "height": {
+            "maximumVisualHeight": 0.2
+          }
+        }
+      ],
+      "heightSurface": {
+        "method": 1,
+        "insetFactor": 0.8
+      }
+    },
+    {
+      "id": "stacked",
+      "enabled": true,
+      "mark": 3,
+      "target": {
+        "kind": 2,
+        "layerId": "ruta_250",
+        "mapping": {
+          "mode": 0,
+          "associationId": ""
+        }
+      },
+      "encodings": [
+        {
+          "channel": 4,
+          "role": 0,
+          "data": {
+            "mode": 1,
+            "variables": [
+              {
+                "dataLayerId": "population_age_2023",
+                "variableId": "age_0_6"
+              },
+              {
+                "dataLayerId": "population_age_2023",
+                "variableId": "age_7_15"
+              },
+              {
+                "dataLayerId": "population_age_2023",
+                "variableId": "age_16_19"
+              },
+              {
+                "dataLayerId": "population_age_2023",
+                "variableId": "age_20_24"
+              },
+              {
+                "dataLayerId": "population_age_2023",
+                "variableId": "age_25_44"
+              },
+              {
+                "dataLayerId": "population_age_2023",
+                "variableId": "age_45_64"
+              },
+              {
+                "dataLayerId": "population_age_2023",
+                "variableId": "age_65_plus"
+              }
+            ]
+          },
+          "scale": {
+            "domainMode": 0,
+            "type": 0
+          },
+          "height": {
+            "maximumVisualHeight": 0.3
+          }
+        }
+      ],
+      "urbanContextPlacement": {
+        "mode": 1,
+        "sourceVisualizationLayerId": "income_height"
+      }
+    }
+  ]
+}

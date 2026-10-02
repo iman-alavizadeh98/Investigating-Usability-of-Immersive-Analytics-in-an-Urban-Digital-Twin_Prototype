@@ -758,7 +758,8 @@ namespace UrbanAnalytics.UrbanContext
                         vertexStart,
                         addedVertexCount,
                         triangleStart,
-                        addedTriangleCount
+                        addedTriangleCount,
+                        heightMeters
                     )
                 );
 

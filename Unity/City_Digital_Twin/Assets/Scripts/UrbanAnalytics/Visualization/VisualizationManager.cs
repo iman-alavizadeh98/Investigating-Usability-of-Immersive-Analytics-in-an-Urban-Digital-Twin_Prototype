@@ -184,6 +184,32 @@ namespace UrbanAnalytics.Visualization
         }
 
 
+        /// <summary>
+        /// The spec set in the Inspector (applied on start when
+        /// Apply On Start is set). Runtime switchers list it first.
+        /// </summary>
+        public VisualizationSpec StartupVisualization =>
+            startupVisualization;
+
+
+        /// <summary>
+        /// True while an apply is running (scene geometry may be
+        /// changing).
+        /// </summary>
+        public bool IsApplying =>
+            applyTask != null &&
+            !applyTask.IsCompleted;
+
+
+        /// <summary>
+        /// Initializing or applying: chunk meshes may be created,
+        /// destroyed or moved at any frame.
+        /// </summary>
+        public bool IsBusy =>
+            IsInitializing ||
+            IsApplying;
+
+
         // =========================================================
         // EVENTS
         // =========================================================
@@ -195,6 +221,24 @@ namespace UrbanAnalytics.Visualization
 
         public event Action
             VisualizationCleared;
+
+
+        /// <summary>
+        /// Raised synchronously before an apply or clear starts
+        /// changing scene geometry. Listeners that read chunk
+        /// meshes from worker threads must finish here.
+        /// </summary>
+        public event Action
+            VisualizationChanging;
+
+
+        /// <summary>
+        /// Raised after every successful apply, whether or not the
+        /// visualization has a legend.
+        /// </summary>
+        public event Action<
+            VisualizationSpec
+        > VisualizationApplied;
 
 
         // =========================================================
@@ -532,6 +576,10 @@ namespace UrbanAnalytics.Visualization
             }
 
 
+            VisualizationChanging
+                ?.Invoke();
+
+
             // Cancel the apply in flight (if any). Its renderers
             // restore whatever they had already changed.
             applyCancellation?.Cancel();
@@ -672,6 +720,12 @@ namespace UrbanAnalytics.Visualization
                 PublishPrimaryLegend();
 
 
+                VisualizationApplied
+                    ?.Invoke(
+                        visualization
+                    );
+
+
                 Debug.Log(
                     $"Visualization applied:\n" +
                     $"ID: {visualization.Id}\n" +
@@ -701,6 +755,10 @@ namespace UrbanAnalytics.Visualization
         /// </summary>
         public void ClearActiveVisualization()
         {
+            VisualizationChanging
+                ?.Invoke();
+
+
             applyCancellation?.Cancel();
 
 

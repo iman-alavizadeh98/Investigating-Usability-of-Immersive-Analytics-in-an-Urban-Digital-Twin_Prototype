@@ -35,6 +35,11 @@ namespace UrbanAnalytics.Visualization
             public Color32[] Colors;
 
             public Material Material;
+
+            // Only chunks whose vertices were moved get them
+            // written back, so a colour-only layer does not
+            // invalidate picking colliders on clear.
+            public bool VerticesModified;
         }
 
 
@@ -225,7 +230,7 @@ namespace UrbanAnalytics.Visualization
                         mesh.colors32;
 
 
-                    originalStates.Add(
+                    var originalState =
                         new OriginalChunkState
                         {
                             Chunk =
@@ -241,7 +246,11 @@ namespace UrbanAnalytics.Visualization
                                 chunk
                                     .MeshRenderer
                                     .sharedMaterial
-                        }
+                        };
+
+
+                    originalStates.Add(
+                        originalState
                     );
 
 
@@ -448,6 +457,13 @@ namespace UrbanAnalytics.Visualization
 
 
                         mesh.RecalculateBounds();
+
+
+                        originalState.VerticesModified =
+                            true;
+
+
+                        chunk.NotifyGeometryChanged();
                     }
 
 
@@ -570,7 +586,8 @@ namespace UrbanAnalytics.Visualization
                 }
 
 
-                if (state.Vertices != null &&
+                if (state.VerticesModified &&
+                    state.Vertices != null &&
                     state.Vertices.Length ==
                         state
                             .Chunk
@@ -588,6 +605,9 @@ namespace UrbanAnalytics.Visualization
                         .Chunk
                         .Mesh
                         .RecalculateBounds();
+
+
+                    state.Chunk.NotifyGeometryChanged();
                 }
 
 
