@@ -5,10 +5,13 @@ Run the buildings dataset pipeline.
 Loads raw Swedish buildings data, validates it, translates Swedish → English,
 and exports processed dataset with metadata.
 
-Usage:
-    python run_buildings_pipeline.py
-    python run_buildings_pipeline.py --output custom_output_dir
-    python run_buildings_pipeline.py --input path/to/custom.gpkg
+Usage (from the repository root; defaults are Helsingborg):
+    python Src/Scripts/run_buildings_pipeline.py --postprocess --profile
+    python Src/Scripts/run_buildings_pipeline.py --output custom_output_dir
+    python Src/Scripts/run_buildings_pipeline.py --input path/to/custom.gpkg
+
+--postprocess writes the clean snapshot (one row per object_id) to a sibling
+"_postprocess" folder; see Src/pipelines/buildings/postprocess.py.
 """
 
 import argparse
@@ -22,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pipelines.buildings.pipeline import BuildingsPipeline
 from pipelines.buildings.config import FIELD_TRANSLATIONS
-from pipelines.buildings.postprocess import build_postprocess_snapshot
+from pipelines.buildings.postprocess import DUPLICATE_STRATEGIES, build_postprocess_snapshot
 from utils.data_profiler import DataFrameProfiler
 
 # Configure logging
@@ -39,12 +42,12 @@ def main():
     )
     parser.add_argument(
         "--input",
-        default="Raw_data/byggnad_gpkg/byggnad_sverige.gpkg",
-        help="Path to input GeoPackage"
+        default="Raw_data/1-Helsingborig/byggnad_gpkg_helsingborg/byggnad_sverige.gpkg",
+        help="Path to input GeoPackage (default: Helsingborg)"
     )
     parser.add_argument(
         "--output",
-        default="Processed_data",
+        default="Processed_data/Helsingborg_Final",
         help="Output directory for processed data (will create dated subfolder)"
     )
     parser.add_argument(
@@ -60,9 +63,16 @@ def main():
     parser.add_argument(
         "--postprocess",
         action="store_true",
-        help="Create postprocess snapshot in a separate output folder"
+        help="Create the clean postprocess snapshot (one row per object_id) in a separate output folder"
     )
-    
+    parser.add_argument(
+        "--duplicate-strategy",
+        choices=DUPLICATE_STRATEGIES,
+        default="merge",
+        help="How postprocess resolves pieces sharing an object_id: merge them into one "
+             "geometry (default, no area lost) or keep only the largest piece"
+    )
+
     args = parser.parse_args()
     
     # Generate dated folder names
@@ -97,11 +107,19 @@ def main():
     }
     column_descriptions.update({
         "object_type_en": "English label for object_type",
-        "object_type_category": "High-level category for object_type",
-        "primary_purpose_en": "English label for primary_purpose",
-        "primary_purpose_category": "High-level category for primary_purpose",
+        "object_type_category": "Broad English category for object_type (Residential, Public, ...)",
+        "primary_purpose_en": "English label for primary_purpose (e.g. 'Samhällsfunktion;Sjukhus' -> 'Hospital')",
+        "secondary_purpose_en": "English label for secondary_purpose",
+        "tertiary_purpose_en": "English label for tertiary_purpose",
+        "quaternary_purpose_en": "English label for quaternary_purpose",
+        "quinary_purpose_en": "English label for quinary_purpose",
+        "primary_purpose_category": "Broad English category of the primary purpose's object type",
         "collection_level_en": "English label for collection_level",
-        "main_building_flag": "Main building flag (converted to boolean)"
+        "main_building_flag": "Main building flag (converted to boolean)",
+        "main_building_flag_sv": "Swedish source: huvudbyggnad (Ja/Nej)",
+        "footprint_area_m2": "Footprint area in m² (EPSG:3006)",
+        "source_part_count": "Postprocess only: number of source rows (pieces) merged into this building",
+        "collection_level_mixed": "Postprocess only: pieces had different collection levels",
     })
 
     # Profile base dataset if requested
@@ -136,7 +154,8 @@ def main():
             snapshot_dir,
             id_col="object_id",
             version_col="version_valid_from",
-            version_num_col="object_version"
+            version_num_col="object_version",
+            strategy=args.duplicate_strategy
         )
         logger.info(
             "Postprocess snapshot saved to %s (rows: %s)",

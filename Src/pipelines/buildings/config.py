@@ -43,88 +43,130 @@ FIELD_TRANSLATIONS = {
 }
 
 # === BUILDING OBJECT TYPES ===
-# Values for objekttyp field (Table 4 in PDF)
+# Values for objekttyp field (Table 4 in PDF).
+# "category" is a short English class for grouping/colouring in the runtime;
+# "description" is the product-description definition (kept for metadata only).
 
 BUILDING_TYPES = {
     "Bostad": {
         "en": "Residence",
-        "description": "Building used for residential purposes (single/multi-family, >15 kvm)",
+        "category": "Residential",
+        "description": "Building predominantly used for permanent or holiday housing",
         "object_type_nr": 2061
     },
     "Industri": {
         "en": "Industrial",
-        "description": "Building containing manufacturing or processing of products (>15 kvm)",
+        "category": "Industrial",
+        "description": "Building predominantly used for manufacturing products and processing raw materials",
         "object_type_nr": 2062
     },
     "Samhällsfunktion": {
         "en": "Public facility",
-        "description": "Building for public community services (>15 kvm)",
+        "category": "Public",
+        "description": "Building predominantly housing activities used by citizens in community life",
         "object_type_nr": 2063
     },
     "Verksamhet": {
         "en": "Business",
-        "description": "Building used primarily for business (>50% non-residential, >15 kvm)",
+        "category": "Business",
+        "description": "Building predominantly used for business: >50% non-residential, e.g. hotel, office, retail, restaurant, car park",
         "object_type_nr": 2064
     },
     "Ekonomibyggnad": {
         "en": "Farm building",
-        "description": "Building for agriculture/forestry/similar activities (>15 kvm)",
+        "category": "Agricultural",
+        "description": "Building predominantly for agriculture, forestry or comparable trades",
         "object_type_nr": 2065
     },
     "Komplementbyggnad": {
         "en": "Ancillary building",
-        "description": "Small building attached to dwelling (garage, shed, etc., >15 kvm)",
+        "category": "Ancillary",
+        "description": "Building belonging to a small house, e.g. outbuilding, garage, carport, cistern, storage, boathouse; includes structures without walls",
         "object_type_nr": 2066
     },
     "Övrig byggnad": {
         "en": "Other building",
-        "description": "Building with other purpose (colonist hut, shelter, tower, etc., >15 kvm)",
+        "category": "Other",
+        "description": "Building of none of the other types, e.g. allotment cottage, wind shelter, Sami hut (kåta), tower, windmill, bell tower, lighthouse, permanent free-standing canopy",
         "object_type_nr": 2067
     },
 }
 
-# === PRIMARY PURPOSE (ANDAMÅL1) CATEGORIES ===
-# From Table 6 in PDF - comprehensive list
+# === PURPOSE (ANDAMÅL1-5) VALUES ===
+# Table 6 in PDF. The delivered values have the form "<objekttyp>;<ändamål>",
+# e.g. "Samhällsfunktion;Sjukhus", so purposes are keyed by object type first and
+# then by the part after ";". The same subtype ("Ospecificerad") exists under
+# several object types, so a flat subtype key is ambiguous.
+# An empty subtype ("Verksamhet;") is the PDF's "-": purpose not specified.
+# Unknown values are logged and reported by the pipeline, never guessed.
 
-PRIMARY_PURPOSES = {
-    # Bostad (Residence)
-    "Småhus friliggande": {"en": "Single-family detached house", "category": "Residence"},
-    "Småhus kedjehus": {"en": "Townhouse/chain house", "category": "Residence"},
-    "Småhus radhus": {"en": "Row house", "category": "Residence"},
-    "Småhus med flera lägenheter": {"en": "Multi-unit small building", "category": "Residence"},
-    "Flerfamiljshus": {"en": "Multi-family apartment building", "category": "Residence"},
-    
-    # Industri (Industrial)
-    "Annan tillverkningsindustri": {"en": "Other manufacturing", "category": "Industrial"},
-    "Industrihotell": {"en": "Industrial complex", "category": "Industrial"},
-    "Metall- eller maskinindustri": {"en": "Metal/machinery manufacturing", "category": "Industrial"},
-    "Textilindustri": {"en": "Textile industry", "category": "Industrial"},
-    "Trävaruindustri": {"en": "Wood products industry", "category": "Industrial"},
-    
-    # Samhällsfunktion (Public facility) - extensive list
-    "Badhus": {"en": "Public bath", "category": "Public"},
-    "Brandstation": {"en": "Fire station", "category": "Public"},
-    "Busstation": {"en": "Bus station", "category": "Public"},
-    "Djursjukhus": {"en": "Veterinary hospital", "category": "Public"},
-    "Högskola": {"en": "University/College", "category": "Public"},
-    "Ishall": {"en": "Ice hockey rink", "category": "Public"},
-    "Järnvägsstation": {"en": "Railway station", "category": "Public"},
-    "Kommunhus": {"en": "Municipal building", "category": "Public"},
-    "Kriminalvårdsanstalt": {"en": "Prison", "category": "Public"},
-    "Kulturbyggnad": {"en": "Cultural building", "category": "Public"},
-    "Multiarena": {"en": "Multi-purpose arena", "category": "Public"},
-    "Polisstation": {"en": "Police station", "category": "Public"},
-    "Ridhus": {"en": "Riding hall", "category": "Public"},
-    "Samfund": {"en": "Religious assembly hall", "category": "Public"},
-    "Sjukhus": {"en": "Hospital", "category": "Public"},
-    "Skola": {"en": "School", "category": "Public"},
-    "Sporthall": {"en": "Sports hall", "category": "Public"},
-    "Universitet": {"en": "University", "category": "Public"},
-    "Vårdcentral": {"en": "Health center", "category": "Public"},
+PURPOSE_SEPARATOR = ";"
+
+PURPOSES = {
+    "Bostad": {
+        "Småhus friliggande": {"en": "Detached house"},
+        "Småhus kedjehus": {"en": "Linked house"},
+        "Småhus radhus": {"en": "Terraced house"},
+        "Småhus med flera lägenheter": {"en": "Small house with several flats"},
+        "Flerfamiljshus": {"en": "Apartment building"},
+        "Ospecificerad": {"en": "Residence (unspecified)"},
+    },
+    "Industri": {
+        "Annan tillverkningsindustri": {"en": "Other manufacturing industry"},
+        "Industrihotell": {"en": "Multi-tenant industrial building"},
+        "Metall- eller maskinindustri": {"en": "Metal or machinery industry"},
+        "Textilindustri": {"en": "Textile industry"},
+        "Trävaruindustri": {"en": "Wood products industry"},
+        "Övrig industribyggnad": {"en": "Other industrial building (non-manufacturing)"},
+        "Ospecificerad": {"en": "Industrial (unspecified)"},
+        # Not in Table 6 of v1.6, but present in the Gothenburg, Helsingborg and
+        # Fortuna deliveries (2025). Translated literally; flagged in metadata.
+        "Tillverkning": {"en": "Manufacturing", "not_in_spec": True},
+    },
+    "Samhällsfunktion": {
+        "Badhus": {"en": "Public bath"},
+        "Brandstation": {"en": "Fire station"},
+        "Busstation": {"en": "Bus station"},
+        "Djursjukhus": {"en": "Animal hospital"},
+        "Högskola": {"en": "University college"},
+        "Ishall": {"en": "Ice rink"},
+        "Järnvägsstation": {"en": "Railway station"},
+        "Kommunhus": {"en": "Town hall"},
+        "Kriminalvårdsanstalt": {"en": "Prison"},
+        "Kulturbyggnad": {"en": "Cultural building"},
+        "Multiarena": {"en": "Multi-purpose arena"},
+        "Polisstation": {"en": "Police station"},
+        "Ridhus": {"en": "Riding hall"},
+        "Samfund": {"en": "Religious building"},
+        "Sjukhus": {"en": "Hospital"},
+        "Skola": {"en": "School"},
+        "Sporthall": {"en": "Sports hall"},
+        "Universitet": {"en": "University"},
+        "Vårdcentral": {"en": "Health centre"},
+        "Ospecificerad": {"en": "Public facility (unspecified)"},
+    },
+    "Verksamhet": {"": {"en": "Business (unspecified)"}},
+    "Ekonomibyggnad": {"": {"en": "Farm building (unspecified)"}},
+    "Komplementbyggnad": {"": {"en": "Ancillary building (unspecified)"}},
+    "Övrig byggnad": {"": {"en": "Other building (unspecified)"}},
 }
 
+# Purpose columns after field renaming, in andamal1..5 order.
+PURPOSE_FIELDS = [
+    "primary_purpose",
+    "secondary_purpose",
+    "tertiary_purpose",
+    "quaternary_purpose",
+    "quinary_purpose",
+]
+
+# === MAIN BUILDING FLAG (HUVUDBYGGNAD) ===
+MAIN_BUILDING_VALUES = {"Ja": True, "Nej": False}
+
 # === COLLECTION LEVEL (INSAMLINGSLAGE) ===
-# Table 7 in PDF - how building location was determined
+# Table 7 in PDF - how building location was determined.
+# Keys are lowercase as in the PDF; the delivered data is capitalised
+# ("Fasad", "Takkant"), so lookups are case-insensitive.
 
 COLLECTION_LEVELS = {
     "fasad": {
@@ -148,21 +190,27 @@ COLLECTION_LEVELS = {
 # === DATASET METADATA ===
 
 DATASET_METADATA = {
-    "name_sv": "Byggnad, vektor",
-    "name_en": "Buildings, vector",
+    "name_sv": "Byggnad Nedladdning, vektor",
+    "name_en": "Buildings download, vector",
     "authority": "Lantmäteriet (Swedish Land Survey)",
-    "version": "1.6",
-    "date": "2023-02-01",
+    "product_description_version": "1.6",
+    "product_description_date": "2023-02-01",  # date of the PDF, not of the data
+    "layer": "byggnad",
     "coordinate_system_plan": "SWEREF 99 TM",
     "coordinate_system_height": "RH 2000",
     "geographic_coverage": "Sweden (nationwide)",
-    "minimum_size_m2": 15.0,
+    # Buildings larger than 15 m² must be included; smaller ones MAY be
+    # (Table 4). It is not a minimum: Helsingborg has 12,657 buildings < 15 m².
+    "mandatory_above_m2": 15.0,
     "description": "Vector dataset of building footprints with semantic attributes including type, usage, and positional accuracy",
-    "update_frequency": "Continuous within municipal responsibility areas, periodic outside",
+    "update_frequency": "Municipal responsibility areas: delivered to Lantmäteriet at least twice a year; "
+                        "outside them: periodic, following the aerial imagery programme. "
+                        "Register attributes are updated continuously by municipalities.",
     "data_quality": {
-        "completeness": "~96% (4% discrepancies in surveyed areas)",
-        "logical_consistency": "High - strict geometric and topological validation",
-        "thematic_accuracy": "High - standardized building classifications",
-        "positional_accuracy_plan_m": (0.02, 50.0),  # Range: 0.02-50 meters
+        "completeness": "Spot checks in municipal areas: ~4% deviation (missing or surplus buildings) nationally",
+        "logical_consistency": "Very high - geometry and value sets checked on storage",
+        "thematic_accuracy": "Deviations mainly in the classes Övrig byggnad, Ekonomibyggnad and "
+                             "Komplementbyggnad; no field checks by Lantmäteriet",
+        "positional_accuracy_plan_m": (0.02, 50.0),  # Table 3 requirement range for Byggnad (yta)
     }
 }
