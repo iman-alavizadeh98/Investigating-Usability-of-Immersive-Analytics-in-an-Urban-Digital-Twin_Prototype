@@ -1,401 +1,237 @@
-"""Per-building height extraction and quality assessment from LiDAR."""
+"""
+Per-building height: one number for extruding a flat-roofed building.
+
+    ground(x, y) = linear interpolation (Delaunay) of 2010 laser ground points
+                   around the footprint (points inside the footprint ignored)
+    height_m     = p95( z - ground(x, y) ) over the roof points inside the footprint
+
+Roof points come from the 2018 surface model; the 2010 laser roof points
+(class 1) are used only where the 2018 surface has too few points. See
+config.py for every threshold and docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md
+for why.
+"""
 
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-import uuid
+from typing import Dict, Optional, Tuple
 
-import geopandas as gpd
+import matplotlib.tri as mtri
 import numpy as np
-import laspy
-from shapely.geometry import Point
-from scipy import stats
+import shapely
+from scipy.spatial import cKDTree
 
-from .config import HeightExtractionConfig, HeightSource, QualityLevel
+from .config import HeightConfig, HeightSource, NoHeightReason, QualityLevel
+from .sources import TilePoints
 
 logger = logging.getLogger(__name__)
 
 
-class HeightEstimator:
-    """Extract building heights from classified LiDAR point clouds."""
-    
-    def __init__(self, config: HeightExtractionConfig):
-        """
-        Initialize height estimator.
-        
-        Args:
-            config: HeightExtractionConfig with extraction parameters
-        """
-        self.config = config
-    
-    def extract_heights_for_buildings(
-        self,
-        buildings_gdf: gpd.GeoDataFrame,
-        laz_path: Path,
-        height_run_id: str
-    ) -> List[Dict]:
-        """
-        Extract heights for a set of buildings from a single LAZ tile.
-        
-        Args:
-            buildings_gdf: GeoDataFrame subset of buildings intersecting this tile
-            laz_path: Path to preprocessed LAZ with classification and HAG
-            height_run_id: UUID linking all heights from this run
-            
-        Returns:
-            List of height estimation dicts (one per building)
-        """
-        heights = []
-        
-        logger.info(f"Extracting heights from {laz_path.name} for {len(buildings_gdf)} buildings...")
-        
-        # Load classified LAZ once
-        try:
-            with laspy.open(laz_path) as src:
-                las = src.read()
-            
-            logger.debug(
-                f"  Loaded {len(las.points)} points from {laz_path.name}"
-            )
-        except Exception as e:
-            logger.error(f"Failed to load LAZ file {laz_path}: {e}")
-            raise
-        
-        # Process each building
-        for idx, (_, building_row) in enumerate(buildings_gdf.iterrows()):
+class GroundSurface:
+    """
+    Linear interpolation on the Delaunay triangulation of the ground points
+    (the same surface as PDAL's hag_delaunay); nearest ground point outside
+    their convex hull.
+
+    Uses matplotlib.tri (its own Delaunay and triangle lookup in C++). The
+    scipy routes (LinearNDInterpolator, Delaunay.find_simplex) call LAPACK,
+    which crashes the process (Windows 0xc06d007f) in the digitaltwin env,
+    where numpy.linalg is broken as well (checked 2026-10-06).
+    """
+
+    def __init__(self, x: np.ndarray, y: np.ndarray, z: np.ndarray):
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        self._z = np.asarray(z, dtype=np.float64)
+        self._tree = cKDTree(np.column_stack((x, y)))
+        self._interp = None
+        if len(x) >= 3:
             try:
-                # Progress logging every 100 buildings
-                if (idx + 1) % 100 == 0:
-                    building_id = building_row.get("object_id", f"unknown_{idx}")
-                    logger.info(
-                        f"  Processing building {idx + 1}/{len(buildings_gdf)} ({building_id})"
-                    )
-                
-                height_dict = self._extract_height_for_building(
-                    building_row,
-                    las,
-                    height_run_id
-                )
-                heights.append(height_dict)
-            
-            except Exception as e:
-                logger.warning(
-                    f"Failed to extract height for building {idx}: {e}; "
-                    f"using fallback"
-                )
-                # Create fallback entry
-                building_id = building_row.get("object_id", f"unknown_{idx}")
-                height_dict = self._create_fallback_height(
-                    building_id,
-                    height_run_id,
-                    reason=f"extraction_error: {str(e)}"
-                )
-                heights.append(height_dict)
-        
-        logger.info(f"  Extracted heights for {len(heights)} buildings")
-        
-        return heights
-    
-    def validate_building_lidar_coverage(
-        self,
-        building_row,
-        las,
-        min_coverage_ratio: float = 0.5
-    ) -> Dict:
-        """
-        Validate that building has adequate LiDAR coverage.
-        
-        Args:
-            building_row: GeoSeries row from buildings GeoDataFrame
-            las: Loaded LAZ point cloud
-            min_coverage_ratio: Minimum coverage ratio for 'good' status
-            
-        Returns:
-            Dict with coverage assessment keys:
-            - has_coverage: bool
-            - point_count: int (points within building)
-            - coverage_ratio: float (0.0-1.0)
-            - coverage_status: str ("good" | "partial" | "none")
-        """
-        building_id = building_row.get("object_id", "unknown")
-        geometry = building_row.geometry
-        
-        # Find points within building footprint
-        buffer_dist = self.config.min_height_m
-        building_bounds = geometry.buffer(buffer_dist).bounds
-        
-        # Fast bounding box filter
-        x_mask = (las.x >= building_bounds[0]) & (las.x <= building_bounds[2])
-        y_mask = (las.y >= building_bounds[1]) & (las.y <= building_bounds[3])
-        bbox_mask = x_mask & y_mask
-        points_in_bbox = np.where(bbox_mask)[0]
-        
-        if len(points_in_bbox) == 0:
-            return {
-                "building_id": building_id,
-                "has_coverage": False,
-                "point_count": 0,
-                "coverage_ratio": 0.0,
-                "coverage_status": "none"
-            }
-        
-        # Filter by polygon intersection
-        candidate_points = las.xyz[points_in_bbox]
-        intersects = np.array([
-            geometry.contains(Point(p[:2])) 
-            for p in candidate_points
-        ])
-        
-        points_in_building = np.sum(intersects)
-        
-        # Estimate coverage ratio from nearby points
-        nearby_count = len(points_in_bbox)
-        coverage_ratio = points_in_building / max(nearby_count, 1)
-        
-        return {
-            "building_id": building_id,
-            "has_coverage": points_in_building >= self.config.min_points,
-            "point_count": points_in_building,
-            "coverage_ratio": float(coverage_ratio),
-            "coverage_status": (
-                "good" if coverage_ratio >= min_coverage_ratio and points_in_building >= self.config.min_points else
-                "partial" if coverage_ratio >= 0.2 else
-                "none"
-            )
-        }
-    
-    def _extract_height_for_building(
-        self,
-        building_row,
-        las,
-        height_run_id: str
-    ) -> Dict:
-        """
-        Extract height for a single building.
-        
-        Args:
-            building_row: GeoSeries row from buildings GeoDataFrame
-            las: Loaded LAZ point cloud (laspy LasData object)
-            height_run_id: Pipeline run UUID
-            
-        Returns:
-            Dict with height_m, ground_z, roof_z, and quality metrics
-        """
-        building_id = building_row.get("object_id", "unknown")
-        geometry = building_row.geometry
-        
-        # Validate coverage before extraction
-        coverage = self.validate_building_lidar_coverage(building_row, las)
-        
-        # If no coverage, return fallback early
-        if not coverage["has_coverage"]:
-            fallback = self._create_fallback_height(
-                building_id,
-                height_run_id,
-                reason=f"insufficient_coverage: {coverage['coverage_status']}"
-            )
-            fallback.update(coverage)  # Add coverage info to fallback
-            return fallback
-        
-        # Find points within building footprint (with buffer for edge cases)
-        buffer_dist = self.config.min_height_m  # Use min_height as buffer
-        building_bounds = geometry.buffer(buffer_dist).bounds
-        
-        # Filter points by bounding box (fast)
-        x_mask = (las.x >= building_bounds[0]) & (las.x <= building_bounds[2])
-        y_mask = (las.y >= building_bounds[1]) & (las.y <= building_bounds[3])
-        bbox_mask = x_mask & y_mask
-        
-        # Further filter by polygon intersection
-        points_in_bbox = np.where(bbox_mask)[0]
-        
-        if len(points_in_bbox) == 0:
-            return self._create_fallback_height(
-                building_id,
-                height_run_id,
-                reason="no_points_in_bounds"
-            )
-        
-        # Extract points intersecting building
-        candidate_points = las.xyz[points_in_bbox]
-        candidate_classes = las.classification[points_in_bbox]
+                tri = mtri.Triangulation(x, y)
+                self._interp = mtri.LinearTriInterpolator(tri, self._z)
+            except (RuntimeError, ValueError):  # collinear or degenerate points
+                self._interp = None
 
-        # Get HAG values if available (indexed identically to candidate_points,
-        # i.e. by points_in_bbox, so all per-point arrays stay aligned)
-        candidate_hag = None
-        if "HeightAboveGround" in las.point_format.dimension_names:
-            candidate_hag = np.asarray(las["HeightAboveGround"][points_in_bbox])
+    def __call__(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        out = np.full(len(x), np.nan)
+        if self._interp is not None and len(x):
+            values = self._interp(x, y)
+            out = np.ma.filled(values.astype(np.float64), np.nan)
+        missing = np.isnan(out)
+        if missing.any():
+            _, nearest = self._tree.query(np.column_stack((x[missing], y[missing])))
+            out[missing] = self._z[nearest]
+        return out
 
-        # Filter to points actually inside the footprint. The intersects mask is
-        # computed over candidate_points, so it must be applied to every
-        # candidate-aligned array (points, classes, HAG) to keep them aligned.
-        intersects = np.array([geometry.contains(Point(p[:2])) for p in candidate_points])
 
-        all_points = candidate_points[intersects]
-        all_classes = candidate_classes[intersects]
-        all_hag = candidate_hag[intersects] if candidate_hag is not None else None
+def _inside(points: TilePoints, geom) -> np.ndarray:
+    """Indices of points strictly inside geom (boundary excluded)."""
+    if geom is None or geom.is_empty or len(points) == 0:
+        return np.empty(0, dtype=np.int64)
+    idx = points.bbox_indices(*geom.bounds)
+    if len(idx) == 0:
+        return idx
+    return idx[shapely.contains_xy(geom, points.x[idx], points.y[idx])]
 
-        if len(all_points) < self.config.min_points:
-            return self._create_fallback_height(
-                building_id,
-                height_run_id,
-                reason=f"insufficient_points: {len(all_points)}"
-            )
 
-        # Separate ground and non-ground points
-        ground_mask = (all_classes == 2)  # ASPRS class 2 = ground
-        non_ground_mask = ~ground_mask
+def _outline_samples(geom, spacing: float) -> np.ndarray:
+    """Points along the exterior rings, at most `spacing` apart."""
+    polys = geom.geoms if hasattr(geom, "geoms") else [geom]
+    coords = [np.asarray(shapely.segmentize(p.exterior, spacing).coords)[:, :2] for p in polys]
+    return np.vstack(coords)
 
-        ground_points = all_points[ground_mask]
-        non_ground_points = all_points[non_ground_mask]
 
-        # Extract roof height. Prefer HAG (computed by PDAL against a proper
-        # ground surface) since ground points inside a footprint are sparse and
-        # unreliable (the building occludes the ground).
-        if all_hag is not None:
-            # HAG path: roof height is the Nth percentile of non-ground HAG.
-            non_ground_hag = all_hag[non_ground_mask]
-            if len(non_ground_hag) == 0:
-                return self._create_fallback_height(
-                    building_id,
-                    height_run_id,
-                    reason="no_non_ground_points"
-                )
-            roof_hag = float(np.percentile(non_ground_hag, self.config.percentile))
-            height_source = HeightSource.LIDAR_HAG_P95.value
-            # Ground datum: reconstruct from HAG (z = ground_z + hag), which is
-            # independent of whether ground points fall inside the footprint.
-            ground_z = float(np.median(all_points[:, 2] - all_hag))
-        else:
-            # No HAG available: fall back to z-difference against a local ground
-            # estimate. Less accurate on sloped terrain; flagged as a distinct
-            # source so downstream consumers can tell the two apart.
-            if len(ground_points) >= 3:
-                ground_z = float(np.median(ground_points[:, 2]))  # robust to outliers
-            else:
-                # Insufficient interior ground points: use a low percentile of
-                # all interior points as the ground datum.
-                ground_z = float(np.percentile(all_points[:, 2], 5))
+class HeightEstimator:
+    """Height for one building from prepared point sets of its surroundings."""
 
-            if len(non_ground_points) == 0:
-                return self._create_fallback_height(
-                    building_id,
-                    height_run_id,
-                    reason="no_non_ground_points"
-                )
-            height_estimates = non_ground_points[:, 2] - ground_z
-            roof_hag = float(np.percentile(height_estimates, self.config.percentile))
-            height_source = HeightSource.LIDAR_ZDIFF_P95.value
+    def __init__(self, config: HeightConfig):
+        self.config = config
 
-        # Apply constraints
-        height_m = max(roof_hag, self.config.min_height_m)
-        roof_z = ground_z + height_m
-        
-        # Compute coverage and variance for quality assessment
-        building_area = geometry.area
-        # Approximate: count points as ~0.2m diameter circles
-        point_coverage_area = len(all_points) * (np.pi * 0.1**2)
-        coverage_ratio = min(1.0, point_coverage_area / building_area) if building_area > 0 else 0.0
-        
-        # Compute z-coordinate variance
-        if len(non_ground_points) > 1:
-            z_variance = float(np.var(non_ground_points[:, 2]))
-        else:
-            z_variance = 0.0
-        
-        # Classify quality
-        quality = self._classify_quality(
-            point_count=len(all_points),
-            ground_count=len(ground_points),
-            non_ground_count=len(non_ground_points),
-            coverage_ratio=coverage_ratio,
-            z_variance=z_variance
-        )
-        
-        return {
-            "building_id": building_id,
-            "ground_z": round(ground_z, 3),
-            "roof_z": round(roof_z, 3),
-            "height_m": round(height_m, 3),
-            "height_source": height_source,
-            "height_quality": quality.value,
-            "height_point_count": len(all_points),
-            "ground_point_count": len(ground_points),
-            "non_ground_point_count": len(non_ground_points),
-            "coverage_ratio": round(coverage_ratio, 3),
-            "z_variance": round(z_variance, 3),
-            "lidar_coverage_status": "good",  # Has coverage if we reached here
-            "height_run_id": height_run_id
-        }
-    
-    def _classify_quality(
-        self,
-        point_count: int,
-        ground_count: int,
-        non_ground_count: int,
-        coverage_ratio: float,
-        z_variance: float
-    ) -> QualityLevel:
-        """
-        Classify height estimation quality.
-        
-        Args:
-            point_count: Total points in building
-            ground_count: Ground-classified points
-            non_ground_count: Non-ground-classified points
-            coverage_ratio: Fraction of building area with points
-            z_variance: Variance of z-coordinates
-            
-        Returns:
-            QualityLevel (high, medium, or low)
-        """
-        if (
-            point_count >= self.config.high_quality_min_points
-            and coverage_ratio >= self.config.high_quality_min_coverage
-            and z_variance <= self.config.high_quality_max_variance
-        ):
-            return QualityLevel.HIGH
-        
-        elif (
-            point_count >= self.config.medium_quality_min_points
-            and coverage_ratio >= self.config.medium_quality_min_coverage
-        ):
-            return QualityLevel.MEDIUM
-        
-        else:
-            return QualityLevel.LOW
-    
-    def _create_fallback_height(
+    # -- pieces ---------------------------------------------------------------
+
+    def ground_surface(self, geom, ground: TilePoints) -> Tuple[Optional[GroundSurface], int]:
+        """Ground around the footprint, widening the search until enough points."""
+        cfg = self.config
+        exclude = geom.buffer(cfg.ground_exclude_buffer_m)
+        for distance in cfg.ground_search_m:
+            minx, miny, maxx, maxy = geom.bounds
+            idx = ground.bbox_indices(minx - distance, miny - distance, maxx + distance, maxy + distance)
+            if len(idx):
+                idx = idx[~shapely.contains_xy(exclude, ground.x[idx], ground.y[idx])]
+            if len(idx) >= cfg.ground_min_points:
+                return GroundSurface(ground.x[idx], ground.y[idx], ground.z[idx]), int(len(idx))
+        return None, 0
+
+    def roof_heights(self, points: TilePoints, idx: np.ndarray, ground: GroundSurface) -> np.ndarray:
+        """Height above ground of each selected point."""
+        return points.z[idx] - ground(points.x[idx], points.y[idx])
+
+    def surface_points(self, geom, surface: TilePoints) -> Tuple[np.ndarray, float]:
+        """2018 surface points in the shrunk footprint (full footprint if too few)."""
+        cfg = self.config
+        shrunk = geom.buffer(-cfg.footprint_shrink_m)
+        idx = _inside(surface, shrunk)
+        used = shrunk
+        if len(idx) < cfg.surface_min_points:
+            idx = _inside(surface, geom)
+            used = geom
+        expected = used.area / cfg.surface_point_spacing_m ** 2 if not used.is_empty else 0.0
+        fill = min(1.0, len(idx) / expected) if expected > 0 else 0.0
+        return idx, fill
+
+    # -- one building ---------------------------------------------------------
+
+    def estimate(
         self,
         building_id: str,
+        geom,
+        ground_points: TilePoints,
+        lidar_roof_points: TilePoints,
+        surface_points: Optional[TilePoints],
         height_run_id: str,
-        reason: str = "unknown"
     ) -> Dict:
-        """
-        Create a fallback height entry for a building with insufficient coverage.
-        
-        Args:
-            building_id: Building identifier
-            height_run_id: Pipeline run UUID
-            reason: Reason for fallback (logged)
-            
-        Returns:
-            Dict with fallback height and quality flags
-        """
-        logger.debug(f"Fallback for {building_id}: {reason}")
-        
+        cfg = self.config
+        result = self._empty(building_id, height_run_id)
+
+        ground, n_ground = self.ground_surface(geom, ground_points)
+        result["ground_point_count"] = n_ground
+        if ground is None:
+            return self._no_height(result, NoHeightReason.NO_GROUND)
+
+        outline = _outline_samples(geom, cfg.outline_sample_spacing_m)
+        outline_z = ground(outline[:, 0], outline[:, 1])
+        result["ground_z"] = round(float(np.median(outline_z)), 3)
+        result["ground_z_min"] = round(float(np.min(outline_z)), 3)
+
+        # 2018 surface (primary)
+        surface_hag = None
+        if surface_points is not None:
+            s_idx, fill = self.surface_points(geom, surface_points)
+            result["surface_point_count"] = int(len(s_idx))
+            result["surface_fill_ratio"] = round(fill, 3)
+            if len(s_idx) >= cfg.surface_min_points:
+                surface_hag = self.roof_heights(surface_points, s_idx, ground)
+                result["height_surface_2018_m"] = round(float(np.percentile(surface_hag, cfg.percentile)), 3)
+
+        # 2010 laser roof points (fallback, and for the change flag / quality)
+        l_idx = _inside(lidar_roof_points, geom)
+        result["lidar_point_count"] = int(len(l_idx))
+        lidar_hag = None
+        if len(l_idx) >= cfg.lidar_min_points:
+            lidar_hag = self.roof_heights(lidar_roof_points, l_idx, ground)
+            result["height_lidar_2010_m"] = round(float(np.percentile(lidar_hag, cfg.percentile)), 3)
+
+        h_s = result["height_surface_2018_m"]
+        h_l = result["height_lidar_2010_m"]
+        if h_s is not None and h_l is not None:
+            result["height_change_flag"] = bool(abs(h_s - h_l) > cfg.change_threshold_m)
+
+        # Decide
+        if h_s is not None and h_s >= cfg.min_visible_height_m:
+            return self._with_height(result, HeightSource.SURFACE_2018, surface_hag)
+        if h_s is not None and result["surface_fill_ratio"] >= cfg.surface_min_fill_ratio:
+            # The 2018 surface sees the footprint and finds no building. A 2010
+            # height would belong to whatever stood there in 2010.
+            return self._no_height(result, NoHeightReason.SURFACE_SHOWS_GROUND)
+        if h_l is not None and h_l >= cfg.min_visible_height_m:
+            return self._with_height(result, HeightSource.LIDAR_2010, lidar_hag)
+        if h_s is not None or h_l is not None:
+            return self._no_height(result, NoHeightReason.BELOW_MIN_HEIGHT)
+        return self._no_height(result, NoHeightReason.NO_POINTS)
+
+    # -- result dicts ---------------------------------------------------------
+
+    def _empty(self, building_id: str, height_run_id: str) -> Dict:
         return {
             "building_id": building_id,
+            "height_m": self.config.fallback_height_m,
+            "has_height": False,
+            "height_source": HeightSource.NONE.value,
+            "height_quality": QualityLevel.NONE.value,
+            "no_height_reason": None,
             "ground_z": None,
+            "ground_z_min": None,
             "roof_z": None,
-            "height_m": round(self.config.fallback_height_m, 3),
-            "height_source": HeightSource.FALLBACK_DEFAULT.value,
-            "height_quality": QualityLevel.LOW.value,
-            "height_point_count": 0,
+            "height_p50_m": None,
+            "height_max_m": None,
+            "height_surface_2018_m": None,
+            "height_lidar_2010_m": None,
+            "height_change_flag": False,
+            "surface_point_count": 0,
+            "surface_fill_ratio": 0.0,
+            "lidar_point_count": 0,
             "ground_point_count": 0,
-            "non_ground_point_count": 0,
-            "coverage_ratio": 0.0,
-            "z_variance": None,
             "height_run_id": height_run_id,
-            "fallback_reason": reason
         }
+
+    def _with_height(self, result: Dict, source: HeightSource, hag: np.ndarray) -> Dict:
+        cfg = self.config
+        height = float(np.percentile(hag, cfg.percentile))
+        result.update({
+            "height_m": round(height, 3),
+            "has_height": True,
+            "height_source": source.value,
+            "roof_z": round(result["ground_z"] + height, 3),
+            "height_p50_m": round(float(np.percentile(hag, 50)), 3),
+            "height_max_m": round(float(np.max(hag)), 3),
+        })
+        n = result["surface_point_count"] if source == HeightSource.SURFACE_2018 else result["lidar_point_count"]
+        if source == HeightSource.LIDAR_2010 or n < cfg.quality_min_points:
+            quality = QualityLevel.LOW
+        elif (result["height_lidar_2010_m"] is not None
+              and abs(result["height_surface_2018_m"] - result["height_lidar_2010_m"]) <= cfg.agreement_threshold_m):
+            quality = QualityLevel.HIGH
+        else:
+            quality = QualityLevel.MEDIUM
+        result["height_quality"] = quality.value
+        return result
+
+    def _no_height(self, result: Dict, reason: NoHeightReason, detail: str = "") -> Dict:
+        result["no_height_reason"] = reason.value + (f": {detail}" if detail else "")
+        return result
+
+    def error_result(self, building_id: str, height_run_id: str, error: Exception) -> Dict:
+        return self._no_height(self._empty(building_id, height_run_id), NoHeightReason.ERROR, str(error))
+
+    def no_tile_result(self, building_id: str, height_run_id: str) -> Dict:
+        return self._no_height(self._empty(building_id, height_run_id), NoHeightReason.NO_TILE)

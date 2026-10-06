@@ -25,7 +25,7 @@ Current status:
 - validation and profiling are part of the workflow;
 - **target city is now Helsingborg (2026-10-06)**; Gothenburg outputs are historical. The buildings pipeline defaults to the Helsingborg raw data;
 - the postprocess snapshot (`--postprocess`) is the clean building set: one row per `object_id`, pieces of one building merged (not dropped) — see Working With The Buildings Pipeline;
-- a new LiDAR height estimation pipeline enriches buildings with accurate heights from laserdata_nh/ LAZ tiles (NEW);
+- the building height pipeline (`lidar_heights`, rewritten 2026-10-06) gives one `height_m` per building from the 2018 surface model, with ground from the 2010 laser data;
 - mesh generation exists as a separate layer from schema standardization — **discarded for the runtime (2026-10-02), kept as a failed attempt**;
 - spatial joins and analytics payload preparation are part of the downstream chain;
 - legacy phase docs still exist, but they should be treated as older snapshots unless a newer code/doc update says otherwise.
@@ -212,74 +212,87 @@ Conceptual flow:
 - aggregate demographic values by building;
 - export JSON payloads for downstream use.
 
-### LiDAR Height Estimation Pipeline (NEW)
+### Building Height Pipeline (`lidar_heights`, rewritten 2026-10-06)
 
-The LiDAR height estimation pipeline in [Src/pipelines/lidar_heights/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/lidar_heights/) enriches processed buildings with accurate height estimates derived from point cloud data.
+[Src/pipelines/lidar_heights/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/lidar_heights/) gives **one height per building** (`height_m`) for extruding flat roofs (LOD1). There is no roof-shape reconstruction.
 
-**Purpose**: LOD1 input enrichment — add reliable `height_m` values to buildings so the mesh generator can produce accurate 3D models.
-
-**Workflow**:
-1. Load processed buildings (from buildings pipeline)
-2. Validate CRS (EPSG:3006) and tile coverage
-3. Batch-process by LiDAR tile:
-   - Preprocess LAZ with PDAL: outlier removal → ground classification (SMRF) → height-above-ground
-   - Extract per-building heights: compute ground_z (median), roof_hag (95th percentile), height_m
-   - Classify quality (high/medium/low) based on point density and coverage
-4. Export enriched buildings with height_m and quality flags
-
-**Input**: 
-- Processed buildings GeoPackage (must have `object_id` and geometry)
-- LiDAR LAZ tiles from Raw_data/laserdata_nh/
-
-**Output**:
-- `Processed_data/buildings_lidar_added.gpkg` — enriched buildings with height_m, quality flags, point metadata
-- `Processed_data/buildings_lidar_added.parquet` — same data in Parquet format
-- `Processed_data/building_lidar_qc.csv` — QC subset for validation
-
-**Key Design Constraints**:
-- Preserves all building IDs (no filtering)
-- Deduplicates buildings that appear on tile boundaries (keeps first occurrence)
-- Uses 10m fallback height for buildings with insufficient LiDAR coverage
-- Marks quality="low" when coverage is poor (enables downstream prioritization)
-- Batch-processes by tile to manage memory (~500MB–1GB per tile)
-- Uses PDAL for explicit preprocessing; every step is auditable
-- All heights remain in EPSG:3006; coordinates unchanged
-- Includes coverage metrics: `lidar_coverage_status` (good/partial/none) and `lidar_coverage_ratio`
-
-**Usage**:
-```bash
-# Run with defaults
-python Src/Scripts/run_lidar_height_pipeline.py
-
-# Run validation tests
-python Src/Scripts/run_lidar_height_pipeline.py --test
-
-# Custom paths
-python Src/Scripts/run_lidar_height_pipeline.py \
-  --input Processed_data/buildings_processed.gpkg \
-  --output-dir Processed_data \
-  --lidar-dir Raw_data/laserdata_nh
+```
+height_m = p95( z − ground(x, y) ) over the roof points inside the footprint
 ```
 
-**Configuration** is defined in [Src/pipelines/lidar_heights/config.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/lidar_heights/config.py):
-- `TileIndexConfig`: tile directory and CRS
-- `PDALConfig`: outlier/ground classification/HAG parameters
-- `HeightExtractionConfig`: min_points threshold, percentile, quality cutoffs
-- `LiDARHeightPipelineConfig`: orchestration and reproducibility settings
+- **Roof points:** the 2018 surface model *Ytmodell från flygbild* (`Raw_data/1-Helsingborig/ytmodell_050_helsingborg/`, extracted by the user; the zip also works). Points are taken inside the footprint shrunk by 0.5 m, because the image-matched surface smears at walls; the full footprint is used if too few points remain.
+- **2010 roof points as fallback:** the 2010 laser data *Laserdata NH* (`laserdata_nh_helsingborg/`, class 1) are used only where the 2018 surface has too few points.
+- **Ground:** linear interpolation on a Delaunay triangulation (`matplotlib.tri`) of the 2010 laser ground points (Lantmäteriet's class 2, not re-classified). The points come from within 15 m of the footprint (50 m if too few). Points inside the footprint + 0.5 m are ignored, because they may be misclassified roof. The ground is evaluated under each roof point, so slopes are handled.
+- **No PDAL.** `pdal_pipelines.py` and `tile_index.py` are from the old version and are unused.
+- **No clamp:** a measured height is kept as measured. Below `min_visible_height_m` (1.5 m) the building counts as "not visible".
+- **Decision order:**
+  1. 2018 height ≥ 1.5 m → use it.
+  2. The 2018 surface covers ≥ 50% of the footprint but shows < 1.5 m → **no height** (`surface_shows_ground`): built after April 2018, or demolished and rebuilt. The 2010 height is deliberately not used, because it would be the old building's.
+  3. 2010 laser height ≥ 1.5 m → use it.
+  4. Otherwise → no height.
+- **Tile edges:** buildings are processed in 1 km work cells (by centroid), with points read from every tile the cell's area touches. Each building is processed once with all of its points.
 
-Implementation notes:
-- `height_estimation.py` contains the building height extraction logic
-- `pdal_pipelines.py` contains the PDAL pipeline definitions
-- `tile_index.py` handles LAZ tile indexing and lookup
-- `export.py` handles the enriched dataset exports and QC outputs
+**Input:**
+- The buildings **postprocess** GeoPackage. Repeated `object_id`s are rejected.
+- The laser folder.
+- The surface zip, or a folder of extracted tiles. `--no-surface` uses the 2010 data only.
 
-**Validation**:
-The pipeline includes embedded validation tests (--test mode) that check:
-1. Synthetic ground truth (5m building → height ≈ 5.0m)
-2. Fallback logic (insufficient points → low quality)
-3. CRS preservation (output maintains EPSG:3006)
-4. Building ID stability (no row count changes)
-5. Determinism (re-runs produce identical heights)
+**Output** (in `--output-dir`, default `Processed_data/Helsingborg_Final/lidar_heights/`):
+- `buildings_lidar_added.gpkg` / `.parquet`: all building columns plus the height columns.
+- `building_lidar_qc.csv`: one row per building with the height columns.
+- `buildings_without_height.csv`: reason, type, area, both source heights, centroid.
+- `lidar_heights_summary.json`:
+  - counts with/without height and per reason;
+  - per source and per quality;
+  - 2018-vs-2010 agreement;
+  - the method and the full config.
+
+**Height columns:**
+- **The building height:** `height_m` is the one number to use. It is `0` when there is no height. Filter on `has_height`, not on `height_m > 0`.
+- **Where it came from:**
+  - `height_source`: `surface_2018` / `lidar_2010` / `none`.
+  - `height_quality`:
+    - `high` = 2018 surface with 2010 agreement within 1.5 m;
+    - `medium` = 2018 surface only;
+    - `low` = 2010 laser or few points;
+    - `none`.
+  - `no_height_reason` and `no_height_reason_code`: `no_tile`, `no_ground`, `surface_shows_ground`, `below_min_height`, `no_points`, `error`.
+- **Ground and roof elevations (RH 2000):**
+  - `ground_z` = median ground along the outline;
+  - `ground_z_min` = lowest ground along the outline;
+  - `roof_z` = `ground_z + height_m`.
+- **Other statistics:** `height_p50_m` and `height_max_m` from the chosen source.
+- **Both sources for checking:**
+  - `height_surface_2018_m` and `height_lidar_2010_m`;
+  - `height_change_flag`: they differ by more than 3 m.
+- **Point counts:** `surface_point_count`, `surface_fill_ratio`, `lidar_point_count`, `ground_point_count`.
+
+**Checked 2026-10-06** on one real 1 km cell, in memory: 2,164 buildings in 29 s (≈ 10 min for Helsingborg).
+- 96% get a height: 2,086 from the 2018 surface, 2 from the 2010 laser; 75 are `surface_shows_ground`.
+- Quality: 1,463 high, 283 medium, 342 low.
+- 2018 vs 2010: median −0.05 m, 88% within 2 m.
+
+**Caveats:** see [the data report](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md).
+- Buildings built after April 2018 have no height.
+- Trees over roofs count as roof.
+- The 2010 ground may have changed at construction sites.
+- **Environment:** `numpy.linalg` and scipy's LAPACK-backed routines (`LinearNDInterpolator`, `Delaunay.find_simplex`) crash the `digitaltwin` env with Windows error 0xc06d007f. This is why the ground interpolation uses `matplotlib.tri`.
+
+**Usage:**
+```bash
+# Defaults are the Helsingborg paths above (relative to the repo root)
+python Src/Scripts/run_lidar_height_pipeline.py
+
+# Synthetic tests (no project data): sloped ground, new/demolished/rebuilt buildings,
+# surface hole, tile edge, MultiPolygon, outside tiles, repeated IDs
+python Src/Scripts/run_lidar_height_pipeline.py --test
+```
+
+All thresholds are in [config.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/lidar_heights/config.py) (`HeightConfig`). The modules are:
+- `sources.py`: tiles from a folder or a zip; `TilePoints` sorted point arrays;
+- `height_estimation.py`: ground surface and the per-building decision;
+- `pipeline.py`: work cells;
+- `export.py`: outputs.
 
 ### Legacy Code
 
@@ -359,7 +372,7 @@ Validation should happen before preprocessing or translation. If the source data
 
 ### Building Heights
 
-Height data may be incomplete. Downstream mesh logic may fall back to an assumed height when no reliable height field is present. If a better height source becomes available, that should be treated as a deliberate behavioral change.
+Height data may be incomplete. Byggnad has no building height; heights come only from the LiDAR pipeline. Since 2026-10-06 a building without a height has `height_m = 0` and `has_height = False` (no assumed 10 m). Any consumer (Unity export, old mesh generator) must decide how to show these buildings using `has_height`; the old mesh generator would extrude them as 0 m prisms.
 
 ### Analytical Grid Types
 
@@ -384,10 +397,10 @@ Typical outputs from the buildings pipeline include:
 Optional outputs when `--postprocess` is enabled:
 - postprocess snapshot data, reports, and profiles are written to a sibling dated folder with a `_postprocess` suffix: `buildings_processed_postprocess.gpkg` (one row per `object_id`), `buildings_postprocess_report.{json,md}` (counts, area before/after, differing columns), `buildings_postprocess_parts.csv` (one line per merged building: piece count, areas, collection levels, uncertainty range).
 
-Typical outputs from the LiDAR height pipeline include (NEW):
-- [Processed_data/buildings_lidar_added.gpkg](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_lidar_added.gpkg)
-- [Processed_data/buildings_lidar_added.parquet](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/buildings_lidar_added.parquet)
-- [Processed_data/building_lidar_qc.csv](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Processed_data/building_lidar_qc.csv)
+Typical outputs from the LiDAR height pipeline (in `--output-dir`, Helsingborg default `Processed_data/Helsingborg_Final/lidar_heights/`):
+- `buildings_lidar_added.gpkg` / `.parquet`, `building_lidar_qc.csv`
+- `lidar_heights_summary.json` (with/without height counts and reasons), `buildings_without_height.csv`
+- older Gothenburg runs sit in `Processed_data/` and `Processed_data/Gothenburg/` (historical)
 
 Unity runtime package (current) — `Unity/City_Digital_Twin/Assets/StreamingAssets/`:
 - `project_manifest.json`, `spatial_layers/ruta_250/`, `data_layers/income_2023/` (tracked, written by `Src/Scripts/Unity/export_*.py`);
@@ -528,6 +541,8 @@ Corrected in `config.py`:
 - the type descriptions ("attached to dwelling" → "belonging to a small house"; "colonist hut" → "allotment cottage").
 
 The loader now reads the layer `byggnad` explicitly. |
+| 2026-10-06 | **LiDAR height pipeline: "no height" is 0 m and counted; Helsingborg defaults; tile-edge and cache fixes** | No roof reconstruction existed to remove (heights are one p95 value per building; roofs are flat prisms). Changes: (1) `fallback_height_m` 10 → **0**; new `has_lidar_height` (bool), `fallback_reason`, `fallback_reason_code` (`FallbackReason` enum in `config.py`); buildings outside every tile now get these fields too (`no_lidar_tile`) instead of a silent NaN fill. (2) New `lidar_heights_summary.json` (with/without height counts, %, per reason; height stats over measured heights only) and `buildings_without_lidar_height.csv`; counts also logged at the end of the run. (3) Tile-edge duplicates: keep LiDAR height over fallback, then most points (was "first finished", non-deterministic in parallel mode and could keep a fallback over a real height). (4) PDAL cache: the cached tile was deleted after use, so the cache never hit; now kept. (5) `validate()` rejects repeated `object_id` (input must be the buildings postprocess output). (6) CLI defaults → Helsingborg paths; new `--layer`. (7) Point selection vectorised (`TilePoints`: points sorted by x once per tile + `shapely.contains_xy`): ~0.8 s → 0.5 ms per building, identical results on 40 real buildings; PDAL is now the slow step. Tests: `tests/test_lidar_heights_pipeline.py` 4/4 (synthetic tiles, PDAL stubbed). The pipeline has not been run on real data. **Data finding:** the Helsingborg Laserdata NH was scanned **2010-04-12**. Buildings built later get no height or a wrong low one. `ytmodell_050_helsingborg.zip` (aerial-image surface model, April 2018) is a possible newer source. Report: [docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md). |
+| 2026-10-06 | **Building heights rewritten: 2018 surface model for roofs, 2010 laser ground, no PDAL** | Supersedes the method in the previous row (its fallback-0 / counting / validation changes carry over). `height_m` = p95(z − ground) inside the footprint. Roof: Ytmodell från flygbild (April 2018, read from the zip). Ground: Delaunay interpolation of Lantmäteriet's 2010 class-2 points around the footprint (`matplotlib.tri`, because LAPACK crashes in the `digitaltwin` env). 2010 roof points are used only where the 2018 surface has a hole. Where 2018 shows ground, the building gets no height instead of the 2010 height (`surface_shows_ground`). No 2 m clamp. 1 km work cells read points across tiles, so tile-edge buildings get all their points. New columns: `has_height` (replaces `has_lidar_height`), `height_source`, `height_quality` (high/medium/low by agreement of the two sources), `no_height_reason`, `ground_z`/`ground_z_min`/`roof_z`, `height_surface_2018_m`/`height_lidar_2010_m`, `height_change_flag`. New module `sources.py`; `pdal_pipelines.py`/`tile_index.py` unused. Tests 5/5 synthetic; one real 1 km cell in memory: 96% with height, 2018 vs 2010 median −0.05 m. The full pipeline has not been run. |
 
 ## Open Questions
 

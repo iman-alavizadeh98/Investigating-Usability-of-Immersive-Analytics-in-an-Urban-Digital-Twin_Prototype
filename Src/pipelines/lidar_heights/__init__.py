@@ -1,16 +1,19 @@
-"""LiDAR-based building height estimation pipeline.
+"""Building height pipeline (package name kept from the LiDAR-only version).
 
-This module provides a modular preprocessing pipeline for enriching building
-footprints with accurate height estimates from LiDAR point clouds.
+One height per building for extruding flat roofs:
 
-Workflow:
-1. Load processed buildings from the buildings pipeline
-2. Spatially index buildings to LiDAR tiles
-3. Preprocess LiDAR using PDAL (outlier removal, ground classification, HAG)
-4. Extract per-building heights with quality flags
-5. Export enriched GeoPackage/Parquet for downstream mesh generation
+    height_m = p95( z - ground ) of the points inside the footprint
 
-Preserves all building IDs and maintains EPSG:3006 as the authoritative CRS.
+1. Load the buildings postprocess output (one row per object_id).
+2. Group buildings into work cells; read the points of each cell from every
+   tile they lie in (2018 surface model + 2010 laser data, folder or zip).
+3. Per building: interpolate the 2010 ground around the footprint, take the
+   2018 surface points inside it (2010 laser roof points where the 2018 surface
+   has a hole), height = 95th percentile of height above ground.
+4. Export GeoPackage/Parquet, QC CSV, buildings without height, summary JSON.
+
+pdal_pipelines.py and tile_index.py belong to the earlier PDAL-based version
+and are not used since 2026-10-06.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

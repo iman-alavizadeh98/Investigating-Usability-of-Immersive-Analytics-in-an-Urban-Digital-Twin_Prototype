@@ -1,196 +1,159 @@
-"""Configuration dataclasses for the LiDAR height estimation pipeline."""
+"""
+Configuration for the building height pipeline.
+
+One height per building, for extruding flat-roofed (LOD1) buildings:
+
+    height_m = p95( surface z - ground z ) over the points inside the footprint
+
+Sources (Lantmäteriet, via SLU GET; see
+docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md):
+- surface: Ytmodell från flygbild (surface model from aerial photos), April 2018,
+  0.5 m grid, LAZ, class 0 only. Gives the roof. Primary source.
+- laser:   Laserdata NH, scanned 2010-04-12, 0.5-1 pt/m2, classified by
+  Lantmäteriet (1 unclassified, 2 ground, 9 water, 11 bridge). Gives the ground
+  for every building, and the roof only where the 2018 surface has no points.
+"""
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import uuid
-from datetime import datetime, timezone
-
-
-class QualityLevel(str, Enum):
-    """Height estimation quality classification."""
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
 
 
 class HeightSource(str, Enum):
-    """Source of height estimate."""
-    LIDAR_HAG_P95 = "lidar_hag_p95"
-    LIDAR_ZDIFF_P95 = "lidar_zdiff_p95"
-    FALLBACK_DEFAULT = "fallback_default"
+    """Where height_m comes from."""
+    SURFACE_2018 = "surface_2018"  # Ytmodell från flygbild
+    LIDAR_2010 = "lidar_2010"      # Laserdata NH
+    NONE = "none"                  # no height; height_m = fallback_height_m
+
+
+class NoHeightReason(str, Enum):
+    """Why a building has no height (column no_height_reason)."""
+    NO_TILE = "no_tile"                    # footprint outside every tile of both sources
+    NO_GROUND = "no_ground"                # no 2010 ground points within the search distance
+    SURFACE_SHOWS_GROUND = "surface_shows_ground"  # 2018 surface covers the footprint but is
+                                                   # below min_visible_height: built after
+                                                   # April 2018, or a very low structure
+    BELOW_MIN_HEIGHT = "below_min_height"  # only 2010 laser points, all below min_visible_height
+    NO_POINTS = "no_points"                # too few points in the footprint in both sources
+    ERROR = "error"
+
+
+class QualityLevel(str, Enum):
+    """
+    high:   2018 surface, >= quality_min_points, and the 2010 laser agrees within
+            agreement_threshold_m (two independent sources)
+    medium: 2018 surface, >= quality_min_points
+    low:    2018 surface with few points, or 2010 laser (may be outdated)
+    none:   no height
+    """
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    NONE = "none"
 
 
 @dataclass
-class TileIndexConfig:
-    """Configuration for LiDAR tile indexing and spatial mapping."""
-    
-    tile_directory: Path
-    """Path to directory containing LAZ tiles."""
-    
-    tile_extension: str = "laz"
-    """File extension for tiles (default: 'laz')."""
-    
-    crs: str = "EPSG:3006"
-    """Coordinate reference system for all spatial operations."""
-    
-    buffer_meters: float = 10.0
-    """Buffer around building footprints when selecting point cloud samples."""
+class HeightConfig:
+    """Per-building height rules. Defaults are documented in the living context."""
 
-
-@dataclass
-class PDALConfig:
-    """Configuration for PDAL preprocessing pipeline."""
-    
-    # Outlier removal (statistical filter)
-    outlier_method: str = "statistical"
-    """Outlier detection method (e.g., 'statistical')."""
-    
-    outlier_multiplier: float = 2.0
-    """Multiplier for statistical outlier threshold (higher = less aggressive)."""
-    
-    # Ground classification (SMRF - Simple Morphological Filter)
-    smrf_slope: float = 0.15
-    """SMRF slope parameter for ground classification."""
-    
-    smrf_window: float = 16.0
-    """SMRF window size in meters."""
-    
-    smrf_threshold: float = 0.5
-    """SMRF height threshold in meters."""
-    
-    # Height-above-ground computation
-    hag_method: str = "delaunay"
-    """HAG computation method (e.g., 'delaunay' or 'nearest')."""
-    
-    # Output format
-    compression: str = "lazrs"
-    """LAZ compression method (e.g., 'lazrs' for LZRS compression)."""
-    
-    output_classification: bool = True
-    """Whether to output classification codes in processed LAZ."""
-
-
-@dataclass
-class HeightExtractionConfig:
-    """Configuration for per-building height extraction and quality assessment."""
-    
-    min_points: int = 5
-    """Minimum number of points required for reliable height estimation."""
-    
     percentile: float = 95.0
-    """Percentile of non-ground points to use for height (e.g., 95th)."""
-    
-    min_height_m: float = 2.0
-    """Minimum acceptable height in meters (prevents negative or zero values)."""
-    
-    fallback_height_m: float = 10.0
-    """Default height when insufficient LiDAR coverage (matches mesh generator default)."""
-    
-    # Quality thresholds
-    high_quality_min_points: int = 1000
-    """Minimum point count for 'high' quality classification."""
-    
-    high_quality_min_coverage: float = 0.8
-    """Minimum coverage ratio (0.0-1.0) for 'high' quality."""
-    
-    medium_quality_min_points: int = 100
-    """Minimum point count for 'medium' quality classification."""
-    
-    medium_quality_min_coverage: float = 0.5
-    """Minimum coverage ratio for 'medium' quality."""
-    
-    # Variance thresholds for quality assessment
-    high_quality_max_variance: float = 50.0
-    """Maximum z-variance (m²) for 'high' quality."""
+    """Height = this percentile of (surface z - ground z) inside the footprint."""
+
+    footprint_shrink_m: float = 0.5
+    """Surface points are taken inside the footprint shrunk by this much: the
+    image-matched surface smears at walls, so edge points can be ground. Falls
+    back to the full footprint when the shrunk one has too few points."""
+
+    surface_min_points: int = 4
+    """Minimum 2018 surface points for a height (0.5 m grid: 4 points per m2)."""
+
+    surface_point_spacing_m: float = 0.5
+    """Grid spacing of the surface model, used for the fill ratio."""
+
+    surface_min_fill_ratio: float = 0.5
+    """If the surface has at least this share of the expected points but shows
+    no building, the building is treated as absent in 2018 (no fallback to 2010,
+    which would give the height of whatever stood there in 2010)."""
+
+    lidar_min_points: int = 5
+    """Minimum 2010 laser roof points (class 1) for the fallback height."""
+
+    lidar_roof_classes: Tuple[int, ...] = (1,)
+    ground_classes: Tuple[int, ...] = (2,)
+
+    ground_search_m: Tuple[float, ...] = (15.0, 50.0)
+    """Ground points are searched within these distances of the footprint, the
+    next one only if the previous gave too few points."""
+
+    ground_min_points: int = 3
+
+    ground_exclude_buffer_m: float = 0.5
+    """Ground points inside the footprint grown by this much are ignored: on
+    buildings that existed in 2010 they may be misclassified roof points."""
+
+    outline_sample_spacing_m: float = 2.0
+    """Spacing of the outline samples used for ground_z / ground_z_min."""
+
+    min_visible_height_m: float = 1.5
+    """Below this the sources show no building. Not a clamp: heights at or
+    above it are kept as measured."""
+
+    change_threshold_m: float = 3.0
+    """height_change_flag when the 2018 and 2010 heights differ by more."""
+
+    agreement_threshold_m: float = 1.5
+    quality_min_points: int = 20
+
+    fallback_height_m: float = 0.0
+    """height_m for buildings without a height (has_height = False)."""
 
 
 @dataclass
 class LiDARHeightPipelineConfig:
-    """Master configuration for the LiDAR height estimation pipeline."""
-    
-    # Input/output paths
+    """Master configuration for the building height pipeline."""
+
     input_buildings_path: Path
-    """Path to processed buildings GeoPackage from buildings pipeline."""
-    
+    """Buildings postprocess GeoPackage (one row per object_id)."""
+
     output_directory: Path
-    """Directory for outputs (GeoPackage, Parquet, QC CSV)."""
-    
+
     lidar_directory: Path
-    """Path to directory containing LiDAR LAZ tiles."""
-    
-    temp_directory: Optional[Path] = None
-    """Temporary directory for PDAL processing (default: output_directory/temp)."""
-    
-    # Sub-configs
-    tile_index_config: TileIndexConfig = field(default_factory=TileIndexConfig)
-    pdal_config: PDALConfig = field(default_factory=PDALConfig)
-    height_extraction_config: HeightExtractionConfig = field(default_factory=HeightExtractionConfig)
-    
-    # CRS and spatial reference
+    """Folder with the Laserdata NH LAZ tiles (2010)."""
+
+    surface_path: Optional[Path] = None
+    """Ytmodell LAZ tiles (2018): the delivered zip or a folder. None = 2010 only."""
+
+    input_layer: Optional[str] = None
+    """GeoPackage layer (None = the file's only layer)."""
+
+    height_config: HeightConfig = field(default_factory=HeightConfig)
+
     crs: str = "EPSG:3006"
-    """Authoritative projected CRS (must match buildings)."""
-    
-    # Reproducibility
+
+    work_cell_m: float = 1000.0
+    """Buildings are processed in square cells of this size (by centroid); the
+    points of a cell are read from every tile they lie in, so buildings on tile
+    edges get all their points. Smaller = less memory."""
+
     height_run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    """UUID for this pipeline run; links all heights generated in this batch."""
-    
     run_timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    """ISO 8601 timestamp of pipeline start."""
-    
-    # Processing options
-    batch_size: Optional[int] = None
-    """Maximum buildings per batch (None = process all)."""
-    
-    verbose: bool = True
-    """Enable verbose logging."""
-    
-    # Performance optimization: PDAL output caching
-    enable_pdal_cache: bool = True
-    """Enable caching of PDAL preprocessing outputs to speed up re-runs."""
-    
-    pdal_cache_dir: Optional[Path] = None
-    """Directory for PDAL cache (default: output_directory/pdal_cache, persistent across runs)."""
-    
-    # Performance optimization: parallel tile processing
-    enable_parallel_processing: bool = True
-    """Enable parallel tile processing across multiple CPU cores."""
-    
-    max_workers: int = 4
-    """Maximum number of worker processes for parallel tile processing."""
-    
+    verbose: bool = False
+
     def __post_init__(self):
-        """Validate and set defaults."""
         self.input_buildings_path = Path(self.input_buildings_path)
         self.output_directory = Path(self.output_directory)
         self.lidar_directory = Path(self.lidar_directory)
-        
-        if self.temp_directory is None:
-            self.temp_directory = self.output_directory / "temp" / self.height_run_id
-        else:
-            self.temp_directory = Path(self.temp_directory)
-        
-        # Set default cache directory if not specified (persistent across runs)
-        if self.pdal_cache_dir is None and self.enable_pdal_cache:
-            self.pdal_cache_dir = self.output_directory / "pdal_cache"
-        elif self.pdal_cache_dir is not None:
-            self.pdal_cache_dir = Path(self.pdal_cache_dir)
-        
-        # Propagate CRS to sub-configs
-        self.tile_index_config.crs = self.crs
-    
+        if self.surface_path is not None:
+            self.surface_path = Path(self.surface_path)
+
     @staticmethod
     def from_dict(config_dict: Dict) -> "LiDARHeightPipelineConfig":
-        """Create config from dictionary (useful for CLI argument parsing)."""
-        # Build nested configs first
-        tile_config = TileIndexConfig(**config_dict.pop("tile_index_config", {}))
-        pdal_config = PDALConfig(**config_dict.pop("pdal_config", {}))
-        height_config = HeightExtractionConfig(**config_dict.pop("height_extraction_config", {}))
-        
-        return LiDARHeightPipelineConfig(
-            tile_index_config=tile_config,
-            pdal_config=pdal_config,
-            height_extraction_config=height_config,
-            **config_dict
-        )
+        config_dict = dict(config_dict)
+        height = config_dict.pop("height_config", {}) or {}
+        for key in ("lidar_roof_classes", "ground_classes", "ground_search_m"):
+            if key in height:
+                height[key] = tuple(height[key])
+        return LiDARHeightPipelineConfig(height_config=HeightConfig(**height), **config_dict)
