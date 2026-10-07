@@ -14,6 +14,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _is_numeric(series: pd.Series) -> bool:
+    """Numbers of any width (int32, Int64, float32, ...), not booleans."""
+    return pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
+
+
+def _is_text(series: pd.Series) -> bool:
+    """Text columns: `object` and pandas' string dtypes (`str` is the default in pandas 3)."""
+    if isinstance(series, gpd.GeoSeries) or isinstance(series.dtype, gpd.array.GeometryDtype):
+        return False
+    return pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series)
+
+
 class DataFrameProfiler:
     """Profile a GeoDataFrame or DataFrame and generate summaries."""
 
@@ -86,7 +98,8 @@ class DataFrameProfiler:
                     "null_count": null_count,
                     "null_percentage": null_pct,
                     "unique_values": self.gdf[col].notna().sum(),
-                    "geometry_types": self.gdf[col].geom_type.unique().tolist(),
+                    # Null geometries have no type; they are counted in null_count.
+                    "geometry_types": [str(t) for t in self.gdf[col].dropna().geom_type.unique()],
                     "meaning": meaning
                 })
                 continue
@@ -105,13 +118,13 @@ class DataFrameProfiler:
                 "meaning": meaning
             }
 
-            if series.dtype in ["int64", "float64"]:
+            if _is_numeric(series):
                 profile.update({
                     "min": float(series.min()),
                     "max": float(series.max()),
                     "mean": float(series.mean())
                 })
-            elif series.dtype == "object":
+            elif _is_text(series):
                 value_counts = series.value_counts()
                 profile.update({
                     "sample_value": str(series.iloc[0]) if len(series) > 0 else None,
@@ -156,7 +169,7 @@ class DataFrameProfiler:
     def _get_numeric_stats(self) -> Dict[str, Dict[str, float]]:
         """Get statistics for numeric columns."""
         stats = {}
-        for col in self.gdf.select_dtypes(include=["int64", "float64"]).columns:
+        for col in (c for c in self.gdf.columns if _is_numeric(self.gdf[c])):
             stats[col] = {
                 "min": float(self.gdf[col].min()),
                 "max": float(self.gdf[col].max()),
@@ -169,10 +182,7 @@ class DataFrameProfiler:
     def _get_categorical_stats(self) -> Dict[str, Dict[str, int]]:
         """Get value counts for categorical columns."""
         stats = {}
-        for col in self.gdf.select_dtypes(include=["object"]).columns:
-            if col == "geometry":
-                continue
-
+        for col in (c for c in self.gdf.columns if _is_text(self.gdf[c])):
             vc = self.gdf[col].value_counts().head(10)
             stats[col] = {str(k): int(v) for k, v in vc.items()}
         return stats

@@ -17,18 +17,18 @@ The live project snapshot remains `Project_livingContext.md`; its 2026-10-06 cha
 |---|---|
 | Building footprints (Byggnad) for Helsingborg | **Done and run.** A clean file has one row per building. |
 | Building heights (surface model + laser data) | **Done and re-run** with the new column names (same numbers). |
-| Unity package builder (buildings + manifest) | **Done and run** (43,981 buildings, 34 fields). Re-run once for two small display fixes (§1 below). |
+| Unity package builder (buildings + manifest) | **Done and run** (43,981 buildings, 34 fields). Re-built 2026-10-07 with the two display fixes; checked in the file. |
 | Unity: new building loader, info panel, `Helsingborg` scene | **Verified in Play mode** with real data: all buildings render, picking 2,200/2,200, info panel correct. |
 | Data layers (grid, population, income) for Helsingborg | **Not started.** This is the next step after buildings. |
 
 **Next actions, in order:**
 
-1. Re-build the Unity package once (a few seconds). This picks up two display fixes found in Play mode: "No height because" showed `<NA>` on buildings that have a height, and record-version dates showed a time.
-   ```
-   python Src/Scripts/Unity/build_unity_package.py --config configs/cities/helsingborg.json
-   ```
+1. ~~Re-build the Unity package once.~~ **Done 2026-10-07 (02:22).** Checked in `attributes.json`:
+   - `version_valid_from` holds plain dates (e.g. `2011-03-21`);
+   - `no_height_reason` is valid for exactly 2,505 buildings, the ones without a height.
+   - Cosmetic leftover: the 41,476 masked-out entries still hold the text `<NA>` behind `valid = false`. Unity skips them, so nothing shows.
 2. Start the data layers (§9).
-3. Not yet measured: the load time and memory of the 24.5 MB `attributes.json` (relevant for Quest).
+3. Not yet measured: the load time and memory of the 23.9 MB `attributes.json` (relevant for Quest). Python's `json` parses it in about 0.2 s; the Unity load time has not been measured.
 
 **Commits** (the user commits):
 
@@ -508,7 +508,15 @@ Unity EditMode tests: Test Runner → EditMode, or the `unity` CLI `run_tests --
 ## 9. Open items and next steps
 
 1. **Verify buildings in the Helsingborg scene** after steps 2–3 (§1).
-2. **Data layers for Helsingborg** (the next step the user named):
+2. **Data layers for Helsingborg** (the next step the user named). **The raw SCB data has already been profiled; read `docs/data-analysis/2026-10-07_helsingborg_scb_profiling.md` first.** It covers:
+   - the tables;
+   - the mixed 250 m / 1,000 m grid with overlapping remainder cells;
+   - the cut edge cells;
+   - the missing-cell semantics;
+   - income (median only per DeSO);
+   - the proposed handling, and **3 open questions for the user**.
+   
+   The steps:
    - Export the SCB Ruta grid and data from `Raw_data/1-Helsingborig/befolkningShp_helsingborg` (population) and `inkomsterShp_helsingborg` (income) as `spatial_layers/` and `data_layers/` inside the city package.
    - Add new exporters to `build_unity_package.py` and new config sections.
    - Compute the **building → Ruta association** there (it is no longer baked into the building binary).

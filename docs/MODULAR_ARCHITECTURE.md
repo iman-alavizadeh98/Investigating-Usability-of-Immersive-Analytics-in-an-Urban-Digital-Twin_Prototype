@@ -366,6 +366,10 @@ report = generator.generate("output_dir")
 
 ### For New Datasets (Population, etc.)
 
+> **2026-10-07:** current concrete examples. The sketch below is the original outline.
+> - **Population and income:** `Src/pipelines/population/` and `Src/pipelines/income/`. They share a core, `Src/pipelines/scb/` (`config` / `loader` / `validator` / `exporter` / `pipeline` / `cli`), so a new SCB delivery only adds a `config.py` and a `pipeline.py`. Usage: `docs/SCB_PIPELINES.md`.
+> - **Election:** `Src/pipelines/election/` has the full split for a non-SCB source. Usage: `docs/ELECTION_PIPELINE.md`.
+
 Create a new pipeline:
 
 ```python
