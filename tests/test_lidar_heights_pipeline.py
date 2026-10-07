@@ -93,9 +93,14 @@ def _scene(tmp: Path):
         x, y = x[keep], y[keep]
         _write(surface_dir / f"y_tile{i}_18.laz", x, y, ground_z(x) + _roof(x, y, 2018),
                np.zeros(len(x), dtype=np.uint8), 0, "1.2")
+        # Sidecars like Lantmäteriet's: strip dates for the laser, photo dates for the surface
+        (lidar / f"10A007_tile{i}_strip.json").write_text(json.dumps(
+            {"features": [{"properties": {"insamlingsdatum": f"2010-04-1{i + 1}"}}]}), encoding="utf-8")
+        (surface_dir / f"y_tile{i}_18.json").write_text(json.dumps(
+            {"properties": {"Datum_fran": "2018-04-13", "Datum_till": f"2018-04-2{i}"}}), encoding="utf-8")
     surface_zip = tmp / "ytmodell.zip"
     with zipfile.ZipFile(surface_zip, "w") as z:
-        for p in surface_dir.glob("*.laz"):
+        for p in list(surface_dir.glob("*.laz")) + list(surface_dir.glob("*.json")):
             z.write(p, p.name)
 
     names = list(BUILDINGS) + [OUTSIDE[0]]
@@ -142,12 +147,12 @@ def test_pipeline_heights_and_reasons():
 
     # Heights are exact on a sloped ground: the ground model works per point
     for oid, height, source in [
-        ("A_same", 6.0, "surface_2018"),
-        ("B_new_2012", 9.0, "surface_2018"),
-        ("D_hole_2018", 7.0, "lidar_2010"),
-        ("E_tile_edge", 8.0, "surface_2018"),
-        ("G_rebuilt", 15.0, "surface_2018"),
-        ("I_multi", 4.0, "surface_2018"),
+        ("A_same", 6.0, "surface"),
+        ("B_new_2012", 9.0, "surface"),
+        ("D_hole_2018", 7.0, "lidar"),
+        ("E_tile_edge", 8.0, "surface"),
+        ("G_rebuilt", 15.0, "surface"),
+        ("I_multi", 4.0, "surface"),
     ]:
         r = row(oid)
         assert r["has_height"], oid
@@ -172,14 +177,21 @@ def test_pipeline_heights_and_reasons():
         assert not r["has_height"], oid
         assert r["height_m"] == 0.0
         assert r["no_height_reason_code"] == reason, (oid, r["no_height_reason_code"])
+    # Buildings with a height have no reason (null, not the text "<NA>")
+    assert gdf.loc[gdf["has_height"].astype(bool), "no_height_reason_code"].isna().all()
     # The demolished building's 2010 height is kept for inspection, not used
-    assert abs(row("C_demolished")["height_lidar_2010_m"] - 12.0) < 0.01
+    assert abs(row("C_demolished")["height_lidar_m"] - 12.0) < 0.01
 
     assert summary["buildings_with_height"] == 6
     assert summary["buildings_without_height"] == 3
     assert summary["without_height_by_reason"] == {"surface_shows_ground": 2, "no_tile": 1}
-    assert summary["by_source"] == {"surface_2018": 5, "none": 3, "lidar_2010": 1}
+    assert summary["by_source"] == {"surface": 5, "none": 3, "lidar": 1}
     assert sorted(missing["object_id"]) == ["C_demolished", "F_outside", "H_low"]
+
+    # Capture dates come from the sidecar files, not from code
+    assert summary["sources"]["lidar"]["capture_dates"]["from"] == "2010-04-11"
+    assert summary["sources"]["lidar"]["capture_dates"]["to"] == "2010-04-12"
+    assert summary["sources"]["surface"]["capture_dates"] == {"from": "2018-04-13", "to": "2018-04-21", "sidecar_files": 2}
 
 
 def test_lidar_only_mode():

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class LiDARHeightPipeline(BasePipeline):
     """
-    One height per building from the 2018 surface model and the 2010 laser data.
+    One height per building from a surface model and laser data.
 
     Buildings are grouped into square work cells by centroid. For each cell the
     points of its area (plus the ground search distance) are read from every
@@ -45,11 +45,11 @@ class LiDARHeightPipeline(BasePipeline):
         logger.info(f"Loading buildings from {cfg.input_buildings_path}")
         self.buildings_gdf = gpd.read_file(cfg.input_buildings_path, layer=cfg.input_layer)
         logger.info(f"  {len(self.buildings_gdf):,} buildings")
-        self.lidar = TileSource(cfg.lidar_directory, "Laser data 2010 (Laserdata NH)")
+        self.lidar = TileSource(cfg.lidar_directory, "Laser data (Laserdata NH)")
         if cfg.surface_path is not None:
-            self.surface = TileSource(cfg.surface_path, "Surface model 2018 (Ytmodell)")
+            self.surface = TileSource(cfg.surface_path, "Surface model (Ytmodell)")
         else:
-            logger.warning("No surface model given: heights come from the 2010 laser data only")
+            logger.warning("No surface model given: heights come from the laser data only")
 
     def validate(self) -> Dict:
         report = {"status": "valid", "issues": [], "warnings": []}
@@ -79,14 +79,25 @@ class LiDARHeightPipeline(BasePipeline):
         if invalid:
             report["warnings"].append(f"{invalid} buildings with invalid geometry")
 
-        for label, source in (("lidar_2010", self.lidar), ("surface_2018", self.surface)):
+        for label, source in (("lidar", self.lidar), ("surface", self.surface)):
             if source is None:
                 continue
             outside = int((~gdf.geometry.intersects(shapely.box(*source.extent))).sum())
             report[f"{label}_tiles"] = len(source.tiles)
             report[f"{label}_buildings_outside_extent"] = outside
+            report[f"{label}_capture_dates"] = source.capture_dates()
             if outside:
                 report["warnings"].append(f"{outside} buildings outside the {label} tile extent")
+
+        # The rules treat the surface as the newer source (see config.py).
+        s_dates = report.get("surface_capture_dates")
+        l_dates = report.get("lidar_capture_dates")
+        if s_dates and l_dates and s_dates["to"] < l_dates["from"]:
+            report["warnings"].append(
+                f"Surface model ({s_dates['from']}..{s_dates['to']}) is older than the laser data "
+                f"({l_dates['from']}..{l_dates['to']}); the rules assume the opposite. "
+                f"Consider --no-surface."
+            )
 
         logger.info(f"Validation: {report['status']}")
         for issue in report["issues"]:
@@ -146,9 +157,15 @@ class LiDARHeightPipeline(BasePipeline):
 
     def export(self, output_dir: Optional[Path] = None) -> Dict:
         output_dir = Path(output_dir or self.config.output_directory)
-        sources = {"lidar_2010": str(self.config.lidar_directory)}
+        sources = {"lidar": {
+            "path": str(self.config.lidar_directory),
+            "capture_dates": self.lidar.capture_dates() if self.lidar else None,
+        }}
         if self.config.surface_path is not None:
-            sources["surface_2018"] = str(self.config.surface_path)
+            sources["surface"] = {
+                "path": str(self.config.surface_path),
+                "capture_dates": self.surface.capture_dates() if self.surface else None,
+            }
         return HeightExporter.write_enriched_buildings(
             self.heights, self.buildings_gdf, output_dir, self.config,
             validation_report=self.validation_report, sources=sources,

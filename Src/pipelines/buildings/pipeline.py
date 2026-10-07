@@ -64,10 +64,10 @@ class BuildingsPipeline(BasePipeline):
     
     def load(self):
         """Load raw GeoPackage preserving Swedish field names."""
-        input_path = Path(self.config.get(
-            "input_gpkg", "Raw_data/1-Helsingborig/byggnad_gpkg_helsingborg/byggnad_sverige.gpkg"
-        ))
-        
+        if not self.config.get("input_gpkg"):
+            raise ValueError("config['input_gpkg'] is required (path to the raw Byggnad GeoPackage)")
+        input_path = Path(self.config["input_gpkg"])
+
         if not input_path.exists():
             raise FileNotFoundError(f"Input GeoPackage not found: {input_path}")
         

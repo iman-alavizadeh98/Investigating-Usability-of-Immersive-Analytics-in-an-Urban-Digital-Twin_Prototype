@@ -6,6 +6,7 @@ using UnityEngine;
 using UrbanAnalytics.Data;
 using UrbanAnalytics.Spatial;
 using UrbanAnalytics.Spatial.Geometry;
+using UrbanAnalytics.UrbanContext;
 using UrbanAnalytics.Visualization;
 
 namespace UrbanAnalytics.Interaction
@@ -206,6 +207,29 @@ namespace UrbanAnalytics.Interaction
                         entity.SpatialLayerId
                     );
             }
+            else if (TryGetBuildingAttributes(
+                         entity.Id,
+                         out BuildingAttributeTable attributes
+                     ))
+            {
+                info.Title =
+                    FirstValue(
+                        attributes,
+                        entity.Id,
+                        "name",
+                        "type"
+                    )
+                    ?? $"Building {EntityReference.ShortId(entity.Id)}";
+
+                info.Subtitle =
+                    FirstValue(
+                        attributes,
+                        entity.Id,
+                        "purpose",
+                        "type"
+                    )
+                    ?? string.Empty;
+            }
             else
             {
                 info.Title =
@@ -231,6 +255,21 @@ namespace UrbanAnalytics.Interaction
             EntityReference entity
         )
         {
+            if (TryGetBuildingAttributes(
+                    entity.Id,
+                    out BuildingAttributeTable attributes
+                ))
+            {
+                AddBuildingAttributeSections(
+                    info,
+                    entity,
+                    attributes
+                );
+
+                return;
+            }
+
+
             var section =
                 new EntityInfoSection
                 {
@@ -285,6 +324,135 @@ namespace UrbanAnalytics.Interaction
             info.Sections.Add(
                 section
             );
+        }
+
+
+        /// <summary>
+        /// Building package attributes: one section per field
+        /// group, in the order of the field list in layer.json.
+        /// Fields without a value for this building are left out.
+        /// </summary>
+        private static void AddBuildingAttributeSections(
+            EntityInfo info,
+            EntityReference entity,
+            BuildingAttributeTable attributes
+        )
+        {
+            var sections =
+                new Dictionary<string, EntityInfoSection>(
+                    StringComparer.Ordinal
+                );
+
+
+            foreach (BuildingAttributeValue value in attributes.GetValues(entity.Id))
+            {
+                string group =
+                    string.IsNullOrWhiteSpace(
+                        value.Field.group
+                    )
+                        ? "Building"
+                        : value.Field.group;
+
+
+                if (!sections.TryGetValue(
+                        group,
+                        out EntityInfoSection section
+                    ))
+                {
+                    section =
+                        new EntityInfoSection
+                        {
+                            Title =
+                                group
+                        };
+
+                    sections.Add(
+                        group,
+                        section
+                    );
+
+                    info.Sections.Add(
+                        section
+                    );
+                }
+
+
+                section.Rows.Add(
+                    new EntityInfoRow
+                    {
+                        Label =
+                            value.Field.displayName,
+
+                        ValueText =
+                            value.Text,
+
+                        Unit =
+                            string.IsNullOrWhiteSpace(
+                                value.Field.unit
+                            )
+                                ? null
+                                : value.Field.unit,
+
+                        Value =
+                            value.Number
+                    }
+                );
+            }
+
+
+            if (entity.HasUnit &&
+                sections.TryGetValue(
+                    "Identity",
+                    out EntityInfoSection identity
+                ))
+            {
+                identity.Rows.Add(
+                    Text(
+                        "Cell",
+                        entity.UnitId
+                    )
+                );
+            }
+        }
+
+
+        private bool TryGetBuildingAttributes(
+            string buildingId,
+            out BuildingAttributeTable attributes
+        )
+        {
+            attributes =
+                context.UrbanContext != null
+                    ? context.UrbanContext.BuildingAttributes
+                    : null;
+
+            return attributes != null &&
+                   attributes.Contains(
+                       buildingId
+                   );
+        }
+
+
+        private static string FirstValue(
+            BuildingAttributeTable attributes,
+            string buildingId,
+            params string[] fieldIds
+        )
+        {
+            foreach (string fieldId in fieldIds)
+            {
+                if (attributes.TryGetValue(
+                        buildingId,
+                        fieldId,
+                        out BuildingAttributeValue value
+                    ))
+                {
+                    return value.Text;
+                }
+            }
+
+
+            return null;
         }
 
 

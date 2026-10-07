@@ -372,7 +372,9 @@ namespace UrbanAnalytics.Spatial
         {
             SpatialLayer layer =
                 await SpatialLayerLoader.LoadAsync(
-                    reference.definition,
+                    projectManager.ResolvePackagePath(
+                        reference.definition
+                    ),
                     projectManager.AssetReader,
                     cancellationToken
                 );

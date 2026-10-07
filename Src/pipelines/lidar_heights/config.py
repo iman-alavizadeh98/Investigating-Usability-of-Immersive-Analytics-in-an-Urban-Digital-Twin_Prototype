@@ -5,13 +5,18 @@ One height per building, for extruding flat-roofed (LOD1) buildings:
 
     height_m = p95( surface z - ground z ) over the points inside the footprint
 
-Sources (Lantmäteriet, via SLU GET; see
-docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md):
-- surface: Ytmodell från flygbild (surface model from aerial photos), April 2018,
-  0.5 m grid, LAZ, class 0 only. Gives the roof. Primary source.
-- laser:   Laserdata NH, scanned 2010-04-12, 0.5-1 pt/m2, classified by
-  Lantmäteriet (1 unclassified, 2 ground, 9 water, 11 bridge). Gives the ground
-  for every building, and the roof only where the 2018 surface has no points.
+Sources (Lantmäteriet products; nothing here is tied to one city):
+- surface: Ytmodell från flygbild (surface model from aerial photos), LAZ on a
+  0.5 m grid, class 0 only. Gives the roof. Primary source.
+- laser:   Laserdata NH, classified by Lantmäteriet (1 unclassified, 2 ground,
+  9 water, 11 bridge). Gives the ground for every building, and the roof only
+  where the surface model has no points.
+
+The rules assume the surface model is NEWER than the laser data (true for
+Helsingborg: 2018 vs 2010). Capture dates are read from the tiles' JSON
+sidecars and reported; the pipeline warns if the surface is the older one, in
+which case run with --no-surface or swap the roles deliberately.
+Helsingborg analysis: docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md
 """
 
 from dataclasses import dataclass, field
@@ -24,29 +29,29 @@ import uuid
 
 class HeightSource(str, Enum):
     """Where height_m comes from."""
-    SURFACE_2018 = "surface_2018"  # Ytmodell från flygbild
-    LIDAR_2010 = "lidar_2010"      # Laserdata NH
-    NONE = "none"                  # no height; height_m = fallback_height_m
+    SURFACE = "surface"  # surface model (Ytmodell från flygbild)
+    LIDAR = "lidar"      # laser data (Laserdata NH)
+    NONE = "none"        # no height; height_m = fallback_height_m
 
 
 class NoHeightReason(str, Enum):
     """Why a building has no height (column no_height_reason)."""
     NO_TILE = "no_tile"                    # footprint outside every tile of both sources
-    NO_GROUND = "no_ground"                # no 2010 ground points within the search distance
-    SURFACE_SHOWS_GROUND = "surface_shows_ground"  # 2018 surface covers the footprint but is
-                                                   # below min_visible_height: built after
-                                                   # April 2018, or a very low structure
-    BELOW_MIN_HEIGHT = "below_min_height"  # only 2010 laser points, all below min_visible_height
+    NO_GROUND = "no_ground"                # no laser ground points within the search distance
+    SURFACE_SHOWS_GROUND = "surface_shows_ground"  # surface covers the footprint but is below
+                                                   # min_visible_height: built after the surface
+                                                   # capture date, or a very low structure
+    BELOW_MIN_HEIGHT = "below_min_height"  # only laser points, all below min_visible_height
     NO_POINTS = "no_points"                # too few points in the footprint in both sources
     ERROR = "error"
 
 
 class QualityLevel(str, Enum):
     """
-    high:   2018 surface, >= quality_min_points, and the 2010 laser agrees within
+    high:   surface, >= quality_min_points, and the laser agrees within
             agreement_threshold_m (two independent sources)
-    medium: 2018 surface, >= quality_min_points
-    low:    2018 surface with few points, or 2010 laser (may be outdated)
+    medium: surface, >= quality_min_points
+    low:    surface with few points, or laser (older, may be outdated)
     none:   no height
     """
     HIGH = "high"
@@ -68,18 +73,19 @@ class HeightConfig:
     back to the full footprint when the shrunk one has too few points."""
 
     surface_min_points: int = 4
-    """Minimum 2018 surface points for a height (0.5 m grid: 4 points per m2)."""
+    """Minimum surface points for a height (0.5 m grid: 4 points per m2)."""
 
     surface_point_spacing_m: float = 0.5
     """Grid spacing of the surface model, used for the fill ratio."""
 
     surface_min_fill_ratio: float = 0.5
     """If the surface has at least this share of the expected points but shows
-    no building, the building is treated as absent in 2018 (no fallback to 2010,
-    which would give the height of whatever stood there in 2010)."""
+    no building, the building is treated as absent at the surface date (no
+    fallback to the older laser, which would give the height of whatever stood
+    there then)."""
 
     lidar_min_points: int = 5
-    """Minimum 2010 laser roof points (class 1) for the fallback height."""
+    """Minimum laser roof points (class 1) for the fallback height."""
 
     lidar_roof_classes: Tuple[int, ...] = (1,)
     ground_classes: Tuple[int, ...] = (2,)
@@ -92,7 +98,7 @@ class HeightConfig:
 
     ground_exclude_buffer_m: float = 0.5
     """Ground points inside the footprint grown by this much are ignored: on
-    buildings that existed in 2010 they may be misclassified roof points."""
+    buildings that existed at the laser date they may be misclassified roof points."""
 
     outline_sample_spacing_m: float = 2.0
     """Spacing of the outline samples used for ground_z / ground_z_min."""
@@ -102,7 +108,7 @@ class HeightConfig:
     above it are kept as measured."""
 
     change_threshold_m: float = 3.0
-    """height_change_flag when the 2018 and 2010 heights differ by more."""
+    """height_change_flag when the surface and laser heights differ by more."""
 
     agreement_threshold_m: float = 1.5
     quality_min_points: int = 20
@@ -121,10 +127,10 @@ class LiDARHeightPipelineConfig:
     output_directory: Path
 
     lidar_directory: Path
-    """Folder with the Laserdata NH LAZ tiles (2010)."""
+    """Folder with the laser data LAZ tiles (Laserdata NH)."""
 
     surface_path: Optional[Path] = None
-    """Ytmodell LAZ tiles (2018): the delivered zip or a folder. None = 2010 only."""
+    """Surface model LAZ tiles (Ytmodell): a folder or the delivered zip. None = laser only."""
 
     input_layer: Optional[str] = None
     """GeoPackage layer (None = the file's only layer)."""

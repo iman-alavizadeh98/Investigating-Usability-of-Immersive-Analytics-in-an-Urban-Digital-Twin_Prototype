@@ -10,11 +10,25 @@ using UnityEngine.Rendering;
 
 using UrbanAnalytics.Associations;
 using UrbanAnalytics.Core;
+using UrbanAnalytics.Core.IO;
 using UrbanAnalytics.Rendering;
 using UrbanAnalytics.Spatial.Geometry;
 
 namespace UrbanAnalytics.UrbanContext
 {
+    /// <summary>
+    /// How buildings without a measured height are drawn.
+    /// </summary>
+    public enum NoHeightBuildingDisplay
+    {
+        /// <summary>Thin slab: visible and clickable.</summary>
+        ThinSlab = 0,
+
+        /// <summary>Not drawn (still in the attribute table).</summary>
+        Hide = 1
+    }
+
+
     /// <summary>
     /// Loads physical city context independently from analytical
     /// visualization geometry.
@@ -105,6 +119,40 @@ namespace UrbanAnalytics.UrbanContext
         [SerializeField]
         private string fallbackRutaLayerId =
             "ruta_250";
+
+
+        // =========================================================
+        // BUILDING PACKAGE (manifest urbanContext)
+        // =========================================================
+
+        [Header("Building Package")]
+        [Tooltip(
+            "Id of the manifest's urbanContext entry that holds " +
+            "the buildings (GBLD v3 + attributes, written by " +
+            "build_unity_package.py). If the manifest has no such " +
+            "entry, the legacy binary above is loaded instead."
+        )]
+        [SerializeField]
+        private string buildingContextId =
+            "buildings";
+
+
+        [Tooltip(
+            "How buildings without a measured height are drawn."
+        )]
+        [SerializeField]
+        private NoHeightBuildingDisplay noHeightDisplay =
+            NoHeightBuildingDisplay.ThinSlab;
+
+
+        [Tooltip(
+            "Slab thickness (metres) for buildings without a " +
+            "measured height, so they stay visible and clickable."
+        )]
+        [SerializeField]
+        [Min(0.01f)]
+        private float noHeightSlabMeters =
+            0.3f;
 
 
         // =========================================================
@@ -237,6 +285,33 @@ namespace UrbanAnalytics.UrbanContext
 
         public string BuildingToRutaAssociationId =>
             buildingToRutaAssociationId;
+
+
+        /// <summary>
+        /// Per-building attributes of a building package; null for
+        /// the legacy binary.
+        /// </summary>
+        public BuildingAttributeTable BuildingAttributes
+        {
+            get;
+            private set;
+        }
+
+
+        /// <summary>layer.json of the loaded building package.</summary>
+        public BuildingContextDefinition BuildingDefinition
+        {
+            get;
+            private set;
+        }
+
+
+        /// <summary>Path (relative to StreamingAssets) of what was loaded.</summary>
+        public string BuildingsSource
+        {
+            get;
+            private set;
+        }
 
 
         // =========================================================
@@ -440,6 +515,24 @@ namespace UrbanAnalytics.UrbanContext
                 return;
             }
 
+
+            ResourceReference package =
+                FindBuildingContext();
+
+            if (package != null)
+            {
+                await LoadBuildingPackageAsync(
+                    package,
+                    cancellationToken
+                );
+
+                return;
+            }
+
+
+            // Legacy: GBLD v2 binary named in the Inspector.
+            BuildingsSource =
+                buildingsBinaryPath;
 
             byte[] bytes =
                 await projectManager
@@ -873,6 +966,350 @@ namespace UrbanAnalytics.UrbanContext
 
 
         // =========================================================
+        // BUILDING PACKAGE (GBLD v3 + attributes)
+        // =========================================================
+
+        private ResourceReference FindBuildingContext()
+        {
+            ResourceReference[] entries =
+                projectManager.Manifest?.urbanContext;
+
+            if (entries == null)
+            {
+                return null;
+            }
+
+
+            foreach (ResourceReference entry in entries)
+            {
+                if (entry != null &&
+                    string.Equals(
+                        entry.id,
+                        buildingContextId,
+                        StringComparison.Ordinal
+                    ))
+                {
+                    return entry;
+                }
+            }
+
+
+            return null;
+        }
+
+
+        private async Task LoadBuildingPackageAsync(
+            ResourceReference reference,
+            CancellationToken cancellationToken
+        )
+        {
+            if (string.IsNullOrWhiteSpace(
+                    reference.definition
+                ))
+            {
+                throw new InvalidDataException(
+                    $"urbanContext '{reference.id}' has no definition path."
+                );
+            }
+
+
+            string layerPath =
+                projectManager.ResolvePackagePath(
+                    reference.definition
+                );
+
+            BuildingsSource =
+                layerPath;
+
+
+            string layerJson =
+                await projectManager
+                    .AssetReader
+                    .ReadTextAsync(
+                        layerPath,
+                        cancellationToken
+                    );
+
+            BuildingContextDefinition definition =
+                JsonUtility.FromJson<BuildingContextDefinition>(
+                    layerJson
+                );
+
+
+            if (definition == null ||
+                string.IsNullOrWhiteSpace(definition.geometryFile) ||
+                string.IsNullOrWhiteSpace(definition.attributesFile))
+            {
+                throw new InvalidDataException(
+                    $"'{layerPath}' does not name its geometry " +
+                    $"and attributes files."
+                );
+            }
+
+
+            byte[] geometryBytes =
+                await projectManager
+                    .AssetReader
+                    .ReadBytesAsync(
+                        RuntimeAssetReader.ResolveSiblingPath(
+                            layerPath,
+                            definition.geometryFile
+                        ),
+                        cancellationToken
+                    );
+
+            string attributesJson =
+                await projectManager
+                    .AssetReader
+                    .ReadTextAsync(
+                        RuntimeAssetReader.ResolveSiblingPath(
+                            layerPath,
+                            definition.attributesFile
+                        ),
+                        cancellationToken
+                    );
+
+
+            // Parsing is plain C#, so it runs off the main thread.
+            double originEasting = 0.0;
+            double originNorthing = 0.0;
+
+            List<BuildingRecord> records =
+                await Task.Run(
+                    () => BuildingGeometryReader.Read(
+                        geometryBytes,
+                        out originEasting,
+                        out originNorthing
+                    ),
+                    cancellationToken
+                );
+
+            BuildingAttributeTable attributes =
+                await Task.Run(
+                    () => BuildingAttributeTable.Parse(
+                        attributesJson,
+                        definition.fields
+                    ),
+                    cancellationToken
+                );
+
+            cancellationToken
+                .ThrowIfCancellationRequested();
+
+
+            associationManager.ClearAssociation(
+                buildingToRutaAssociationId
+            );
+
+            ClearBuildingObjects();
+
+            BuildingDefinition =
+                definition;
+
+            BuildingAttributes =
+                attributes;
+
+
+            var vertices =
+                new List<Vector3>();
+
+            var triangles =
+                new List<int>();
+
+            var colors =
+                new List<Color32>();
+
+            var ranges =
+                new List<BuildingMeshUnitRange>(
+                    buildingsPerChunk
+                );
+
+
+            int chunkIndex = 0;
+            int chunksSinceYield = 0;
+            int loaded = 0;
+            int hidden = 0;
+            int failedParts = 0;
+            int noHeight = 0;
+
+
+            foreach (BuildingRecord record in records)
+            {
+                cancellationToken
+                    .ThrowIfCancellationRequested();
+
+
+                if (!record.HasHeight)
+                {
+                    noHeight++;
+
+                    if (noHeightDisplay ==
+                        NoHeightBuildingDisplay.Hide)
+                    {
+                        hidden++;
+
+                        continue;
+                    }
+                }
+
+
+                float drawnHeight =
+                    record.HasHeight
+                        ? record.HeightMeters
+                        : noHeightSlabMeters;
+
+
+                int vertexStart =
+                    vertices.Count;
+
+                int triangleStart =
+                    triangles.Count / 3;
+
+
+                foreach (PolygonGeometry polygon in record.Polygons)
+                {
+                    try
+                    {
+                        AppendBuildingPolygon(
+                            polygon,
+                            float.IsNaN(record.GroundZ)
+                                ? 0.0f
+                                : record.GroundZ,
+                            drawnHeight,
+                            vertices,
+                            triangles,
+                            colors
+                        );
+                    }
+                    catch (Exception exception)
+                    {
+                        failedParts++;
+
+                        if (failedParts <= 10)
+                        {
+                            Debug.LogWarning(
+                                $"Skipped invalid geometry for " +
+                                $"'{record.Id}': {exception.Message}",
+                                this
+                            );
+                        }
+                    }
+                }
+
+
+                int addedVertices =
+                    vertices.Count -
+                    vertexStart;
+
+                int addedTriangles =
+                    triangles.Count / 3 -
+                    triangleStart;
+
+                if (addedVertices <= 0 ||
+                    addedTriangles <= 0)
+                {
+                    continue;
+                }
+
+
+                ranges.Add(
+                    new BuildingMeshUnitRange(
+                        record.Id,
+                        null,
+                        vertexStart,
+                        addedVertices,
+                        triangleStart,
+                        addedTriangles,
+                        record.HasHeight
+                            ? record.HeightMeters
+                            : float.NaN
+                    )
+                );
+
+                loaded++;
+
+
+                if (ranges.Count >= buildingsPerChunk)
+                {
+                    CreateBuildingChunk(
+                        chunkIndex,
+                        vertices,
+                        triangles,
+                        colors,
+                        ranges
+                    );
+
+                    chunkIndex++;
+                    chunksSinceYield++;
+
+                    vertices.Clear();
+                    triangles.Clear();
+                    colors.Clear();
+                    ranges.Clear();
+
+
+                    if (chunksSinceYield >= chunksBeforeYield)
+                    {
+                        chunksSinceYield = 0;
+
+                        await Task.Yield();
+                    }
+                }
+            }
+
+
+            if (ranges.Count > 0)
+            {
+                CreateBuildingChunk(
+                    chunkIndex,
+                    vertices,
+                    triangles,
+                    colors,
+                    ranges
+                );
+            }
+
+
+            BuildingCount =
+                loaded;
+
+            MatchedBuildingCount =
+                0;
+
+            AreBuildingsLoaded =
+                true;
+
+
+            if (failedParts > 10)
+            {
+                Debug.LogWarning(
+                    $"{failedParts} building polygons were skipped " +
+                    $"in total (first 10 logged).",
+                    this
+                );
+            }
+
+
+            Debug.Log(
+                $"Building package loaded into UrbanContext:\n" +
+                $"Definition: {layerPath}\n" +
+                $"Records: {records.Count} " +
+                $"(declared {definition.buildingCount})\n" +
+                $"Rendered: {loaded}\n" +
+                $"Without height: {noHeight} " +
+                $"({noHeightDisplay}" +
+                (hidden > 0 ? $", {hidden} hidden" : string.Empty) +
+                $")\n" +
+                $"Attribute fields: {attributes.Fields.Count}, " +
+                $"rows: {attributes.Count}\n" +
+                $"Chunks: {buildingChunks.Count}\n" +
+                $"Binary origin: {originEasting}, {originNorthing}",
+                this
+            );
+        }
+
+
+        // =========================================================
         // RUTA KEYS
         // =========================================================
 
@@ -937,12 +1374,32 @@ namespace UrbanAnalytics.UrbanContext
             List<Color32> colors
         )
         {
-            var polygon =
+            AppendBuildingPolygon(
                 new PolygonGeometry(
                     ring
-                );
+                ),
+                groundZ,
+                heightMeters,
+                vertices,
+                triangles,
+                colors
+            );
+        }
 
 
+        /// <summary>
+        /// Flat roof (triangulated with holes) plus walls for the
+        /// exterior and every hole (courtyard).
+        /// </summary>
+        private void AppendBuildingPolygon(
+            PolygonGeometry polygon,
+            float groundZ,
+            float heightMeters,
+            List<Vector3> vertices,
+            List<int> triangles,
+            List<Color32> colors
+        )
+        {
             PolygonTriangulationResult triangulation =
                 PolygonTriangulator.Triangulate(
                     polygon
@@ -1023,6 +1480,46 @@ namespace UrbanAnalytics.UrbanContext
             // WALLS
             // -----------------------------------------------------
 
+            AppendWalls(
+                polygon.Exterior,
+                false,
+                baseElevation,
+                height,
+                vertices,
+                triangles,
+                colors
+            );
+
+
+            foreach (PolygonRing hole in polygon.Holes)
+            {
+                AppendWalls(
+                    hole,
+                    true,
+                    baseElevation,
+                    height,
+                    vertices,
+                    triangles,
+                    colors
+                );
+            }
+        }
+
+
+        /// <summary>
+        /// One quad per ring edge. Exterior walls face away from
+        /// the building; hole walls face into the courtyard.
+        /// </summary>
+        private void AppendWalls(
+            PolygonRing ring,
+            bool isHole,
+            double baseElevation,
+            float height,
+            List<Vector3> vertices,
+            List<int> triangles,
+            List<Color32> colors
+        )
+        {
             IReadOnlyList<SpatialCoordinate>
                 ringCoordinates =
                     ring.Coordinates;
@@ -1031,10 +1528,12 @@ namespace UrbanAnalytics.UrbanContext
             // The wall winding below faces outward for
             // counter-clockwise rings. Clockwise rings must be
             // flipped, otherwise their walls face inward and are
-            // back-face culled from outside.
+            // back-face culled from outside. A hole's walls must
+            // face into the hole, i.e. the opposite.
             bool flipWalls =
-                ring.Orientation ==
-                RingOrientation.Clockwise;
+                (ring.Orientation ==
+                 RingOrientation.Clockwise) ^
+                isHole;
 
 
             for (
@@ -1615,6 +2114,12 @@ namespace UrbanAnalytics.UrbanContext
 
             AreBuildingsLoaded =
                 false;
+
+            BuildingAttributes =
+                null;
+
+            BuildingDefinition =
+                null;
 
 
             if (buildingsRoot == null)

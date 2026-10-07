@@ -8,9 +8,37 @@ namespace UrbanAnalytics.Core
     public class ProjectManager : MonoBehaviour
     {
         [Header("Project")]
+        [Tooltip(
+            "Manifest path relative to StreamingAssets, e.g. " +
+            "'cities/helsingborg/project_manifest.json' for a city " +
+            "package built by Src/Scripts/Unity/build_unity_package.py. " +
+            "Paths inside the manifest are relative to its folder."
+        )]
         [SerializeField]
         private string manifestFileName =
             "project_manifest.json";
+
+
+        /// <summary>Manifest path relative to StreamingAssets.</summary>
+        public string ManifestPath =>
+            manifestFileName;
+
+
+        /// <summary>
+        /// Resolves a path written in the manifest (relative to the
+        /// manifest's folder) to a path relative to StreamingAssets.
+        /// For a manifest at the StreamingAssets root this returns
+        /// the path unchanged.
+        /// </summary>
+        public string ResolvePackagePath(
+            string manifestRelativePath
+        )
+        {
+            return RuntimeAssetReader.ResolveSiblingPath(
+                manifestFileName,
+                manifestRelativePath
+            );
+        }
 
 
         public ProjectManifest Manifest

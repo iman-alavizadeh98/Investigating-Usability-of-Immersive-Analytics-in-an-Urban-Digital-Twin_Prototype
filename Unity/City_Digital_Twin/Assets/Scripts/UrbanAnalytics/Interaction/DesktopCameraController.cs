@@ -3,6 +3,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 using UrbanAnalytics.Rendering;
+using UrbanAnalytics.UrbanContext;
 
 namespace UrbanAnalytics.Interaction
 {
@@ -44,6 +45,11 @@ namespace UrbanAnalytics.Interaction
         )]
         [SerializeField]
         private GeometryManager geometryManager;
+
+
+        // Found automatically; frames the buildings when a scene
+        // has no spatial layers.
+        private UrbanContextManager urbanContextManager;
 
 
         [Header("Home View")]
@@ -225,6 +231,10 @@ namespace UrbanAnalytics.Interaction
                 geometryManager =
                     FindFirstObjectByType<GeometryManager>();
             }
+
+
+            urbanContextManager =
+                FindFirstObjectByType<UrbanContextManager>();
 
 
             InitializeFromTransform();
@@ -850,6 +860,16 @@ namespace UrbanAnalytics.Interaction
             }
 
 
+            // Buildings may be the only content (a city package
+            // without spatial layers yet): wait until they are in.
+            if (urbanContextManager != null &&
+                urbanContextManager.isActiveAndEnabled &&
+                urbanContextManager.IsInitializing)
+            {
+                return;
+            }
+
+
             bool hasBounds =
                 false;
 
@@ -888,6 +908,40 @@ namespace UrbanAnalytics.Interaction
                     bounds.Encapsulate(
                         chunkBounds
                     );
+                }
+            }
+
+
+            // No spatial layers: frame the buildings instead.
+            if (!hasBounds &&
+                urbanContextManager != null)
+            {
+                foreach (
+                    BuildingMeshChunk chunk
+                    in urbanContextManager.BuildingChunks
+                )
+                {
+                    if (chunk == null ||
+                        chunk.MeshRenderer == null)
+                    {
+                        continue;
+                    }
+
+
+                    if (!hasBounds)
+                    {
+                        bounds =
+                            chunk.MeshRenderer.bounds;
+
+                        hasBounds =
+                            true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(
+                            chunk.MeshRenderer.bounds
+                        );
+                    }
                 }
             }
 

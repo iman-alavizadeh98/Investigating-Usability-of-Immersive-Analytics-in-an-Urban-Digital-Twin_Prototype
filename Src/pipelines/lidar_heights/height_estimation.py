@@ -1,14 +1,14 @@
 """
 Per-building height: one number for extruding a flat-roofed building.
 
-    ground(x, y) = linear interpolation (Delaunay) of 2010 laser ground points
+    ground(x, y) = linear interpolation (Delaunay) of laser ground points
                    around the footprint (points inside the footprint ignored)
     height_m     = p95( z - ground(x, y) ) over the roof points inside the footprint
 
-Roof points come from the 2018 surface model; the 2010 laser roof points
-(class 1) are used only where the 2018 surface has too few points. See
-config.py for every threshold and docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md
-for why.
+Roof points come from the surface model; the laser roof points (class 1)
+are used only where the surface has too few points. See config.py for every
+threshold and docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md
+for the analysis behind them.
 """
 
 import logging
@@ -107,7 +107,7 @@ class HeightEstimator:
         return points.z[idx] - ground(points.x[idx], points.y[idx])
 
     def surface_points(self, geom, surface: TilePoints) -> Tuple[np.ndarray, float]:
-        """2018 surface points in the shrunk footprint (full footprint if too few)."""
+        """Surface points in the shrunk footprint (full footprint if too few)."""
         cfg = self.config
         shrunk = geom.buffer(-cfg.footprint_shrink_m)
         idx = _inside(surface, shrunk)
@@ -143,7 +143,7 @@ class HeightEstimator:
         result["ground_z"] = round(float(np.median(outline_z)), 3)
         result["ground_z_min"] = round(float(np.min(outline_z)), 3)
 
-        # 2018 surface (primary)
+        # Surface model (primary)
         surface_hag = None
         if surface_points is not None:
             s_idx, fill = self.surface_points(geom, surface_points)
@@ -151,30 +151,30 @@ class HeightEstimator:
             result["surface_fill_ratio"] = round(fill, 3)
             if len(s_idx) >= cfg.surface_min_points:
                 surface_hag = self.roof_heights(surface_points, s_idx, ground)
-                result["height_surface_2018_m"] = round(float(np.percentile(surface_hag, cfg.percentile)), 3)
+                result["height_surface_m"] = round(float(np.percentile(surface_hag, cfg.percentile)), 3)
 
-        # 2010 laser roof points (fallback, and for the change flag / quality)
+        # Laser roof points (fallback, and for the change flag / quality)
         l_idx = _inside(lidar_roof_points, geom)
         result["lidar_point_count"] = int(len(l_idx))
         lidar_hag = None
         if len(l_idx) >= cfg.lidar_min_points:
             lidar_hag = self.roof_heights(lidar_roof_points, l_idx, ground)
-            result["height_lidar_2010_m"] = round(float(np.percentile(lidar_hag, cfg.percentile)), 3)
+            result["height_lidar_m"] = round(float(np.percentile(lidar_hag, cfg.percentile)), 3)
 
-        h_s = result["height_surface_2018_m"]
-        h_l = result["height_lidar_2010_m"]
+        h_s = result["height_surface_m"]
+        h_l = result["height_lidar_m"]
         if h_s is not None and h_l is not None:
             result["height_change_flag"] = bool(abs(h_s - h_l) > cfg.change_threshold_m)
 
         # Decide
         if h_s is not None and h_s >= cfg.min_visible_height_m:
-            return self._with_height(result, HeightSource.SURFACE_2018, surface_hag)
+            return self._with_height(result, HeightSource.SURFACE, surface_hag)
         if h_s is not None and result["surface_fill_ratio"] >= cfg.surface_min_fill_ratio:
-            # The 2018 surface sees the footprint and finds no building. A 2010
-            # height would belong to whatever stood there in 2010.
+            # The (newer) surface sees the footprint and finds no building. A
+            # laser height would belong to whatever stood there at the laser date.
             return self._no_height(result, NoHeightReason.SURFACE_SHOWS_GROUND)
         if h_l is not None and h_l >= cfg.min_visible_height_m:
-            return self._with_height(result, HeightSource.LIDAR_2010, lidar_hag)
+            return self._with_height(result, HeightSource.LIDAR, lidar_hag)
         if h_s is not None or h_l is not None:
             return self._no_height(result, NoHeightReason.BELOW_MIN_HEIGHT)
         return self._no_height(result, NoHeightReason.NO_POINTS)
@@ -194,8 +194,8 @@ class HeightEstimator:
             "roof_z": None,
             "height_p50_m": None,
             "height_max_m": None,
-            "height_surface_2018_m": None,
-            "height_lidar_2010_m": None,
+            "height_surface_m": None,
+            "height_lidar_m": None,
             "height_change_flag": False,
             "surface_point_count": 0,
             "surface_fill_ratio": 0.0,
@@ -215,11 +215,11 @@ class HeightEstimator:
             "height_p50_m": round(float(np.percentile(hag, 50)), 3),
             "height_max_m": round(float(np.max(hag)), 3),
         })
-        n = result["surface_point_count"] if source == HeightSource.SURFACE_2018 else result["lidar_point_count"]
-        if source == HeightSource.LIDAR_2010 or n < cfg.quality_min_points:
+        n = result["surface_point_count"] if source == HeightSource.SURFACE else result["lidar_point_count"]
+        if source == HeightSource.LIDAR or n < cfg.quality_min_points:
             quality = QualityLevel.LOW
-        elif (result["height_lidar_2010_m"] is not None
-              and abs(result["height_surface_2018_m"] - result["height_lidar_2010_m"]) <= cfg.agreement_threshold_m):
+        elif (result["height_lidar_m"] is not None
+              and abs(result["height_surface_m"] - result["height_lidar_m"]) <= cfg.agreement_threshold_m):
             quality = QualityLevel.HIGH
         else:
             quality = QualityLevel.MEDIUM

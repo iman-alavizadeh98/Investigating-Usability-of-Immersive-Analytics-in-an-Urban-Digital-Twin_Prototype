@@ -6,11 +6,12 @@ The LAZ headers carry no CRS; the GeoJSON sidecars say EPSG:3006.
 """
 
 import io
+import json
 import logging
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import laspy
 import numpy as np
@@ -103,6 +104,35 @@ class TileSource:
         if self._zip is not None:
             return laspy.open(io.BytesIO(self._zip.read(name)))
         return laspy.open(self.path / name)
+
+    # Date fields in Lantmäteriet's GeoJSON sidecars: Laserdata NH strips
+    # (*_strip.json) have "insamlingsdatum"; Ytmodell tiles have "Datum_fran" /
+    # "Datum_till" (first / last aerial photo used).
+    DATE_KEYS = ("insamlingsdatum", "Datum_fran", "Datum_till")
+
+    def capture_dates(self) -> Optional[Dict[str, str]]:
+        """Earliest and latest capture date found in the sidecar JSON files, or None."""
+        dates = []
+        if self._zip is not None:
+            names = [n for n in self._zip.namelist() if n.lower().endswith(".json") and "/" not in n.strip("/")]
+            read = lambda n: self._zip.read(n)  # noqa: E731
+        else:
+            names = sorted(p.name for p in self.path.glob("*.json"))
+            read = lambda n: (self.path / n).read_bytes()  # noqa: E731
+        for name in names:
+            try:
+                doc = json.loads(read(name))
+            except (ValueError, OSError):
+                continue
+            props = [f.get("properties", {}) for f in doc.get("features", [])] or [doc.get("properties", {})]
+            for p in props:
+                for key in self.DATE_KEYS:
+                    value = p.get(key) if isinstance(p, dict) else None
+                    if isinstance(value, str) and len(value) >= 10:
+                        dates.append(value[:10])
+        if not dates:
+            return None
+        return {"from": min(dates), "to": max(dates), "sidecar_files": len(names)}
 
     @property
     def extent(self) -> Bounds:

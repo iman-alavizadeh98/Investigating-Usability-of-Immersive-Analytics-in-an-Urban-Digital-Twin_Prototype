@@ -480,7 +480,9 @@ namespace UrbanAnalytics.Data
         {
             DataLayer layer =
                 await DataLayerLoader.LoadAsync(
-                    reference.definition,
+                    projectManager.ResolvePackagePath(
+                        reference.definition
+                    ),
                     projectManager.AssetReader,
                     cancellationToken
                 );

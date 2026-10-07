@@ -16,7 +16,7 @@ HEIGHT_COLUMNS = [
     "no_height_reason", "no_height_reason_code",
     "ground_z", "ground_z_min", "roof_z",
     "height_p50_m", "height_max_m",
-    "height_surface_2018_m", "height_lidar_2010_m", "height_change_flag",
+    "height_surface_m", "height_lidar_m", "height_change_flag",
     "surface_point_count", "surface_fill_ratio", "lidar_point_count", "ground_point_count",
     "height_run_id",
 ]
@@ -49,9 +49,12 @@ class HeightExporter:
         missing = set(buildings_gdf["object_id"]) - set(heights_df["building_id"])
         if missing:
             raise ValueError(f"{len(missing)} buildings have no height result")
-        heights_df["no_height_reason_code"] = (
-            heights_df["no_height_reason"].astype("string").str.split(":").str[0].str.strip()
-        )
+        # Plain Python strings / None: a pandas "string" column was written to
+        # the GeoPackage as the text "<NA>" for buildings with a height.
+        heights_df["no_height_reason_code"] = [
+            r.split(":")[0].strip() if isinstance(r, str) else None
+            for r in heights_df["no_height_reason"]
+        ]
 
         gdf = buildings_gdf.merge(
             heights_df.rename(columns={"building_id": "object_id"}), on="object_id", how="left"
@@ -61,7 +64,7 @@ class HeightExporter:
         gdf["has_height"] = gdf["has_height"].astype(bool)
         gdf["height_change_flag"] = gdf["height_change_flag"].astype(bool)
         for col in ["height_m", "ground_z", "ground_z_min", "roof_z", "height_p50_m", "height_max_m",
-                    "height_surface_2018_m", "height_lidar_2010_m", "surface_fill_ratio"]:
+                    "height_surface_m", "height_lidar_m", "surface_fill_ratio"]:
             gdf[col] = pd.to_numeric(gdf[col], errors="coerce").astype("float64")
 
         gpkg_path = output_directory / "buildings_lidar_added.gpkg"
@@ -86,7 +89,7 @@ class HeightExporter:
         no_height = gdf.loc[~gdf["has_height"]]
         missing_df = pd.DataFrame(no_height[[
             "object_id", "no_height_reason_code", "no_height_reason", *info_cols,
-            "height_surface_2018_m", "height_lidar_2010_m", "surface_point_count",
+            "height_surface_m", "height_lidar_m", "surface_point_count",
             "surface_fill_ratio", "lidar_point_count",
         ]])
         centroids = no_height.geometry.centroid
@@ -129,8 +132,8 @@ class HeightExporter:
         total = len(gdf)
         has = gdf["has_height"]
         n_with = int(has.sum())
-        both = gdf.dropna(subset=["height_surface_2018_m", "height_lidar_2010_m"])
-        diff = both["height_surface_2018_m"] - both["height_lidar_2010_m"]
+        both = gdf.dropna(subset=["height_surface_m", "height_lidar_m"])
+        diff = both["height_surface_m"] - both["height_lidar_m"]
         hc = config.height_config
         return {
             "run_id": config.height_run_id,
@@ -148,7 +151,7 @@ class HeightExporter:
             "by_quality": gdf["height_quality"].value_counts().to_dict(),
             "height_change_flag_count": int(gdf["height_change_flag"].sum()),
             "height_statistics": HeightExporter._stats(gdf.loc[has, "height_m"]),
-            "surface_2018_vs_lidar_2010": {
+            "surface_vs_lidar": {
                 "buildings_with_both": int(len(both)),
                 "median_difference_m": round(float(diff.median()), 3) if len(both) else None,
                 "within_1m_pct": round(100.0 * float((diff.abs() <= 1).mean()), 1) if len(both) else None,
@@ -156,10 +159,10 @@ class HeightExporter:
             },
             "method": {
                 "height": f"p{hc.percentile:g} of (z - ground) inside the footprint",
-                "ground": "linear (Delaunay) interpolation of 2010 laser ground points "
+                "ground": "linear (Delaunay) interpolation of laser ground points "
                           f"(classes {list(hc.ground_classes)}) within {list(hc.ground_search_m)} m; "
                           f"points inside the footprint + {hc.ground_exclude_buffer_m} m ignored",
-                "order": "2018 surface; 2010 laser only where the 2018 surface has too few points; "
+                "order": "surface; laser only where the surface has too few points; "
                          "else no height",
                 "config": {k: (list(v) if isinstance(v, tuple) else v) for k, v in vars(hc).items()},
             },
@@ -177,7 +180,7 @@ class HeightExporter:
         logger.info(f"  Without height, by reason: {s['without_height_by_reason']}")
         logger.info(f"  By source: {s['by_source']}")
         logger.info(f"  By quality: {s['by_quality']}")
-        logger.info(f"  2018 vs 2010 differ by more than the threshold: {s['height_change_flag_count']:,}")
+        logger.info(f"  Surface vs laser differ by more than the threshold: {s['height_change_flag_count']:,}")
         if s["height_statistics"]:
             st = s["height_statistics"]
             logger.info(f"  Height: min {st['min_m']}, median {st['median_m']}, max {st['max_m']} m")

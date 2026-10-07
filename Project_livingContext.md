@@ -48,17 +48,18 @@ Important note:
 Check these first when updating context or reasoning about the project:
 
 Unity runtime (current prototype; paths under `Unity/City_Digital_Twin/Assets/`):
-- `Scenes/SampleScene.unity` — the only scene. `/UrbanAnalytics` holds the eight system managers, `/CityRoot` is the parent for runtime-generated geometry, `/VisualizationUI` holds the colour legend
-- `StreamingAssets/project_manifest.json` — runtime package root: CRS, Unity origin/scale/axes, spatial and data layer list
+- `Scenes/Helsingborg.unity` — **current scene (2026-10-06)**. Same runtime systems as SampleScene (no legend, no visualization switcher, `applyOnStart` off); `ProjectManager` manifest path `cities/helsingborg/project_manifest.json`. Data is added step by step; so far buildings only.
+- `Scenes/SampleScene.unity` — the Gothenburg test scene (historical). `/UrbanAnalytics` holds the system managers, `/CityRoot` is the parent for runtime-generated geometry, `/VisualizationUI` holds the colour legend
+- `StreamingAssets/cities/<city>/project_manifest.json` — one package per city (the `cities/` folder is git-ignored: generated from licensed data, rebuild instead of committing), **generated** by `build_unity_package.py` (never hand-edited): CRS, Unity origin/scale/axes, urbanContext/spatial/data layer lists. Paths inside are relative to the manifest's folder. `StreamingAssets/project_manifest.json` (root) is the old hand-written Gothenburg package
 - `Scripts/UrbanAnalytics/Core/` — `ProjectManager`, `ProjectManifest`, `SpatialReferenceManager` (the only CRS ⇄ Unity conversion)
 - `Scripts/UrbanAnalytics/IO/RuntimeAssetReader.cs` — all package file reads (Editor, Windows, Android/Quest)
 - `Scripts/UrbanAnalytics/Spatial/` — spatial layers, units and geometry model (`SpatialLayerManager`, loaders, `Geometry/`)
 - `Scripts/UrbanAnalytics/Data/` — data layers (`DataLayerManager`, loader, definitions)
 - `Scripts/UrbanAnalytics/Rendering/` — `GeometryManager`, `ProceduralPolygonMeshBuilder`, `PolygonTriangulator`, `SpatialMeshChunk`
-- `Scripts/UrbanAnalytics/UrbanContext/` — `UrbanContextManager` (buildings from `GBLD` binary), `BuildingMeshChunk`
+- `Scripts/UrbanAnalytics/UrbanContext/` — `UrbanContextManager` (buildings from the manifest's `urbanContext` package, GBLD v3; falls back to the legacy v2 binary), `BuildingPackage.cs` (v3 reader, `BuildingAttributeTable`), `BuildingMeshChunk`
 - `Scripts/UrbanAnalytics/Associations/AssociationManager.cs` — generic entity → entity links (e.g. `buildings_to_ruta`)
 - `Scripts/UrbanAnalytics/Visualization/` — `VisualizationManager`, `Model/VisualizationSpec.cs` (the spec schema), `Renderers/`, `UI/VisualizationLegendView.cs`
-- [Src/Scripts/Unity/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/Unity) — Python exporters that write the runtime package (`export_polygon_spatial_layer.py`, `export_data_layer.py`)
+- [Src/Scripts/Unity/build_unity_package.py](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/Scripts/Unity/build_unity_package.py) + [Src/pipelines/unity_package/](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/Src/pipelines/unity_package) — builds a city's runtime package from [configs/cities/&lt;city&gt;.json](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/configs/cities) (buildings so far) and writes its manifest. The old quick exporters (`export_polygon_spatial_layer.py`, `export_data_layer.py`) were deleted 2026-10-06
 - [docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/decisions/2026-10-02_runtime-geometry-generation-in-unity.md) — why geometry is generated at runtime
 - The October 2026 development report (`urban_digital_twin_development_report_complete.html`) is the most detailed status write-up, but it is held **outside the repo**
 
@@ -111,14 +112,16 @@ Unity 6000.3.14f1, URP 17.3, Input System. Target device: Meta Quest 3S (no XR p
 
 **Design goal:** keep city geometry, spatial units, analytical data and visualization methods independent, so any variable can drive any visual channel on any target. A visualization is declared, not coded.
 
-Runtime package (`Assets/StreamingAssets/`, read only through `RuntimeAssetReader`):
+Runtime package per city (`Assets/StreamingAssets/cities/<city>/`, git-ignored, read only through `RuntimeAssetReader`; built by `Src/Scripts/Unity/build_unity_package.py --config configs/cities/<city>.json`):
 ```
-project_manifest.json                      CRS, origin, metersToUnity, axis mapping, layer list
-spatial_layers/<id>/layer.json + geometry.json      e.g. ruta_250, 3,919 polygons
-data_layers/<id>/layer.json + values.json           e.g. income_2023 → ruta_250, column-wise values
-buildings_runtime_ruta.bin                 GBLD v2 footprints + heights + Ruta index (gitignored;
-                                           path set on UrbanContextManager, not in the manifest)
+project_manifest.json                      generated: CRS, fixed origin, metersToUnity, axes, resource lists
+urban_context/buildings/layer.json         field list (label, group, type, unit), counts, provenance, checksums
+urban_context/buildings/geometry.bin       GBLD v3: id "building:<object_id>", height, ground_z, has-height flag,
+                                           polygons with holes, float32 x/z relative to the origin
+urban_context/buildings/attributes.json    per-building values, column-wise (DataLayerFileDto layout + valid mask)
+spatial_layers/<id>/, data_layers/<id>/    (next step for Helsingborg)
 ```
+Manifest paths are relative to the manifest's folder (`ProjectManager.ResolvePackagePath`); a root-level manifest (old Gothenburg package: `ruta_250`, `income_2023`, `buildings_runtime_ruta.bin` GBLD v2 named on `UrbanContextManager`) still works unchanged. Format details: [docs/decisions/2026-10-06_city-runtime-packages.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/decisions/2026-10-06_city-runtime-packages.md).
 
 Manager chain (each lives on its own GameObject under `/UrbanAnalytics`, finds dependencies via `FindFirstObjectByType` if unassigned, and exposes `InitializationTask` / `IsInitialized` / `LastError`):
 ```
@@ -244,17 +247,18 @@ height_m = p95( z − ground(x, y) ) over the roof points inside the footprint
 - `lidar_heights_summary.json`:
   - counts with/without height and per reason;
   - per source and per quality;
-  - 2018-vs-2010 agreement;
+  - surface-vs-laser agreement;
+  - capture dates of both sources, read from the tiles' JSON sidecars;
   - the method and the full config.
 
 **Height columns:**
 - **The building height:** `height_m` is the one number to use. It is `0` when there is no height. Filter on `has_height`, not on `height_m > 0`.
 - **Where it came from:**
-  - `height_source`: `surface_2018` / `lidar_2010` / `none`.
+  - `height_source`: `surface` / `lidar` / `none` (renamed 2026-10-06 from `surface_2018` / `lidar_2010`; years are data, not code).
   - `height_quality`:
-    - `high` = 2018 surface with 2010 agreement within 1.5 m;
-    - `medium` = 2018 surface only;
-    - `low` = 2010 laser or few points;
+    - `high` = surface with laser agreement within 1.5 m;
+    - `medium` = surface only;
+    - `low` = laser or few points;
     - `none`.
   - `no_height_reason` and `no_height_reason_code`: `no_tile`, `no_ground`, `surface_shows_ground`, `below_min_height`, `no_points`, `error`.
 - **Ground and roof elevations (RH 2000):**
@@ -263,7 +267,7 @@ height_m = p95( z − ground(x, y) ) over the roof points inside the footprint
   - `roof_z` = `ground_z + height_m`.
 - **Other statistics:** `height_p50_m` and `height_max_m` from the chosen source.
 - **Both sources for checking:**
-  - `height_surface_2018_m` and `height_lidar_2010_m`;
+  - `height_surface_m` and `height_lidar_m`;
   - `height_change_flag`: they differ by more than 3 m.
 - **Point counts:** `surface_point_count`, `surface_fill_ratio`, `lidar_point_count`, `ground_point_count`.
 
@@ -280,8 +284,8 @@ height_m = p95( z − ground(x, y) ) over the roof points inside the footprint
 
 **Usage:**
 ```bash
-# Defaults are the Helsingborg paths above (relative to the repo root)
-python Src/Scripts/run_lidar_height_pipeline.py
+# No defaults: every path is passed (the scripts are city-agnostic)
+python Src/Scripts/run_lidar_height_pipeline.py --input <postprocess.gpkg> --output-dir <folder> --lidar-dir <Laserdata NH folder> --surface <Ytmodell folder or zip>
 
 # Synthetic tests (no project data): sloped ground, new/demolished/rebuilt buildings,
 # surface hole, tile edge, MultiPolygon, outside tiles, repeated IDs
@@ -403,8 +407,9 @@ Typical outputs from the LiDAR height pipeline (in `--output-dir`, Helsingborg d
 - older Gothenburg runs sit in `Processed_data/` and `Processed_data/Gothenburg/` (historical)
 
 Unity runtime package (current) — `Unity/City_Digital_Twin/Assets/StreamingAssets/`:
-- `project_manifest.json`, `spatial_layers/ruta_250/`, `data_layers/income_2023/` (tracked, written by `Src/Scripts/Unity/export_*.py`);
-- `buildings_runtime_ruta.bin` (gitignored, `GBLD` v2). **No writer for this file exists in the repo**; it is test data and will be replaced by the rebuilt data pipeline;
+- `helsingborg/` — the Helsingborg package (written by `build_unity_package.py`; buildings only so far);
+- `project_manifest.json`, `spatial_layers/ruta_250/`, `data_layers/income_2023/` — old Gothenburg package (tracked; its exporters were deleted 2026-10-06);
+- `buildings_runtime_ruta.bin` (gitignored, `GBLD` v2, Gothenburg test data, no writer); replaced for Helsingborg by `helsingborg/urban_context/buildings/` (GBLD v3);
 - `buildings_runtime.bin` and `ruta_2023_unity.json` serve only the older, unused loaders.
 
 Mesh runs from the **discarded** pre-built mesh pipeline (Gothenburg, EPSG:3006, PLY primary — newest first; historical, not used by the runtime):
@@ -543,6 +548,8 @@ Corrected in `config.py`:
 The loader now reads the layer `byggnad` explicitly. |
 | 2026-10-06 | **LiDAR height pipeline: "no height" is 0 m and counted; Helsingborg defaults; tile-edge and cache fixes** | No roof reconstruction existed to remove (heights are one p95 value per building; roofs are flat prisms). Changes: (1) `fallback_height_m` 10 → **0**; new `has_lidar_height` (bool), `fallback_reason`, `fallback_reason_code` (`FallbackReason` enum in `config.py`); buildings outside every tile now get these fields too (`no_lidar_tile`) instead of a silent NaN fill. (2) New `lidar_heights_summary.json` (with/without height counts, %, per reason; height stats over measured heights only) and `buildings_without_lidar_height.csv`; counts also logged at the end of the run. (3) Tile-edge duplicates: keep LiDAR height over fallback, then most points (was "first finished", non-deterministic in parallel mode and could keep a fallback over a real height). (4) PDAL cache: the cached tile was deleted after use, so the cache never hit; now kept. (5) `validate()` rejects repeated `object_id` (input must be the buildings postprocess output). (6) CLI defaults → Helsingborg paths; new `--layer`. (7) Point selection vectorised (`TilePoints`: points sorted by x once per tile + `shapely.contains_xy`): ~0.8 s → 0.5 ms per building, identical results on 40 real buildings; PDAL is now the slow step. Tests: `tests/test_lidar_heights_pipeline.py` 4/4 (synthetic tiles, PDAL stubbed). The pipeline has not been run on real data. **Data finding:** the Helsingborg Laserdata NH was scanned **2010-04-12**. Buildings built later get no height or a wrong low one. `ytmodell_050_helsingborg.zip` (aerial-image surface model, April 2018) is a possible newer source. Report: [docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/data-analysis/2026-10-06_helsingborg_laserdata_nh_profiling.md). |
 | 2026-10-06 | **Building heights rewritten: 2018 surface model for roofs, 2010 laser ground, no PDAL** | Supersedes the method in the previous row (its fallback-0 / counting / validation changes carry over). `height_m` = p95(z − ground) inside the footprint. Roof: Ytmodell från flygbild (April 2018, read from the zip). Ground: Delaunay interpolation of Lantmäteriet's 2010 class-2 points around the footprint (`matplotlib.tri`, because LAPACK crashes in the `digitaltwin` env). 2010 roof points are used only where the 2018 surface has a hole. Where 2018 shows ground, the building gets no height instead of the 2010 height (`surface_shows_ground`). No 2 m clamp. 1 km work cells read points across tiles, so tile-edge buildings get all their points. New columns: `has_height` (replaces `has_lidar_height`), `height_source`, `height_quality` (high/medium/low by agreement of the two sources), `no_height_reason`, `ground_z`/`ground_z_min`/`roof_z`, `height_surface_2018_m`/`height_lidar_2010_m`, `height_change_flag`. New module `sources.py`; `pdal_pipelines.py`/`tile_index.py` unused. Tests 5/5 synthetic; one real 1 km cell in memory: 96% with height, 2018 vs 2010 median −0.05 m. The full pipeline has not been run. |
+| 2026-10-06 | **City-agnostic pipelines + Unity city package for buildings + Helsingborg scene** | (1) No city defaults in code: `run_buildings_pipeline.py` / `run_lidar_height_pipeline.py` require their paths; the height columns lost their years (`height_surface_m`, `height_lidar_m`, sources `surface`/`lidar`), capture dates are read from the tiles' JSON sidecars and the run warns if the surface is older than the laser. **The Helsingborg LiDAR output must be re-run** to get the new column names. (2) New `configs/cities/helsingborg.json` (all city specifics: name, fixed origin 355000/6207500, input files) and `Src/Scripts/Unity/build_unity_package.py` + `Src/pipelines/unity_package/` (buildings export: GBLD v3 + attributes.json with 38 fields in 5 groups, Swedish and English; manifest generated from what is in the package). Old `export_polygon_spatial_layer.py` / `export_data_layer.py` deleted (user request). (3) Unity: `ProjectManager.ResolvePackagePath` (manifest-relative paths, used by spatial and data layer loading too), `BuildingPackage.cs` (v3 reader + attribute table), `UrbanContextManager` loads the manifest's `urbanContext` buildings package (holes/courtyards now rendered, no-height buildings as 0.3 m slabs or hidden), info panel shows the attribute groups with name/type as title, camera frames buildings when there are no spatial layers. (4) New scene `Assets/Scenes/Helsingborg.unity` (created via the Editor, in Build Settings). Tests: Python `tests/test_unity_package.py` 5/5, LiDAR 5/5, buildings 8/8; Unity EditMode 51/51 (5 new); a Python-written package read back by the C# reader matched. Not yet run on Helsingborg data. Decision: [docs/decisions/2026-10-06_city-runtime-packages.md](w:/Investigating%20Usability%20of%20Immersive%20Analytics%20in%20an%20Urban%20Digital%20Twin/Portotype/docs/decisions/2026-10-06_city-runtime-packages.md). |
+| 2026-10-06 | **Helsingborg buildings verified in Unity (Play mode)** | User re-ran heights (same numbers, new column names) and built the package: 43,981 buildings, 34 fields (purpose 4/5 empty, skipped), 44,243 polygons, 98 holes, 1 degenerate ring dropped; geometry.bin 5.3 MB, attributes.json 24.5 MB. In the `Helsingborg` scene: all 43,981 rendered in 59 chunks (0.83 M triangles), extent 6.57 × 10.69 km at the expected place, interaction ready; ray picks on 2,200 sampled roofs all resolve to their own building; the info panel shows name/purpose as title and 5 groups (e.g. Vittra Adolfsberg: School, 7.91 m, surface/laser 7.91/7.84 m). **Fixed:** (1) the height export wrote the text `<NA>` as reason code for buildings with a height (pandas string column) - now null; the Unity field `no_height_reason` is also shown only when `has_height` is false (`only_when="not has_height"`), so the current file exports correctly without re-running heights; (2) record-version timestamps shown as dates. Re-run `build_unity_package.py` to pick these up. Not measured yet: load time / memory of the 24.5 MB attributes JSON (relevant for Quest). |
 
 ## Open Questions
 

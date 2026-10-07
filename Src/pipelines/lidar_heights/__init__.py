@@ -6,10 +6,10 @@ One height per building for extruding flat roofs:
 
 1. Load the buildings postprocess output (one row per object_id).
 2. Group buildings into work cells; read the points of each cell from every
-   tile they lie in (2018 surface model + 2010 laser data, folder or zip).
-3. Per building: interpolate the 2010 ground around the footprint, take the
-   2018 surface points inside it (2010 laser roof points where the 2018 surface
-   has a hole), height = 95th percentile of height above ground.
+   tile they lie in (surface model + laser data, folder or zip).
+3. Per building: interpolate the laser ground around the footprint, take the
+   surface points inside it (laser roof points where the surface has a hole),
+   height = 95th percentile of height above ground.
 4. Export GeoPackage/Parquet, QC CSV, buildings without height, summary JSON.
 
 pdal_pipelines.py and tile_index.py belong to the earlier PDAL-based version

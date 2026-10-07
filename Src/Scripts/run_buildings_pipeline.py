@@ -5,10 +5,8 @@ Run the buildings dataset pipeline.
 Loads raw Swedish buildings data, validates it, translates Swedish → English,
 and exports processed dataset with metadata.
 
-Usage (from the repository root; defaults are Helsingborg):
-    python Src/Scripts/run_buildings_pipeline.py --postprocess --profile
-    python Src/Scripts/run_buildings_pipeline.py --output custom_output_dir
-    python Src/Scripts/run_buildings_pipeline.py --input path/to/custom.gpkg
+Usage (city-agnostic: pass the city's raw Byggnad file and an output folder):
+    python Src/Scripts/run_buildings_pipeline.py --input <raw byggnad.gpkg> --output <city output folder> --postprocess --profile
 
 --postprocess writes the clean snapshot (one row per object_id) to a sibling
 "_postprocess" folder; see Src/pipelines/buildings/postprocess.py.
@@ -42,12 +40,12 @@ def main():
     )
     parser.add_argument(
         "--input",
-        default="Raw_data/1-Helsingborig/byggnad_gpkg_helsingborg/byggnad_sverige.gpkg",
-        help="Path to input GeoPackage (default: Helsingborg)"
+        required=True,
+        help="Path to the raw Byggnad GeoPackage of the city"
     )
     parser.add_argument(
         "--output",
-        default="Processed_data/Helsingborg_Final",
+        required=True,
         help="Output directory for processed data (will create dated subfolder)"
     )
     parser.add_argument(
