@@ -129,6 +129,13 @@ Unity/City_Digital_Twin/Assets/StreamingAssets/buildings_runtime.bin.meta
 Unity/City_Digital_Twin/Assets/StreamingAssets/buildings_runtime_ruta.bin
 Unity/City_Digital_Twin/Assets/StreamingAssets/buildings_runtime_ruta.bin.meta
 
+# Generated city runtime packages (Src/Scripts/Unity/build_unity_package.py).
+# Derived from licensed data (Lantmäteriet / SCB, FUK) — never publishable.
+# Rebuild with: python Src/Scripts/Unity/build_unity_package.py --config configs/cities/<city>.json
+# The folder and its .meta are ignored together (Unity asset/.meta rule).
+Unity/*/Assets/StreamingAssets/cities/
+Unity/*/Assets/StreamingAssets/cities.meta
+
 # -------------------------
 # Generated city geometry (the big one)
 # -------------------------
