@@ -47,6 +47,10 @@ Processed_data/
 *.ply
 *.glb
 *.gltf
+# Note: this also excludes the XRI sample's controller model
+# (Samples/XR Interaction Toolkit/*/Starter Assets/Models/UniversalController.fbx),
+# so its prefabs have no mesh on a clone. The VR scene hides those models and
+# shows XRVirtualHands instead, so the model is not needed.
 *.fbx
 *.parquet
 *.npy
@@ -176,6 +180,26 @@ Unity/*/Assets/**/LightingData.asset.meta
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+
+# =========================
+# MACHINE-LOCAL — only meaningful on the machine that wrote them
+# =========================
+# Unity crash-recovery scenes (written after an Editor crash; restore or
+# delete them locally, never share them).
+Unity/*/Assets/_Recovery/
+Unity/*/Assets/_Recovery.meta
+
+# Scratch captures from the Unity CLI (capture_game_view saves to Assets/Temp/).
+# Unity/*/[Tt]emp/ above only covers the project-root Temp/.
+Unity/*/Assets/Temp/
+Unity/*/Assets/Temp.meta
+
+# Per-user Claude Code settings (shared ones would live in .claude/settings.json).
+.claude/settings.local.json
+
+# Editor / tool logs.
+*.log
 
 
 # =========================
