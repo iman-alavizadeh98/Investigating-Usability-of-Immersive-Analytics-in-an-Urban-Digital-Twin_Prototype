@@ -107,6 +107,8 @@ namespace UrbanAnalytics.XR
 
         private RectTransform selectionRows;
 
+        private ScrollRect selectionScroll;
+
         private bool wantVisible;
 
         private bool hasBearing;
@@ -114,6 +116,8 @@ namespace UrbanAnalytics.XR
         private float bearing;
 
         private float targetBearing;
+
+        private XRGrabbable grabbable;
 
 
         public bool IsVisible =>
@@ -245,7 +249,8 @@ namespace UrbanAnalytics.XR
                 );
             }
 
-            if (show)
+            if (show &&
+                (grabbable == null || !grabbable.IsUserPlaced))
             {
                 Place(
                     Time.unscaledDeltaTime
@@ -257,6 +262,16 @@ namespace UrbanAnalytics.XR
         // =========================================================
         // PUBLIC
         // =========================================================
+
+        /// <summary>Back to automatic placement after the user moved it.</summary>
+        public void ResetPlacement()
+        {
+            grabbable?.ResetPlacement();
+
+            hasBearing =
+                false;
+        }
+
 
         public void SetVisible(
             bool visible
@@ -413,6 +428,13 @@ namespace UrbanAnalytics.XR
             // Rays stop on the board instead of picking the city.
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
 
+            // "Move" handle: grab it to put the panel anywhere; it then
+            // stays there until ResetPlacement.
+            grabbable =
+                XRGrabbable.AddPanelHandle(
+                    (RectTransform)root.transform
+                );
+
 
             Color panelColor =
                 RuntimeUi.PanelColor;
@@ -541,17 +563,21 @@ namespace UrbanAnalytics.XR
                     RuntimeUi.MutedColor
                 );
 
+            // All information, most important first; scrolls (ray +
+            // thumbstick) when it does not fit.
             selectionRows =
-                RuntimeUi.CreateRect(
-                    "Rows",
-                    selectionColumn
+                RuntimeUi.CreateScrollView(
+                    selectionColumn,
+                    out selectionScroll
                 );
 
-            RuntimeUi.Vertical(
-                selectionRows.gameObject,
-                0,
-                4.0f
+            RuntimeUi.Layout(
+                selectionScroll.gameObject,
+                flexibleHeight: 1.0f
             );
+
+            selectionScroll.scrollSensitivity =
+                60.0f;
 
 
             RuntimeUi.CreateText(
@@ -671,6 +697,43 @@ namespace UrbanAnalytics.XR
                     row
                 );
             }
+
+
+            // Then everything else (the sections the desktop folds away).
+            foreach (EntityInfoSection section in info.Sections)
+            {
+                RuntimeUi.CreateText(
+                    selectionRows,
+                    section.Title,
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.AccentColor,
+                    TextAnchor.MiddleLeft,
+                    FontStyles.Bold
+                );
+
+                foreach (EntityInfoRow row in section.Rows)
+                {
+                    DesktopInteractionUI.CreateValueRow(
+                        selectionRows,
+                        row
+                    );
+                }
+            }
+
+
+            if (!string.IsNullOrEmpty(info.Footer))
+            {
+                RuntimeUi.CreateText(
+                    selectionRows,
+                    info.Footer,
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.MutedColor
+                );
+            }
+
+
+            selectionScroll.verticalNormalizedPosition =
+                1.0f;
         }
     }
 }

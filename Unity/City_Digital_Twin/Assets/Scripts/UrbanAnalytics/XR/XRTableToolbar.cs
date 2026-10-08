@@ -19,6 +19,7 @@ namespace UrbanAnalytics.XR
     ///   Clear · Remove copies
     ///   Smaller · Bigger · Turn left · Turn right · Bring here ·
     ///   Board · Menu
+    ///   Hands on/off · Reset panels · Help
     ///
     /// Lives in the scaled XR Origin's space (real metres). It follows
     /// the user around the table, but only once they are more than
@@ -76,10 +77,10 @@ namespace UrbanAnalytics.XR
         private float metersPerUnit =
             0.0012f;
 
-        [Tooltip("Canvas size in units (960 × 150 at 1.2 mm = 1.15 × 0.18 m).")]
+        [Tooltip("Canvas size in units (960 × 222 at 1.2 mm = 1.15 × 0.27 m).")]
         [SerializeField]
         private Vector2 sizeUnits =
-            new Vector2(960.0f, 150.0f);
+            new Vector2(960.0f, 222.0f);
 
         [SerializeField]
         private int sortingOrder =
@@ -115,6 +116,9 @@ namespace UrbanAnalytics.XR
         private XRHandMenu menu;
 
         [SerializeField]
+        private XRInputModeSwitch inputModeSwitch;
+
+        [SerializeField]
         private StudySession studySession;
 
 
@@ -130,11 +134,15 @@ namespace UrbanAnalytics.XR
 
         private Button boardButton;
 
+        private Button handsButton;
+
         private bool hasBearing;
 
         private float bearing;
 
         private float targetBearing;
+
+        private XRGrabbable grabbable;
 
 
         // =========================================================
@@ -183,6 +191,12 @@ namespace UrbanAnalytics.XR
             {
                 menu =
                     FindFirstObjectByType<XRHandMenu>();
+            }
+
+            if (inputModeSwitch == null)
+            {
+                inputModeSwitch =
+                    FindFirstObjectByType<XRInputModeSwitch>();
             }
 
             if (studySession == null)
@@ -266,7 +280,8 @@ namespace UrbanAnalytics.XR
                 root.SetActive(show);
             }
 
-            if (show)
+            if (show &&
+                (grabbable == null || !grabbable.IsUserPlaced))
             {
                 Place(
                     Time.unscaledDeltaTime
@@ -399,6 +414,13 @@ namespace UrbanAnalytics.XR
             // Ray (trigger / pinch) and poke (fingertip) both work.
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
 
+            // "Move" handle: grab it to put the panel anywhere; it then
+            // stays there until ResetPlacement.
+            grabbable =
+                XRGrabbable.AddPanelHandle(
+                    (RectTransform)root.transform
+                );
+
 
             Color panelColor =
                 RuntimeUi.PanelColor;
@@ -482,6 +504,19 @@ namespace UrbanAnalytics.XR
                 Button(row2, "Board", 110.0f, ToggleBoard);
 
             Button(row2, "Menu", 110.0f, ToggleMenu);
+
+
+            // ----- row 3: input and layout -----
+
+            Transform row3 =
+                CreateRow(background.transform, "InputAndLayout");
+
+            handsButton =
+                Button(row3, string.Empty, 160.0f, ToggleHands);
+
+            Button(row3, "Reset panels", 150.0f, ResetPanels);
+
+            Button(row3, "Help", 110.0f, () => menu?.PinInFront("Help"));
         }
 
 
@@ -543,6 +578,16 @@ namespace UrbanAnalytics.XR
         // =========================================================
         // ACTIONS
         // =========================================================
+
+        /// <summary>Back to automatic placement after the user moved it.</summary>
+        public void ResetPlacement()
+        {
+            grabbable?.ResetPlacement();
+
+            hasBearing =
+                false;
+        }
+
 
         private void ToggleBuildings()
         {
@@ -623,6 +668,36 @@ namespace UrbanAnalytics.XR
         }
 
 
+        private void ToggleHands()
+        {
+            if (inputModeSwitch == null)
+            {
+                return;
+            }
+
+            inputModeSwitch.HandsEnabled =
+                !inputModeSwitch.HandsEnabled;
+
+            RefreshLabels();
+        }
+
+
+        /// <summary>Board, toolbar and wrist menu back to automatic placement.</summary>
+        private void ResetPanels()
+        {
+            ResetPlacement();
+
+            board?.ResetPlacement();
+
+            if (menu != null && menu.IsPinned)
+            {
+                menu.SetPinned(false);
+            }
+
+            studySession?.LogEvent("vr_reset_panels");
+        }
+
+
         private void ToggleMenu()
         {
             if (menu == null)
@@ -692,6 +767,20 @@ namespace UrbanAnalytics.XR
                 RuntimeUi.SetButton(
                     buildingsButton,
                     on ? "Buildings: on" : "Buildings: off",
+                    on ? RuntimeUi.ActiveButtonColor : RuntimeUi.ButtonColor
+                );
+            }
+
+
+            if (handsButton != null &&
+                inputModeSwitch != null)
+            {
+                bool on =
+                    inputModeSwitch.HandsEnabled;
+
+                RuntimeUi.SetButton(
+                    handsButton,
+                    on ? "Hands: on" : "Hands: off",
                     on ? RuntimeUi.ActiveButtonColor : RuntimeUi.ButtonColor
                 );
             }

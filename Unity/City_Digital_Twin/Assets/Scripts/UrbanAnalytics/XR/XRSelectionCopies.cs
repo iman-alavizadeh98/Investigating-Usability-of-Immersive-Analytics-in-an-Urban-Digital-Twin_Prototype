@@ -20,23 +20,20 @@ namespace UrbanAnalytics.XR
     /// and values. The copy can be grabbed (controller grip or hand
     /// pinch with the ray on it) and put anywhere, e.g. next to another
     /// area to compare them. Copies are snapshots: they keep the view
-    /// they were made in (named on the label).
+    /// they were made in (named on the label). The label's "Remove"
+    /// button removes one copy; <see cref="RemoveAll"/> removes all.
     ///
     /// The copy lives in world space next to the city (1 unit = 1 km), so
     /// it scales with the table. Its only collider is a grab box on the
-    /// "Ignore Raycast" layer: city picking never hits it, and
-    /// XRControllerPointer treats a ray on it like a ray on a panel (no
-    /// city selection through a copy).
+    /// "Ignore Raycast" layer (an XRGrabbable, moved by XRGrabber): city
+    /// picking never hits it, and XRControllerPointer treats a ray on it
+    /// like a ray on a panel (no city selection through a copy).
     ///
     /// Logged as the study event vr_copy (create / move / remove).
     /// </summary>
     public sealed class XRSelectionCopies :
         MonoBehaviour
     {
-        /// <summary>Layer of the grab boxes (Unity's "Ignore Raycast").</summary>
-        public const int GrabLayer =
-            2;
-
 
         private sealed class Copy
         {
@@ -59,16 +56,6 @@ namespace UrbanAnalytics.XR
         }
 
 
-        private sealed class Grab
-        {
-            public Copy Copy;
-
-            public float Distance;
-
-            public Vector3 Offset;
-        }
-
-
         // =========================================================
         // INSPECTOR
         // =========================================================
@@ -88,14 +75,6 @@ namespace UrbanAnalytics.XR
 
         [SerializeField]
         private StudySession studySession;
-
-
-        [Header("Grab (XRI '<side> Interaction/Select': controller grip or hand pinch)")]
-        [SerializeField]
-        private InputActionProperty rightGrabAction;
-
-        [SerializeField]
-        private InputActionProperty leftGrabAction;
 
 
         [Header("Look (real metres)")]
@@ -146,9 +125,6 @@ namespace UrbanAnalytics.XR
 
         private readonly List<Copy> copies =
             new List<Copy>();
-
-        private readonly Dictionary<string, Grab> grabs =
-            new Dictionary<string, Grab>();
 
         private Transform copiesRoot;
 
@@ -205,13 +181,6 @@ namespace UrbanAnalytics.XR
         }
 
 
-        private void OnEnable()
-        {
-            rightGrabAction.action?.Enable();
-
-            leftGrabAction.action?.Enable();
-        }
-
 
         private void OnDestroy()
         {
@@ -223,13 +192,6 @@ namespace UrbanAnalytics.XR
             }
         }
 
-
-        private void Update()
-        {
-            UpdateGrab("Right", rightGrabAction.action);
-
-            UpdateGrab("Left", leftGrabAction.action);
-        }
 
 
         private void LateUpdate()
@@ -443,8 +405,18 @@ namespace UrbanAnalytics.XR
             var grabObject =
                 new GameObject("GrabBox")
                 {
-                    layer = GrabLayer
+                    layer = XRGrabbable.Layer
                 };
+
+            // XRGrabber moves the copy (grip / pinch with the ray on it).
+            XRGrabbable grabbable =
+                copy.Root.AddComponent<XRGrabbable>();
+
+            Copy moved =
+                copy;
+
+            grabbable.Released +=
+                () => Log("move", moved);
 
             grabObject.transform.SetParent(
                 copy.Root.transform,
@@ -527,101 +499,9 @@ namespace UrbanAnalytics.XR
                 Remove(copies[i], "remove");
             }
 
-            grabs.Clear();
-
             Changed?.Invoke();
         }
 
-
-        /// <summary>True while a hand on this side holds a copy.</summary>
-        public bool IsGrabbing(
-            string side
-        )
-        {
-            return grabs.ContainsKey(side);
-        }
-
-
-        // =========================================================
-        // GRAB
-        // =========================================================
-
-        private void UpdateGrab(
-            string side,
-            InputAction action
-        )
-        {
-            if (action == null ||
-                pointer == null)
-            {
-                return;
-            }
-
-
-            if (grabs.TryGetValue(side, out Grab grab))
-            {
-                if (grab.Copy.Root == null)
-                {
-                    grabs.Remove(side);
-
-                    return;
-                }
-
-
-                if (!action.IsPressed())
-                {
-                    grabs.Remove(side);
-
-                    Log("move", grab.Copy);
-
-                    return;
-                }
-
-
-                if (pointer.TryGetSideRay(side, out Ray ray, out _))
-                {
-                    grab.Copy.Root.transform.position =
-                        ray.GetPoint(grab.Distance) + grab.Offset;
-                }
-
-                return;
-            }
-
-
-            if (!action.WasPressedThisFrame() ||
-                !pointer.TryGetSideRay(side, out Ray startRay, out float maxDistance) ||
-                !Physics.Raycast(
-                    startRay,
-                    out RaycastHit hit,
-                    maxDistance,
-                    1 << GrabLayer,
-                    QueryTriggerInteraction.Collide
-                ))
-            {
-                return;
-            }
-
-
-            Copy target =
-                copies.Find(
-                    c => c.Root != null &&
-                         hit.collider.transform.IsChildOf(c.Root.transform)
-                );
-
-            if (target == null)
-            {
-                return;
-            }
-
-
-            grabs[side] =
-                new Grab
-                {
-                    Copy = target,
-                    Distance = hit.distance,
-                    Offset = target.Root.transform.position - hit.point
-                };
-        }
 
 
         // =========================================================
@@ -762,6 +642,27 @@ namespace UrbanAnalytics.XR
 
             text.raycastTarget =
                 false;
+
+
+            // Remove just this copy (ray + trigger / pinch, or poke).
+            labelObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster>();
+
+            Copy target =
+                copy;
+
+            RuntimeUi.CreateButton(
+                background.transform,
+                "Remove",
+                () =>
+                {
+                    Remove(target, "remove");
+
+                    Changed?.Invoke();
+                },
+                -1.0f,
+                40.0f,
+                RuntimeUi.SmallSize
+            );
 
             return rect;
         }

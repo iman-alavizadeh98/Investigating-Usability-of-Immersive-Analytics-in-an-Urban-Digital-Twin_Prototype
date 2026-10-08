@@ -156,6 +156,12 @@ namespace UrbanAnalytics.Study
         /// <summary>True once "Show view" was pressed for the current scenario.</summary>
         public bool ViewShown => viewShown;
 
+        /// <summary>The answer option chosen for the current scenario (null = none yet).</summary>
+        public string SelectedOption => selectedOption;
+
+        /// <summary>Confidence 1–5 for the current scenario (0 = not set).</summary>
+        public int Confidence => confidence;
+
         /// <summary>Raised whenever the session state shown in the panel changes (also used by the VR task card).</summary>
         public event Action Changed;
 

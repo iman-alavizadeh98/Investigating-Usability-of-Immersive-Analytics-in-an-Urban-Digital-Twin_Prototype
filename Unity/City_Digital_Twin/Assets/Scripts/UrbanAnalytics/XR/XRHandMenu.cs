@@ -81,7 +81,7 @@ namespace UrbanAnalytics.XR
             "• Thumbstick press: bring the table to you\n" +
             "• Trigger: point with the left hand instead\n" +
             "\n" +
-            "<b>Hands (controllers put down)</b>\n" +
+            "<b>Hands (experimental; off unless toolbar Hands is on)</b>\n" +
             "• Point, then pinch (thumb + index): select\n" +
             "• Pinch with the ray on a copy: grab it, move it, let go\n" +
             "• Left fist: grab the table, move and turn it\n" +
@@ -90,7 +90,13 @@ namespace UrbanAnalytics.XR
             "\n" +
             "<b>Toolbar at the table edge</b>\n" +
             "• Views, buildings on/off, copy, clear, table size,\n" +
-            "  turn, bring here, board, menu\n" +
+            "  turn, bring here, board, menu, hands on/off,\n" +
+            "  reset panels, help\n" +
+            "\n" +
+            "<b>Panels and copies</b>\n" +
+            "• Grip / pinch on a panel's Move bar: carry the panel\n" +
+            "• Remove on a copy's label: remove that copy\n" +
+            "• Task tab: start the training and the tasks, answer them\n" +
             "\n" +
             "<b>On a panel</b>\n" +
             "• Point + trigger or pinch: press · thumbstick: scroll";
@@ -204,6 +210,12 @@ namespace UrbanAnalytics.XR
             110;
 
 
+        [Tooltip("Open the Help tab in front of the user when the scene starts.")]
+        [SerializeField]
+        private bool showHelpOnStart =
+            true;
+
+
         [Header("Input")]
         [Tooltip(
             "Pins the panel where it is (stays open, world-locked) / " +
@@ -296,7 +308,7 @@ namespace UrbanAnalytics.XR
 
         private ScrollRect infoScroll;
 
-        private readonly HashSet<string> expandedSections =
+        private readonly HashSet<string> closedSections =
             new HashSet<string>();
 
 
@@ -334,7 +346,11 @@ namespace UrbanAnalytics.XR
 
         private TMP_Text taskQuestion;
 
-        private TMP_Text taskOptions;
+        private RectTransform taskBody;
+
+        private RectTransform taskActions;
+
+        private TMP_Text taskStatus;
 
 
         /// <summary>The canvas root (for tests and the scene builder).</summary>
@@ -486,6 +502,47 @@ namespace UrbanAnalytics.XR
                 true;
 
             RefreshAll();
+
+            if (showHelpOnStart)
+            {
+                StartCoroutine(
+                    ShowHelpWhenReady()
+                );
+            }
+        }
+
+
+        /// <summary>
+        /// Opens the Help tab in front of the user once the table is
+        /// placed and the headset (or the simulator) tracks the head, so
+        /// the first thing people see explains the controls.
+        /// </summary>
+        private System.Collections.IEnumerator ShowHelpWhenReady()
+        {
+            TabletopRig rig =
+                FindFirstObjectByType<TabletopRig>();
+
+            float deadline =
+                Time.realtimeSinceStartup + 60.0f;
+
+            while (Time.realtimeSinceStartup < deadline &&
+                   ((rig != null && !rig.IsPlaced) ||
+                    !(UnityEngine.XR.XRSettings.isDeviceActive ||
+                      GameObject.Find("XR Device Simulator") != null)))
+            {
+                yield return null;
+            }
+
+
+            // Let the head pose settle before placing the panel.
+            yield return new WaitForSecondsRealtime(1.0f);
+
+            PinInFront("Help");
+
+            Debug.Log(
+                "XRHandMenu: Help shown at start (Close or X to dismiss).",
+                this
+            );
         }
 
 
@@ -1139,6 +1196,22 @@ namespace UrbanAnalytics.XR
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
 
 
+            // "Move" handle: grabbing it pins the menu where it is let go.
+            XRGrabbable grabbable =
+                XRGrabbable.AddPanelHandle(
+                    (RectTransform)root.transform
+                );
+
+            grabbable.Grabbed +=
+                () =>
+                {
+                    if (!pinned)
+                    {
+                        SetPinned(true);
+                    }
+                };
+
+
             // Opaque: in linear colour space even 6 % transparency
             // lets the bright map show clearly through the panel.
             Image background =
@@ -1170,15 +1243,47 @@ namespace UrbanAnalytics.XR
                 background.transform;
 
 
-            // ----- header: current view -----
+            // ----- header: current view + Close -----
+
+            RectTransform headerRow =
+                RuntimeUi.CreateRect(
+                    "Header",
+                    panel
+                );
+
+            RuntimeUi.Horizontal(
+                headerRow.gameObject,
+                0,
+                6.0f
+            );
 
             headerView =
                 RuntimeUi.CreateText(
-                    panel,
+                    headerRow,
                     string.Empty,
                     RuntimeUi.SmallSize,
                     RuntimeUi.MutedColor
                 );
+
+            RuntimeUi.Layout(
+                headerView.gameObject,
+                flexibleWidth: 1.0f
+            );
+
+            // Close works without controller buttons (hand tracking).
+            RuntimeUi.CreateButton(
+                headerRow,
+                "Close",
+                () =>
+                {
+                    SetPinned(false);
+
+                    SetVisible(false);
+                },
+                90.0f,
+                36.0f,
+                RuntimeUi.SmallSize
+            );
 
 
             // ----- tabs -----
@@ -1633,20 +1738,56 @@ namespace UrbanAnalytics.XR
                     FontStyles.Bold
                 );
 
+
+            // Question, answer buttons and confidence scroll together;
+            // the action buttons below always stay in reach.
+            RectTransform content =
+                CreateScroll(
+                    page,
+                    out _
+                );
+
             taskQuestion =
                 RuntimeUi.CreateText(
-                    page,
+                    content,
                     string.Empty,
                     RuntimeUi.TitleSize,
                     RuntimeUi.TextColor
                 );
 
-            taskOptions =
+            taskBody =
+                RuntimeUi.CreateRect(
+                    "TaskBody",
+                    content
+                );
+
+            RuntimeUi.Vertical(
+                taskBody.gameObject,
+                0,
+                6.0f
+            );
+
+
+            taskActions =
+                RuntimeUi.CreateRect(
+                    "TaskActions",
+                    page
+                );
+
+            RuntimeUi.Horizontal(
+                taskActions.gameObject,
+                0,
+                6.0f
+            ).childForceExpandWidth =
+                true;
+
+
+            taskStatus =
                 RuntimeUi.CreateText(
                     page,
                     string.Empty,
-                    RuntimeUi.BodySize,
-                    RuntimeUi.TextColor
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.MutedColor
                 );
 
 
@@ -1850,9 +1991,10 @@ namespace UrbanAnalytics.XR
                 string key =
                     section.Title;
 
+                // VR: every section starts open (all information is
+                // available); the user can fold them.
                 bool open =
-                    !section.Collapsed ||
-                    expandedSections.Contains(key);
+                    !closedSections.Contains(key);
 
                 Button header =
                     RuntimeUi.CreateButton(
@@ -1860,9 +2002,9 @@ namespace UrbanAnalytics.XR
                         (open ? "- " : "+ ") + section.Title,
                         () =>
                         {
-                            if (!expandedSections.Remove(key))
+                            if (!closedSections.Remove(key))
                             {
-                                expandedSections.Add(key);
+                                closedSections.Add(key);
                             }
 
                             RefreshInfo();
@@ -2301,6 +2443,12 @@ namespace UrbanAnalytics.XR
         // TASK
         // =========================================================
 
+        /// <summary>
+        /// The study session, driven from VR: Start (the first task is the
+        /// training), Show view, answer options, confidence 1–5, Submit /
+        /// Done and Skip. The facilitator's PC panel drives the same
+        /// StudySession, so either can be used.
+        /// </summary>
         private void RefreshTask()
         {
             if (taskQuestion == null)
@@ -2309,20 +2457,46 @@ namespace UrbanAnalytics.XR
             }
 
 
-            if (studySession == null ||
-                !studySession.IsRunning)
+            RuntimeUi.ClearChildren(taskBody);
+
+            RuntimeUi.ClearChildren(taskActions);
+
+            taskStatus.text =
+                studySession != null
+                    ? studySession.Status ?? string.Empty
+                    : string.Empty;
+
+
+            if (studySession == null)
             {
                 taskHeader.text =
                     "Study";
 
                 taskQuestion.text =
-                    studySession != null &&
-                    studySession.ScenarioIndex >= 0
-                        ? "Session finished. Thank you!"
-                        : "Waiting for the facilitator to start.";
+                    "No study session in this scene.";
 
-                taskOptions.text =
-                    string.Empty;
+                return;
+            }
+
+
+            if (!studySession.IsRunning)
+            {
+                taskHeader.text =
+                    "Study";
+
+                bool finished =
+                    studySession.ScenarioIndex > 0;
+
+                taskQuestion.text =
+                    finished
+                        ? "Session finished. Thank you!"
+                        : "Press Start to begin. The first task is a short " +
+                          "training to try the controls; then the tasks follow.";
+
+                if (!finished)
+                {
+                    TaskButton("Start", studySession.StartSession);
+                }
 
                 return;
             }
@@ -2330,7 +2504,6 @@ namespace UrbanAnalytics.XR
 
             StudyScenario scenario =
                 studySession.Current;
-
 
             if (scenario == null)
             {
@@ -2340,9 +2513,6 @@ namespace UrbanAnalytics.XR
                 taskQuestion.text =
                     "Session finished. Thank you!";
 
-                taskOptions.text =
-                    string.Empty;
-
                 return;
             }
 
@@ -2350,19 +2520,21 @@ namespace UrbanAnalytics.XR
             taskHeader.text =
                 $"Task {studySession.ScenarioIndex + 1} / " +
                 $"{studySession.ScenarioCount}" +
-                (scenario.training ? "  ·  training" : string.Empty);
+                (scenario.training ? "  ·  training" : string.Empty) +
+                (string.IsNullOrEmpty(scenario.title) ? string.Empty : "  ·  " + scenario.title);
 
 
             if (!studySession.ViewShown)
             {
                 taskQuestion.text =
                     RuntimeUi.Colorize(
-                        "The next task is being prepared…",
+                        "Press Show view to load the view of this task and start the timer.",
                         RuntimeUi.MutedColor
                     );
 
-                taskOptions.text =
-                    string.Empty;
+                TaskButton("Show view", studySession.ShowCurrentView);
+
+                TaskButton("Skip", studySession.Skip);
 
                 return;
             }
@@ -2378,17 +2550,126 @@ namespace UrbanAnalytics.XR
                 scenario.options != null &&
                 scenario.options.Length > 0;
 
-            taskOptions.text =
-                hasOptions
-                    ? "• " + string.Join("\n• ", scenario.options) +
-                      "\n\n" + RuntimeUi.Colorize(
-                          "Answer aloud.",
-                          RuntimeUi.MutedColor
-                      )
-                    : RuntimeUi.Colorize(
-                        "Explore freely; tell the facilitator what you notice.",
-                        RuntimeUi.MutedColor
+            if (hasOptions)
+            {
+                foreach (string option in scenario.options)
+                {
+                    string captured =
+                        option;
+
+                    Button button =
+                        RuntimeUi.CreateButton(
+                            taskBody,
+                            option,
+                            () => studySession.SelectOption(captured),
+                            -1.0f,
+                            ButtonHeight
+                        );
+
+                    RuntimeUi.SetAlignment(
+                        button.GetComponentInChildren<TMP_Text>(),
+                        TextAnchor.MiddleLeft
                     );
+
+                    if (option == studySession.SelectedOption)
+                    {
+                        RuntimeUi.SetButton(
+                            button,
+                            option,
+                            RuntimeUi.ActiveButtonColor
+                        );
+                    }
+                }
+
+
+                RuntimeUi.CreateText(
+                    taskBody,
+                    "How sure are you? (1 = not at all, 5 = very)",
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.MutedColor
+                );
+
+                RectTransform confidenceRow =
+                    RuntimeUi.CreateRect(
+                        "Confidence",
+                        taskBody
+                    );
+
+                RuntimeUi.Horizontal(
+                    confidenceRow.gameObject,
+                    0,
+                    6.0f
+                ).childForceExpandWidth =
+                    true;
+
+                for (int value = 1; value <= 5; value++)
+                {
+                    int captured =
+                        value;
+
+                    Button button =
+                        RuntimeUi.CreateButton(
+                            confidenceRow,
+                            value.ToString(),
+                            () => studySession.SetConfidence(captured),
+                            -1.0f,
+                            ButtonHeight
+                        );
+
+                    RuntimeUi.Layout(
+                        button.gameObject,
+                        -1.0f,
+                        ButtonHeight,
+                        1.0f
+                    );
+
+                    if (value == studySession.Confidence)
+                    {
+                        RuntimeUi.SetButton(
+                            button,
+                            value.ToString(),
+                            RuntimeUi.ActiveButtonColor
+                        );
+                    }
+                }
+            }
+            else
+            {
+                RuntimeUi.CreateText(
+                    taskBody,
+                    "Explore freely and say what you notice. Press Done when you are ready.",
+                    RuntimeUi.BodySize,
+                    RuntimeUi.MutedColor
+                );
+            }
+
+
+            TaskButton(hasOptions ? "Submit" : "Done", studySession.Submit);
+
+            TaskButton("Skip", studySession.Skip);
+        }
+
+
+        private void TaskButton(
+            string label,
+            UnityEngine.Events.UnityAction onClick
+        )
+        {
+            Button button =
+                RuntimeUi.CreateButton(
+                    taskActions,
+                    label,
+                    onClick,
+                    -1.0f,
+                    ButtonHeight
+                );
+
+            RuntimeUi.Layout(
+                button.gameObject,
+                -1.0f,
+                ButtonHeight,
+                1.0f
+            );
         }
     }
 }

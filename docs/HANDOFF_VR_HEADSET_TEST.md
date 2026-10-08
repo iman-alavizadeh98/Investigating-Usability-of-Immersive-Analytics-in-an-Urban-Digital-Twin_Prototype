@@ -125,7 +125,20 @@ This has never been seen in a headset. Check, note the results, and fix:
 - [ ] **Toolbar.** Reachable and readable at the table edge; follows you
       around the table; Buildings on/off makes buildings unselectable.
 - [ ] **Copies.** A / Copy makes a copy above the selection with a line and a
-      label; grip / pinch on it moves it; Remove copies clears them.
+      label; grip / pinch on it moves it; its label's Remove removes it;
+      Remove copies clears them all.
+- [ ] **Moving panels.** Grip / pinch on the Move bar under the menu, board
+      and toolbar carries them; they stay; Reset panels brings them back.
+- [ ] **Information.** Hover shows the top values; the board and Info show
+      them first, then all sections.
+- [ ] **Study in VR.** Task tab: Start → training → Show view → Done → task →
+      answer + confidence → Submit; the PC panel follows along.
+- [ ] **Help at start.** The Help tab opens in front of you; Close dismisses it.
+- [ ] **Hands diagnosis (optional, hands are off by default).** With hand tracking on in the Quest (and Developer
+      runtime features in the Link app if needed), put the controllers down
+      and read the `XRInputModeSwitch:` lines in the Editor log (hand
+      subsystem running? left/right tracked? input mode TrackedHand?).
+      Hands on/off on the toolbar switches to controllers only.
 - [ ] **Hover label** (`XRHoverLabel.metersPerUnit` 0.0006, 3 cm above the
       point): readable, not in the way.
 - [ ] **Tabs.**

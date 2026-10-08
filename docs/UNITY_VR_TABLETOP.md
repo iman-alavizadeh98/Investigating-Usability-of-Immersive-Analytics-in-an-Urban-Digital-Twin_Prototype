@@ -171,6 +171,48 @@ outside the table edge on the user's side, tilted 50° toward them, follows
 the user around the table (50° hysteresis). Ray and poke both work.
 Resize ×1.15 per press, turn ±30°.
 
+
+**Third headset run (2026-10-08), follow-ups:**
+- **Moving panels / copies** (`XRGrabbable` + `XRGrabber`): one grab system
+  for everything. The wrist menu, board and toolbar have a **Move** bar
+  below them (grab collider on Ignore Raycast); grip (controller) or pinch /
+  fist (hand) with the ray on it carries the panel, which turns to face the
+  user. A moved board/toolbar stops following the user, a moved menu is
+  pinned; toolbar **Reset panels** restores automatic placement. Copies use
+  the same grabber (their own grab code was removed).
+- **Removing copies:** each copy's label has a **Remove** button (ray + click
+  or poke); toolbar **Remove copies** removes all.
+- **Information:** hover label = the most important values (top 3); the
+  board and the menu's Info tab show those first, then **all** sections
+  (board: scrollable; Info: sections open by default, foldable).
+- **Study in VR:** the Task tab has **Start** (the first task is the
+  training), **Show view**, the answer options as buttons, confidence 1–5,
+  **Submit / Done** and **Skip** (same `StudySession` as the PC panel; logged
+  as usual).
+- **Help at start:** once the table is placed and the head is tracked, the
+  menu opens in front of the user on the Help tab (`showHelpOnStart`;
+  **Close** in the menu header, or X).
+- **Hands on/off** (`XRInputModeSwitch`, toolbar **Hands**): off takes the
+  hands out of `XRInputModalityManager` (controllers only). It logs every
+  change of the hand-tracking state (`XRInputModeSwitch: hand subsystem
+  running, left tracked=…, right tracked=…, input mode=…`) to diagnose
+  headset runs. While the XR Device Simulator runs it forces the controllers
+  on (`SimulatorMode`): the modality manager does not count simulated
+  controllers and otherwise switched every controller and hand off (found
+  2026-10-08).
+- **Decision (2026-10-08): controllers only; hand tracking set aside.** In
+  the headset test the hand subsystem ran but never tracked a hand (hand
+  tracking was off on the Quest; after switching it on it still did not work
+  over the Link cable). Not worth the time before the evaluation: hands are
+  **off by default** (`XRInputModeSwitch.handsEnabled = false`); the toolbar
+  **Hands** button remains as an opt-in, and the hands rig, pinch bindings and
+  diagnostics stay in place for later.
+- In the third run, controller selection worked (40 city clicks, 82 panel
+  clicks); hands "did not work at all" — the new log lines will show whether
+  the hand subsystem tracks the hands. On the Quest, hand tracking must be on
+  (Settings → Movement tracking → Hand and body tracking, auto-switch between
+  hands and controllers); with Link, the Meta Horizon Link app may also need
+  Settings → Beta → **Developer runtime features**.
 **Git.** The hand meshes are `.fbx` (ignored by `*.fbx`); `.gitignore`
 has an exception for `Assets/Samples/XR Hands/*/HandVisualizer/Models/*.fbx`
 (+ meta). The VR scene needs no other `.fbx`.
@@ -309,6 +351,9 @@ All runtime scripts are in `Assets/Scripts/UrbanAnalytics/XR/` (namespace
 | `XR/XRVirtualHands.cs` | Stylised hands on the controllers (fingers follow trigger / grip); hides the controller models |
 | `XR/XRSelectionCopies.cs` | Pop-out copies of the selection (grab box on Ignore Raycast, stem line, label); grab with grip / pinch |
 | `XR/XRTableToolbar.cs` | Table-edge toolbar (views, buildings on/off, copy, clear, remove copies, size, turn, bring here, board, menu) |
+| `XR/XRGrabbable.cs` | Marks something grabbable (copies, panels); `AddPanelHandle` adds the Move bar to a panel |
+| `XR/XRGrabber.cs` | Grip / pinch with the ray on a grab collider → carry it (panels face the user); logs `vr_grab` |
+| `XR/XRInputModeSwitch.cs` | Hands on/off, simulator mode, hand-tracking diagnostics in the log |
 | `Tools/make_vr_controls_image.ps1` | Draws the Help tab's controller diagram (`vr_controls.png`) |
 | `XR/XRSimulatorFallback.cs` | Editor only: starts the XR Device Simulator when no headset is active, removes it when the headset starts |
 | `XR/XRHandMenu.cs` | Wrist menu (tabs Info / Views / Legend / Compare / Task / Help), see VR UI |
@@ -377,6 +422,9 @@ Extra events (StudyLog JSON lines, only while a session runs):
 | `vr_table_move` | `how` (grab / turn / recall), `centerX`, `centerZ`, `yawDegrees` | Grab released, turn finished, table recalled |
 | `vr_copy` | `how` (create / move / remove / limit), `copy`, `entity`, `position` | Copy made, released after a grab, removed |
 | `vr_buildings_selectable` | `selectable` | Toolbar toggle |
+| `vr_grab` | `object`, `position` | A copy or panel released after a grab |
+| `vr_hands` | `enabled` | Toolbar Hands on/off |
+| `vr_reset_panels` | — | Toolbar Reset panels |
 
 Selections, views and comparisons are logged as on the desktop. Logged camera
 poses are in world units: divide by the current `worldUnitsPerMeter` for
@@ -485,6 +533,19 @@ the Editor renders on the GTX 1080, D3D12, Single Pass Instanced):
     controller moved → the copy followed to the expected point; released.
   - Toolbar capture: both rows readable; row 1 widened to fit (960 units).
   - 0 console errors; EditMode tests 62/62.
+- Panels, copies, study in VR, help at start (simulator, scripted):
+  - Help opens pinned in front once the table is placed
+    (`XRHandMenu: Help shown at start`).
+  - Board carried by its Move bar: grip held, ray turned 35° → the board
+    followed (x 3.57 → 0.63 world) and stayed after release (user placed).
+  - Two copies, the first one's Remove button → one copy left.
+  - Board with a building selected: 208 text items (all sections).
+  - Task tab buttons: Start → T0 Show view → Done → S1 Show view → "Söder",
+    confidence 4 → Submit → S2; study log: `scenario_done` T0,
+    `scenario_answer` S1 (answer, expected, confidence, seconds).
+  - Simulator with OpenXR loaded (headset asleep): controllers forced on
+    (modality manager off) instead of everything switched off.
+  - 0 console errors / warnings; EditMode tests 62/62.
 - Headset test of this build: to do (checklist in
   [HANDOFF_VR_HEADSET_TEST.md](HANDOFF_VR_HEADSET_TEST.md)).
 

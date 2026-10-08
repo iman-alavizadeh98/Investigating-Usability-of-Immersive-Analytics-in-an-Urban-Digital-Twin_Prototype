@@ -98,6 +98,8 @@ namespace UrbanAnalytics.XR
             // simulator: keep the wrist menu shown.
             SetWristMenuAutoShow(false);
 
+            SetSimulatorInput(true);
+
 
             string reason =
                 forceSimulator
@@ -134,11 +136,32 @@ namespace UrbanAnalytics.XR
 
             SetWristMenuAutoShow(true);
 
+            SetSimulatorInput(false);
+
             Debug.Log(
                 $"XRSimulatorFallback: headset became active " +
                 $"('{XRSettings.loadedDeviceName}'), simulator removed.",
                 this
             );
+        }
+
+
+        /// <summary>
+        /// The modality manager ignores simulated controllers; while the
+        /// simulator runs the controllers are forced on (XRInputModeSwitch).
+        /// </summary>
+        private static void SetSimulatorInput(
+            bool simulator
+        )
+        {
+            XRInputModeSwitch inputSwitch =
+                FindFirstObjectByType<XRInputModeSwitch>();
+
+            if (inputSwitch != null)
+            {
+                inputSwitch.SimulatorMode =
+                    simulator;
+            }
         }
 
 

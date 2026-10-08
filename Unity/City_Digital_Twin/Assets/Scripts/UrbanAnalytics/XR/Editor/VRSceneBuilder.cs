@@ -463,8 +463,7 @@ namespace UrbanAnalytics.XR.Editor
             );
 
 
-            // Pop-out copies of the selection (A / toolbar "Copy"),
-            // grabbed with the grip or a hand pinch.
+            // Pop-out copies of the selection (A / toolbar "Copy").
             XRSelectionCopies selectionCopies =
                 vrUi.AddComponent<XRSelectionCopies>();
 
@@ -475,20 +474,37 @@ namespace UrbanAnalytics.XR.Editor
                 ("lineMaterial", rayMaterial)
             );
 
-            var copiesSerialized =
-                new SerializedObject(selectionCopies);
+
+            // Picks up copies and panel "Move" handles: controller grip,
+            // or pinch / fist with hand tracking (XRI "Select").
+            XRGrabber grabber =
+                vrUi.AddComponent<XRGrabber>();
+
+            SetFields(
+                grabber,
+                ("pointer", pointer),
+                ("viewCamera", xrCamera)
+            );
+
+            var grabberSerialized =
+                new SerializedObject(grabber);
 
             SetActionReference(
-                copiesSerialized.FindProperty("rightGrabAction"),
+                grabberSerialized.FindProperty("rightGrabAction"),
                 actions["XRI Right Interaction/Select"]
             );
 
             SetActionReference(
-                copiesSerialized.FindProperty("leftGrabAction"),
+                grabberSerialized.FindProperty("leftGrabAction"),
                 actions["XRI Left Interaction/Select"]
             );
 
-            copiesSerialized.ApplyModifiedPropertiesWithoutUndo();
+            grabberSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+
+            // Controllers only / controllers + hands, and hand-tracking
+            // diagnostics in the log.
+            vrUi.AddComponent<XRInputModeSwitch>();
 
 
             // Table-edge toolbar: every function without controller
