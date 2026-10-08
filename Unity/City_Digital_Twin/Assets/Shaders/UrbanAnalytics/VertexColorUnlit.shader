@@ -31,6 +31,7 @@ Shader "UrbanAnalytics/VertexColorUnlit"
 
             #pragma vertex Vert
             #pragma fragment Frag
+            #pragma multi_compile_instancing
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
@@ -39,13 +40,17 @@ Shader "UrbanAnalytics/VertexColorUnlit"
             {
                 float4 positionOS : POSITION;
                 half4 color : COLOR;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
 
+            // Stereo macros: needed for single-pass instanced XR,
+            // otherwise the mesh is drawn in one eye only.
             struct Varyings
             {
                 float4 positionHCS : SV_POSITION;
                 half4 color : COLOR;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
 
@@ -59,6 +64,9 @@ Shader "UrbanAnalytics/VertexColorUnlit"
             )
             {
                 Varyings output;
+
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
                 output.positionHCS =
                     TransformObjectToHClip(

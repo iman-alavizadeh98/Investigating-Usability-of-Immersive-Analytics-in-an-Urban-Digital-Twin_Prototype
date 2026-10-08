@@ -11,6 +11,11 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Helsingborg.unity
     guid: b47906fafa5faae49b1a85d45b7b9848
+  - enabled: 0
+    path: Assets/Scenes/Helsingborg_VR.unity
+    guid: f7c39ec91b929f343b9405e4bb899420
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 2e119059ee259fa489e5da49e61ea86a, type: 2}
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 1984700f078f828499b14fc3d0a1655e, type: 2}
   m_UseUCBPForAssetBundles: 0

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 using UrbanAnalytics.Core;
@@ -14,7 +13,7 @@ using UrbanAnalytics.Visualization;
 namespace UrbanAnalytics.Interaction
 {
     /// <summary>
-    /// Desktop picking, hover and selection.
+    /// Picking, hover and selection (desktop and VR).
     ///
     /// A pointer ray hits a MeshCollider on a shown chunk;
     /// RaycastHit.triangleIndex is resolved to the entity through
@@ -22,9 +21,12 @@ namespace UrbanAnalytics.Interaction
     /// cells, height columns and glyphs; BuildingMeshChunk for
     /// buildings). No GameObject per entity is needed.
     ///
-    /// Mouse: hover shows the entity; left click selects; click on
-    /// empty space clears; Alt + click selects the cell (block) of
-    /// a building. Keys: Esc clears, F focuses the selection.
+    /// Input comes from an IInteractionPointer: the VR controller
+    /// pointer when one is assigned, otherwise the built-in
+    /// DesktopMousePointer. Mouse: hover shows the entity; left click
+    /// selects; click on empty space clears; Alt + click selects the
+    /// cell (block) of a building. Keys: Esc clears, F focuses the
+    /// selection.
     ///
     /// Other features (comparison, UI) use Context, Info and
     /// CollectGeometry, and listen to HoverChanged /
@@ -53,6 +55,14 @@ namespace UrbanAnalytics.Interaction
 
         [SerializeField]
         private DesktopCameraController cameraController;
+
+        [Tooltip(
+            "Optional pointer (a component implementing " +
+            "IInteractionPointer, e.g. the VR controller pointer). " +
+            "Empty = desktop mouse."
+        )]
+        [SerializeField]
+        private MonoBehaviour pointerSource;
 
         [SerializeField]
         private VisualizationManager visualizationManager;
@@ -130,9 +140,7 @@ namespace UrbanAnalytics.Interaction
         private bool hasLoggedFirstBake;
 
 
-        private bool leftPressStartedOverUi;
-
-        private Vector2 leftPressPosition;
+        private IInteractionPointer pointer;
 
 
         // =========================================================
@@ -196,6 +204,13 @@ namespace UrbanAnalytics.Interaction
 
         public DesktopCameraController CameraController =>
             cameraController;
+
+
+        /// <summary>
+        /// The input source in use (VR pointer or desktop mouse).
+        /// </summary>
+        public IInteractionPointer Pointer =>
+            pointer;
 
 
         // =========================================================
@@ -702,35 +717,23 @@ namespace UrbanAnalytics.Interaction
 
         private void HandlePointer()
         {
-            Mouse mouse =
-                Mouse.current;
-
-
-            if (mouse == null ||
-                interactionCamera == null)
+            if (pointer == null ||
+                !pointer.TryGetFrame(
+                    out PointerFrame frame
+                ) ||
+                !frame.HasRay)
             {
+                SetHovered(
+                    default
+                );
+
                 return;
             }
 
 
-            Vector2 pointer =
-                mouse.position.ReadValue();
-
-
-            bool overUi =
-                EventSystem.current != null &&
-                EventSystem.current.IsPointerOverGameObject();
-
-
-            bool dragging =
-                cameraController != null &&
-                cameraController.IsDragging;
-
-
             // ----- hover -----
 
-            if (overUi ||
-                dragging ||
+            if (frame.Blocked ||
                 !IsPickingReady)
             {
                 SetHovered(
@@ -741,7 +744,8 @@ namespace UrbanAnalytics.Interaction
             {
                 SetHovered(
                     Pick(
-                        pointer
+                        frame.Ray,
+                        frame.MaxDistance
                     )
                 );
             }
@@ -749,21 +753,8 @@ namespace UrbanAnalytics.Interaction
 
             // ----- click -----
 
-            if (mouse.leftButton.wasPressedThisFrame)
-            {
-                leftPressStartedOverUi =
-                    overUi;
-
-                leftPressPosition =
-                    pointer;
-            }
-
-
-            if (!mouse.leftButton.wasReleasedThisFrame ||
-                leftPressStartedOverUi ||
-                (pointer - leftPressPosition).magnitude >
-                    DesktopCameraController
-                        .ClickDragThresholdPixels ||
+            if (!frame.Clicked ||
+                frame.Blocked ||
                 !IsPickingReady)
             {
                 return;
@@ -772,7 +763,8 @@ namespace UrbanAnalytics.Interaction
 
             PickResult pick =
                 Pick(
-                    pointer
+                    frame.Ray,
+                    frame.MaxDistance
                 );
 
 
@@ -784,12 +776,7 @@ namespace UrbanAnalytics.Interaction
             }
 
 
-            bool selectBlock =
-                Keyboard.current != null &&
-                Keyboard.current.altKey.isPressed;
-
-
-            if (selectBlock &&
+            if (frame.SelectBlock &&
                 pick.Entity.TryGetUnit(
                     out EntityReference block
                 ))
@@ -821,16 +808,34 @@ namespace UrbanAnalytics.Interaction
             }
 
 
-            Ray ray =
+            return Pick(
                 interactionCamera.ScreenPointToRay(
                     screenPoint
-                );
+                ),
+                interactionCamera.farClipPlane
+            );
+        }
+
+
+        /// <summary>
+        /// Resolves a world-space ray (e.g. a VR controller ray) to
+        /// the nearest pickable entity.
+        /// </summary>
+        public PickResult Pick(
+            Ray ray,
+            float maxDistance
+        )
+        {
+            if (!IsReady)
+            {
+                return default;
+            }
 
 
             if (!Physics.Raycast(
                     ray,
                     out RaycastHit hit,
-                    interactionCamera.farClipPlane,
+                    maxDistance,
                     Physics.DefaultRaycastLayers,
                     QueryTriggerInteraction.Ignore
                 ))
@@ -1193,6 +1198,33 @@ namespace UrbanAnalytics.Interaction
                 cameraController =
                     interactionCamera
                         .GetComponent<DesktopCameraController>();
+            }
+
+
+            if (pointerSource != null &&
+                pointerSource is IInteractionPointer custom)
+            {
+                pointer =
+                    custom;
+            }
+            else
+            {
+                if (pointerSource != null)
+                {
+                    Debug.LogError(
+                        $"InteractionManager: '{pointerSource.name}' " +
+                        "does not implement IInteractionPointer; " +
+                        "using the mouse.",
+                        this
+                    );
+                }
+
+
+                pointer =
+                    new DesktopMousePointer(
+                        () => interactionCamera,
+                        () => cameraController
+                    );
             }
 
 

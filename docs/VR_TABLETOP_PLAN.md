@@ -1,6 +1,6 @@
 # VR Tabletop Mode — Implementation Plan
 
-Status: **planned, not started** (2026-10-07). No XR code or packages exist yet.
+Status (2026-10-08): **items 1–4 done** and verified in the Editor with the XR Device Simulator; not yet tested in a headset. See [UNITY_VR_TABLETOP.md](UNITY_VR_TABLETOP.md). Next: item 5 (world-space UI).
 
 ## What is being built
 

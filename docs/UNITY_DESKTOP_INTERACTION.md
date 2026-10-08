@@ -195,8 +195,10 @@ error shown in the Visualizations panel.
 
 ## Assumptions and limits
 
-- Desktop only. The picking, info, highlight and copy services take a ray or an
-  entity and do not depend on the mouse, so a VR ray interactor can reuse them.
+- Picking input goes through `IInteractionPointer` (2026-10-08). The mouse
+  behaviour described here is `DesktopMousePointer`, used when
+  `InteractionManager.pointerSource` is empty. The VR controller pointer plugs
+  in through the same interface; see [UNITY_VR_TABLETOP.md](UNITY_VR_TABLETOP.md).
   The camera controller and the screen-space UI are desktop-only.
 - **Collider memory was not measured.** Cooking all building colliders
   (3.3 M triangles) takes ~0.4 s, but Unity's allocator total did not change
