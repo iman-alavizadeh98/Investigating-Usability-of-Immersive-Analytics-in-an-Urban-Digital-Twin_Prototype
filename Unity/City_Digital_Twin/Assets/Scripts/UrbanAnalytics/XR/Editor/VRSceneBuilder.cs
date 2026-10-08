@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Unity.XR.CoreUtils;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -14,6 +15,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors.Visuals;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 
 using UrbanAnalytics.Interaction;
+using UrbanAnalytics.Interaction.UI;
 using UrbanAnalytics.Study;
 
 namespace UrbanAnalytics.XR.Editor
@@ -26,7 +28,9 @@ namespace UrbanAnalytics.XR.Editor
     /// Steps: copy the desktop scene; remove the desktop camera; add
     /// the XRI rig (locomotion and teleport off, XRI ray visuals off);
     /// add TabletopRig, XRControllerPointer and XRSimulatorFallback;
-    /// add the VR UI (XRHandMenu on the left controller, XRHoverLabel);
+    /// add the VR UI (XRHandMenu on the left wrist, XRHoverLabel,
+    /// XRTableBoard, XRControllerShortcuts); floor tracking; the PC
+    /// help line lists the facilitator's keys only;
     /// wire InteractionManager and StudySession to the XR camera;
     /// swap the UI input module for the XR one. The desktop scene is
     /// not modified.
@@ -47,6 +51,14 @@ namespace UrbanAnalytics.XR.Editor
 
         private const string InputActionsPath =
             XriSampleRoot + "/Starter Assets/XRI Default Input Actions.inputactions";
+
+        private const string FacilitatorHelpText =
+            "VR mode · PC keys for the facilitator: 1–9 views   0: clear view   " +
+            "Esc: deselect   C: copy to compare   F2: study panel   " +
+            "[ ]: panel size   H: hide this line   (the mouse works on these panels only)";
+
+        private const string ControlsImagePath =
+            "Assets/Textures/UrbanAnalytics/VR/vr_controls.png";
 
         private const string SimulatorPrefabPath =
             XriSampleRoot + "/XR Device Simulator/XR Device Simulator.prefab";
@@ -154,6 +166,18 @@ namespace UrbanAnalytics.XR.Editor
                 rig.GetComponentInChildren<Camera>(true);
 
 
+            // The table stands on the real floor, so the eye height must
+            // be the user's real head height above it. The rig's default
+            // (Not Specified + a fixed camera offset) lets the runtime
+            // pick a head-relative origin instead.
+            rig.GetComponent<XROrigin>().RequestedTrackingOriginMode =
+                XROrigin.TrackingOriginMode.Floor;
+
+            report.AppendLine(
+                "XR Origin tracking origin: Floor."
+            );
+
+
             // The table is fixed and users walk around it: no
             // artificial movement of any kind.
             foreach (Transform child in rig.GetComponentsInChildren<Transform>(true))
@@ -177,6 +201,23 @@ namespace UrbanAnalytics.XR.Editor
             {
                 visual.enabled =
                     false;
+            }
+
+
+            // The starter rig's poke-point affordances have no renderer
+            // wired (m_Renderer is null), so they throw a
+            // NullReferenceException on every tween. Visual feedback
+            // only; poke interaction itself stays on.
+            foreach (Transform child in rig.GetComponentsInChildren<Transform>(true))
+            {
+                if (child.name == "Poke Point Affordances")
+                {
+                    child.gameObject.SetActive(false);
+
+                    report.AppendLine(
+                        $"Disabled rig object '{child.parent.parent.name}/{child.name}'."
+                    );
+                }
             }
 
 
@@ -219,6 +260,13 @@ namespace UrbanAnalytics.XR.Editor
                     new Color(1.0f, 0.83f, 0.0f)
                 );
 
+            Material handMaterial =
+                EnsureMaterial(
+                    "VRHand",
+                    "Universal Render Pipeline/Lit",
+                    new Color(0.80f, 0.82f, 0.86f)
+                );
+
 
             // ----- table -----
 
@@ -228,8 +276,11 @@ namespace UrbanAnalytics.XR.Editor
             var table =
                 new GameObject("VRTable");
 
+            TabletopRig tabletopRig =
+                table.AddComponent<TabletopRig>();
+
             SetFields(
-                table.AddComponent<TabletopRig>(),
+                tabletopRig,
                 ("xrOrigin", rig.transform),
                 ("xrCamera", xrCamera),
                 ("cityRoot", cityRoot),
@@ -280,7 +331,8 @@ namespace UrbanAnalytics.XR.Editor
             pointerSerialized.ApplyModifiedPropertiesWithoutUndo();
 
 
-            // ----- VR UI: hand menu (left controller) + hover label -----
+            // ----- VR UI: wrist menu (left wrist), hover label, table
+            //       board and the controller shortcuts -----
 
             Transform leftController =
                 FindControllerRoot(left, "Left Controller");
@@ -288,10 +340,23 @@ namespace UrbanAnalytics.XR.Editor
             var vrUi =
                 new GameObject("VRUI");
 
+            Texture2D controlsImage =
+                AssetDatabase.LoadAssetAtPath<Texture2D>(ControlsImagePath);
+
+            if (controlsImage == null)
+            {
+                report.AppendLine(
+                    $"WARNING: {ControlsImagePath} missing (run " +
+                    "Tools/make_vr_controls_image.ps1); Help tab shows text only."
+                );
+            }
+
             SetFields(
                 vrUi.AddComponent<XRHandMenu>(),
                 ("anchor", leftController),
-                ("eventCamera", xrCamera)
+                ("eventCamera", xrCamera),
+                ("pointer", pointer),
+                ("controlsImage", controlsImage)
             );
 
             SetFields(
@@ -299,9 +364,97 @@ namespace UrbanAnalytics.XR.Editor
                 ("viewCamera", xrCamera)
             );
 
-            report.AppendLine(
-                $"Hand menu anchored to '{leftController?.name}'."
+            XRTableBoard tableBoard =
+                vrUi.AddComponent<XRTableBoard>();
+
+            SetFields(
+                tableBoard,
+                ("tabletopRig", tabletopRig),
+                ("viewCamera", xrCamera)
             );
+
+            SetFields(
+                vrUi.AddComponent<XRControllerShortcuts>(),
+                ("tabletopRig", tabletopRig),
+                ("pointer", pointer),
+                ("tableBoard", tableBoard)
+            );
+
+            SetFields(
+                vrUi.AddComponent<XRTableMover>(),
+                ("controller", leftController),
+                ("viewCamera", xrCamera),
+                ("tabletopRig", tabletopRig),
+                ("pointer", pointer)
+            );
+
+            report.AppendLine(
+                $"Wrist menu anchored to '{leftController?.name}'; " +
+                "table board, controller shortcuts and table mover added."
+            );
+
+
+            // ----- virtual hands (replace the controller models) -----
+
+            Transform rightController =
+                FindControllerRoot(right, "Right Controller");
+
+            XRVirtualHands virtualHands =
+                vrUi.AddComponent<XRVirtualHands>();
+
+            SetFields(
+                virtualHands,
+                ("leftController", leftController),
+                ("rightController", rightController),
+                ("handMaterial", handMaterial)
+            );
+
+            var handsSerialized =
+                new SerializedObject(virtualHands);
+
+            SerializedProperty visuals =
+                handsSerialized.FindProperty("controllerVisuals");
+
+            Transform[] visualRoots =
+            {
+                leftController != null ? leftController.Find("Left Controller Visual") : null,
+                rightController != null ? rightController.Find("Right Controller Visual") : null
+            };
+
+            visuals.arraySize =
+                visualRoots.Length;
+
+            for (int i = 0; i < visualRoots.Length; i++)
+            {
+                visuals.GetArrayElementAtIndex(i).objectReferenceValue =
+                    visualRoots[i] != null
+                        ? visualRoots[i].gameObject
+                        : null;
+            }
+
+            handsSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+            report.AppendLine(
+                $"Virtual hands on '{leftController?.name}' and " +
+                $"'{rightController?.name}'; controller models hidden."
+            );
+
+
+            // The PC monitor's help line: only the facilitator's keys
+            // (no mouse camera or mouse picking in VR).
+            DesktopInteractionUI desktopUi =
+                Object.FindFirstObjectByType<DesktopInteractionUI>();
+
+            if (desktopUi != null)
+            {
+                var desktopSerialized =
+                    new SerializedObject(desktopUi);
+
+                desktopSerialized.FindProperty("helpTextOverride").stringValue =
+                    FacilitatorHelpText;
+
+                desktopSerialized.ApplyModifiedPropertiesWithoutUndo();
+            }
 
 
             // ----- simulator fallback (Editor only) -----

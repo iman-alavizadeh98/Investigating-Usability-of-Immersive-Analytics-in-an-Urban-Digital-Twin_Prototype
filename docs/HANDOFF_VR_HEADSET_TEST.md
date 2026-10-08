@@ -11,9 +11,10 @@ Read first: `CLAUDE.md` → `Project_livingContext.md` →
 
 ## Where things stand
 
-- **VR mode:** the city is a **fixed hologram table** (about 1.17 × 1.80 m,
-  scale 1:6517). One user at a time walks around it: no locomotion, no street
-  view.
+- **VR mode:** the city is a **hologram table**, 1.66 × 2.60 m at start
+  (1:4380), resizable 1.2–4.0 m with the right thumbstick (since the
+  2026-10-08 usability pass; it was fixed at 1.17 × 1.80 m). One user at a
+  time walks around it: no locomotion, no street view.
 - **Running mode:** the app runs on the PC over **Quest Link** (Play in the
   Editor, or a Windows build). A standalone Quest build is not set up.
 - **Done (plan items 1–5):**
@@ -21,13 +22,26 @@ Read first: `CLAUDE.md` → `Project_livingContext.md` →
   - `TabletopRig`: the **XR Origin is scaled, not the city**;
   - controller-ray picking through `IInteractionPointer`;
   - the hand menu on the left controller (tabs Info / Views / Legend /
-    Compare / Task) and a hover label.
+    Compare / Task) and a hover label;
+  - 2026-10-08 usability pass (after the first headset run): wrist menu that
+    opens when looked at (X pins it, new Help tab), table board (Y), A / B /
+    thumbstick shortcuts, resizable table, MSAA 4× + eye-texture scale 1.2,
+    VR study wording and VR log events. See
+    [UNITY_VR_TABLETOP.md](UNITY_VR_TABLETOP.md).
 - **Scene:** `Assets/Scenes/Helsingborg_VR.unity` is **generated** from
   `Helsingborg.unity` by **UrbanAnalytics → VR → Build VR Scene**
   (`VRSceneBuilder`). Do not hand-edit it.
 - **Commits:** "first vr iteration development" and "Updated UI for VR".
 
 ## Step 1: check the new machine
+
+**Done 2026-10-08 on the PC** (Alienware 17 R4, GTX 1080 Mobile, Quest 3).
+All checks pass. Repo clone at
+`W:\Investigating-Usability-of-Immersive-Analytics-in-an-Urban-Digital-Twin_Prototype`;
+Unity CLI at `%LOCALAPPDATA%\Unity\bin\unity.exe`. Changes made: Oculus Touch
+fallback profile on; Poke Point Affordances disabled by `VRSceneBuilder` (they
+threw an NRE on every tween); scene rebuilt. See
+[UNITY_VR_TABLETOP.md](UNITY_VR_TABLETOP.md), How to verify. Next: Step 2.
 
 | Check | How | Expected |
 |---|---|---|
@@ -48,12 +62,16 @@ a while. Then check the console for compile errors.
    the headset.
 2. Open `Helsingborg_VR.unity` and press Play.
 3. The console should show:
-   - **no** `XRSimulatorFallback: no headset active` line. If it appears, the
-     headset was not detected: start Link before Play, then stop and press
-     Play again;
-   - `TabletopRig: city 6.57 × 10.69 km on a 1.17 × 1.80 m table, 1 m = 6.517 km`;
-   - `Picking colliders baked: 59 meshes, …`.
+   - `XRSimulatorFallback: headset active …`, or `… simulator removed` if
+     you put the headset on after Play. If it says `no XR loader active`,
+     Link was not running: start Link, then stop and press Play again;
+   - `TabletopRig: city 6.57 × 10.69 km on a 1.66 × 2.60 m table, 1 m = 4.380 km …`;
+   - `Picking colliders baked: 59 meshes, …`;
+   - `TabletopRig: XR eye texture W × H (resolution scale 1.20)`.
 4. In the headset, hold the Meta button to recentre so you face the table.
+5. If the agent drives checks while the headset is off, keep it awake with
+   adb (`prox_close`), see "Testing with the headset off" in
+   [UNITY_VR_TABLETOP.md](UNITY_VR_TABLETOP.md). Needs Developer Mode.
 
 ## Step 3: first-test checklist
 
@@ -70,12 +88,32 @@ This has never been seen in a headset. Check, note the results, and fix:
 - [ ] **Pointer.** The right controller ray, yellow reticle and hover
       highlight are steady on small buildings. Trigger selects; grip + trigger
       selects the cell; trigger on the left controller switches hands.
-- [ ] **Hand menu** (left controller; X toggles it).
-  - Text readable, panel not too big or small, comfortable tilt.
-  - Tune these in the Inspector on the `VRUI` object (`XRHandMenu`:
-    `metersPerUnit` 0.0006, `localPositionMeters` (0, 0.10, 0.06),
-    `localEulerAngles` (35, 0, 0), `sizeUnits` 520 × 640). **Write the final
-    values back into the code defaults:** rebuilding the scene resets them.
+- [ ] **Sharpness.** Edges and text look clean (MSAA 4×, eye scale 1.2) and
+      the frame rate holds; if not, lower `TabletopRig.eyeResolutionScale`.
+- [ ] **Table size.** Right thumbstick up/down resizes smoothly; the start
+      size (2.6 m) and the 1.2–4.0 m range suit the room.
+- [ ] **Wrist menu** (left wrist; opens when you look at it; X pins).
+  - Opens reliably when reading the wrist like a watch, and does **not** pop
+    up while pointing with the left hand or walking around.
+  - Text readable, size right (26 × 32 cm), stays open while you use it.
+  - Tune on `VRUI` → `XRHandMenu`: `wristOffsetMeters` (0, −0.01, −0.09),
+    `panelGapMeters` 0.03, `metersPerUnit` 0.0005, `viewConeDegrees` 40,
+    `maxWristDistanceMeters` 0.75, `wristFaceNormal` (−1, 0.5, 0),
+    `facingThreshold` 0.25, `hideDelaySeconds` 0.6. **Write the final values
+    back into the code defaults:** rebuilding the scene resets them.
+- [ ] **Table board** (far table edge; Y hides it): readable from the user's
+      side, moves sensibly when walking around, does not block the view.
+      Tune `XRTableBoard.metersPerUnit` (0.002), `repositionDegrees` (50).
+- [ ] **Shortcuts.** A copies to compare, B clears, thumbstick left/right
+      switches views; with the ray on a panel the thumbstick only scrolls.
+- [ ] **Hands.** The glove hands sit on your real hands (tune
+      `XRVirtualHands.offsetMeters` / `offsetEuler` / `handScale`), fingers
+      follow trigger and grip.
+- [ ] **Moving the table.** Left grip drags and turns it smoothly; left
+      thumbstick turns it; thumbstick press brings it in front of you.
+- [ ] **Compass.** N / E / S / W readable on the table edges; N matches the
+      map (Öresund to the west of Helsingborg).
+- [ ] **Help tab.** The controller diagram is readable without zooming.
 - [ ] **Hover label** (`XRHoverLabel.metersPerUnit` 0.0006, 3 cm above the
       point): readable, not in the way.
 - [ ] **Tabs.**
@@ -116,20 +154,20 @@ This has never been seen in a headset. Check, note the results, and fix:
 ## Open questions and next work
 
 1. **Tune the UI** after the headset test (above).
-2. **VR wording for study tasks.** `scenarios.json` (city package,
-   `cities/helsingborg/visualizations/`) mentions desktop controls ("pan,
-   orbit and zoom… press C").
-3. **Plan item 6: VR-specific log events** (hand used, menu tab opened, menu
-   shown/hidden, rig scale at session start). Selections, views and
-   comparisons are already logged by `StudySession`. Logged camera poses are
-   in world units: divide by the rig scale (6.517) for metres.
-4. **Decision still open:** a fixed map, or pan/zoom inside the table?
-   Pan/zoom needs a table-edge clipping shader. See the Open Questions in the
-   living context.
+2. ~~VR wording for study tasks~~ done 2026-10-08: `questionVr` on T0.
+3. **Plan item 6: VR-specific log events.** Done 2026-10-08: `vr_menu`,
+   `vr_menu_tab`, `vr_board`, `vr_table_resize`. Still missing: the active
+   hand, and the rig scale at session start (only resizes are logged; the
+   start scale is in the Unity log). Logged camera poses are in world units:
+   divide by the current rig scale for metres.
+4. **Decided 2026-10-08:** a resizable table instead of a fixed one. Panning
+   inside the table (needs a table-edge clipping shader) stays open.
 5. **Known limits:**
    - columns of signed/diverging heights go into the table;
    - XRI's own line visuals are off, because they are sized in world units;
-   - `XRSimulatorFallback` decides once at Start.
+   - ~~`XRSimulatorFallback` decides once at Start~~ fixed 2026-10-08: it
+     waits for the Link session and removes the simulator when the headset
+     starts (first headset run had the simulator on top of the Quest).
 6. **`Assets/_Recovery/`** (an untracked Unity crash-recovery scene on the
    laptop): check it, then delete it or ignore it.
 

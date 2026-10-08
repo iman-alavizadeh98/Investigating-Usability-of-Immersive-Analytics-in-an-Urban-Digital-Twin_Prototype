@@ -123,6 +123,22 @@ namespace UrbanAnalytics.Interaction.UI
         private bool showHelp =
             true;
 
+        [Tooltip(
+            "Replaces the help line when set (the VR scene shows the " +
+            "facilitator's PC keys here; mouse navigation does not " +
+            "apply there)."
+        )]
+        [SerializeField]
+        [TextArea]
+        private string helpTextOverride =
+            string.Empty;
+
+
+        private string ActiveHelpText =>
+            string.IsNullOrEmpty(helpTextOverride)
+                ? HelpText
+                : helpTextOverride;
+
 
         // Canvas
         private CanvasScaler canvasScaler;
@@ -1551,7 +1567,7 @@ namespace UrbanAnalytics.Interaction.UI
                 Button header =
                     RuntimeUi.CreateButton(
                         selectionContent,
-                        (open ? "▾ " : "▸ ") + section.Title,
+                        (open ? "- " : "+ ") + section.Title,
                         () =>
                         {
                             if (!expandedSections.Remove(sectionKey))
@@ -2548,7 +2564,7 @@ namespace UrbanAnalytics.Interaction.UI
             helpText =
                 RuntimeUi.CreateText(
                     panel.transform,
-                    HelpText,
+                    ActiveHelpText,
                     RuntimeUi.SmallSize,
                     RuntimeUi.TextColor,
                     TextAnchor.MiddleCenter
@@ -2600,7 +2616,7 @@ namespace UrbanAnalytics.Interaction.UI
 
             string text =
                 showFullHelp
-                    ? HelpText
+                    ? ActiveHelpText
                     : string.Empty;
 
 

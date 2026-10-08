@@ -23,11 +23,20 @@ namespace UrbanAnalytics.Study
         /// <summary>Visualization preset id (catalog entry) shown for this scenario.</summary>
         public string presetId;
         public string question;
+        /// <summary>
+        /// Optional wording for the VR condition (controllers instead of
+        /// mouse/keys). Empty = <see cref="question"/> is used.
+        /// </summary>
+        public string questionVr;
         /// <summary>Answer options; empty = no answer (training / free exploration).</summary>
         public string[] options;
         /// <summary>The correct option (logged for scoring, never shown).</summary>
         public string expected;
         public bool training;
+
+        /// <summary>The question for a condition ("vr" uses <see cref="questionVr"/> when set).</summary>
+        public string QuestionFor(string condition) =>
+            condition == "vr" && !string.IsNullOrEmpty(questionVr) ? questionVr : question;
     }
 
 
@@ -118,6 +127,18 @@ namespace UrbanAnalytics.Study
 
 
         public bool IsRunning => log != null;
+
+        /// <summary>Study condition ("desktop" or "vr"), as logged.</summary>
+        public string Condition => condition;
+
+        /// <summary>
+        /// Logs an extra event (e.g. VR table resize, menu pin) while a
+        /// session runs; ignored otherwise.
+        /// </summary>
+        public void LogEvent(string eventName, params (string Key, object Value)[] fields)
+        {
+            log?.Write(eventName, fields);
+        }
 
         /// <summary>Last status message shown in the panel (errors included).</summary>
         public string Status => status;
@@ -662,7 +683,7 @@ namespace UrbanAnalytics.Study
             {
                 header.text = $"{index + 1} / {scenarios.Length} · {scenario.id} {scenario.title}";
                 question.text = viewShown
-                    ? scenario.question
+                    ? scenario.QuestionFor(condition)
                     : $"<color=#{ColorUtility.ToHtmlStringRGB(RuntimeUi.MutedColor)}>Press \"Show view\" to load the view and start the timer.</color>";
             }
 

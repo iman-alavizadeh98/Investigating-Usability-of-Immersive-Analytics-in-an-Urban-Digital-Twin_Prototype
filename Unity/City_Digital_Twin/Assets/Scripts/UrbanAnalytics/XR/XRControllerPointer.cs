@@ -147,6 +147,66 @@ namespace UrbanAnalytics.XR
                 : null;
 
 
+        /// <summary>
+        /// True while the active hand's ray is on UI (then the
+        /// thumbstick scrolls the panel instead of driving shortcuts).
+        /// </summary>
+        public bool ActiveHandOnUi =>
+            IsValidHand(activeHand) &&
+            IsPointingAtUi(hands[activeHand]);
+
+
+        /// <summary>True while any hand's ray is on UI.</summary>
+        public bool AnyHandOnUi
+        {
+            get
+            {
+                foreach (Hand hand in hands)
+                {
+                    if (hand != null &&
+                        IsPointingAtUi(hand))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+
+        /// <summary>True while any hand's ray is on UI under <paramref name="uiRoot"/>.</summary>
+        public bool IsAnyHandPointingAt(
+            Transform uiRoot
+        )
+        {
+            if (uiRoot == null)
+            {
+                return false;
+            }
+
+
+            foreach (Hand hand in hands)
+            {
+                if (hand?.interactor is IUIInteractor uiInteractor &&
+                    uiInteractor.TryGetUIModel(
+                        out TrackedDeviceModel model
+                    ) &&
+                    model.currentRaycast.isValid &&
+                    model.currentRaycast.gameObject != null &&
+                    model.currentRaycast.gameObject.transform.IsChildOf(
+                        uiRoot
+                    ))
+                {
+                    return true;
+                }
+            }
+
+
+            return false;
+        }
+
+
         // =========================================================
         // UNITY
         // =========================================================

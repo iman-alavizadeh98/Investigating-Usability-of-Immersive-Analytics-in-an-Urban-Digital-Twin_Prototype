@@ -14,10 +14,16 @@ using UrbanAnalytics.Visualization.UI;
 namespace UrbanAnalytics.XR
 {
     /// <summary>
-    /// The VR panel: a "tablet" held above the left controller,
-    /// operated with the other hand's ray (trigger = click, thumbstick
-    /// = scroll). It follows the user around the table, so it is
-    /// always readable.
+    /// The VR panel: a wrist menu on the left wrist, operated with the
+    /// other hand's ray (trigger = click, thumbstick = scroll).
+    ///
+    /// It stands just above the left wrist, facing the eyes, and opens
+    /// when the user raises the wrist and looks at it (like reading a
+    /// watch); it closes shortly after the wrist is lowered, but stays
+    /// open while a controller ray is on it. X pins it where it is
+    /// (open, fixed in the room) and X again sends it back to the wrist.
+    /// With <see cref="AutoShow"/> off (XR Device Simulator) it is
+    /// always shown on the wrist.
     ///
     /// Tabs:
     ///   Info    — the selection: values of the current view (large),
@@ -29,13 +35,15 @@ namespace UrbanAnalytics.XR
     ///   Task    — the current study question (read only; the
     ///             facilitator runs the session on the PC). Opens
     ///             automatically when a scenario view is shown.
+    ///   Help    — the VR controls (no keyboard or mouse wording).
     ///
     /// Built from code with RuntimeUi and the desktop UI's formatting
     /// helpers, so values read exactly as on the desktop. Sized in real
     /// metres: the canvas sits under the controller, which is under
     /// the scaled XR Origin, so the rig scale is inherited.
     ///
-    /// The left primary button (X) shows/hides the panel.
+    /// Visibility, pin and tab changes are logged as study events
+    /// (vr_menu, vr_menu_tab) while a session runs.
     /// </summary>
     public sealed class XRHandMenu :
         MonoBehaviour
@@ -46,8 +54,33 @@ namespace UrbanAnalytics.XR
             Views,
             Legend,
             Compare,
-            Task
+            Task,
+            Help
         }
+
+
+        /// <summary>The VR controls, shown on the Help tab.</summary>
+        public const string ControlsText =
+            "<b>Right controller</b>\n" +
+            "• Point at the table: see the values\n" +
+            "• Trigger: select · on empty table: clear\n" +
+            "• Grip + trigger: select the area of a building\n" +
+            "• A: copy the selection to compare (A, then B)\n" +
+            "• B: clear the selection\n" +
+            "• Thumbstick left / right: previous / next view\n" +
+            "• Thumbstick up / down: bigger / smaller table\n" +
+            "\n" +
+            "<b>Left controller</b>\n" +
+            "• Look at your wrist: open this menu\n" +
+            "• X: pin the menu in place / back to the wrist\n" +
+            "• Y: show / hide the board at the table\n" +
+            "• Grip (hold): grab the table, move and turn it\n" +
+            "• Thumbstick left / right: turn the table\n" +
+            "• Thumbstick press: bring the table to you\n" +
+            "• Trigger: point with the left hand instead\n" +
+            "\n" +
+            "<b>On a panel</b>\n" +
+            "• Point + trigger: press · thumbstick: scroll";
 
 
         private const float ButtonHeight =
@@ -58,30 +91,88 @@ namespace UrbanAnalytics.XR
         // INSPECTOR
         // =========================================================
 
-        [Header("Placement (real metres, controller space)")]
-        [Tooltip("The panel is parented here (left controller).")]
+        [Header("Wrist placement (real metres)")]
+        [Tooltip(
+            "Left controller. The panel stands above its wrist and " +
+            "lives in the controller's parent space (the scaled rig)."
+        )]
         [SerializeField]
         private Transform anchor;
 
+        [Tooltip("Wrist point in controller space (behind the grip).")]
         [SerializeField]
-        private Vector3 localPositionMeters =
-            new Vector3(0.0f, 0.10f, 0.06f);
+        private Vector3 wristOffsetMeters =
+            new Vector3(0.0f, -0.01f, -0.09f);
 
-        [Tooltip("Tilt so the panel faces the eyes when the hand is raised.")]
+        [Tooltip("Gap between the wrist and the panel's bottom edge.")]
         [SerializeField]
-        private Vector3 localEulerAngles =
-            new Vector3(35.0f, 0.0f, 0.0f);
+        [Range(0.0f, 0.2f)]
+        private float panelGapMeters =
+            0.03f;
 
-        [Tooltip("Real metres per canvas unit (0.0006 = 0.6 mm per unit).")]
+        [Tooltip("How fast the panel follows the wrist (1/s).")]
+        [SerializeField]
+        [Range(1.0f, 40.0f)]
+        private float followSharpness =
+            14.0f;
+
+        [Tooltip("Real metres per canvas unit (0.0005 = 0.5 mm per unit).")]
         [SerializeField]
         [Range(0.0002f, 0.002f)]
         private float metersPerUnit =
-            0.0006f;
+            0.0005f;
 
-        [Tooltip("Canvas size in units (520 × 640 at 0.6 mm = 31 × 38 cm).")]
+        [Tooltip("Canvas size in units (520 × 640 at 0.5 mm = 26 × 32 cm).")]
         [SerializeField]
         private Vector2 sizeUnits =
             new Vector2(520.0f, 640.0f);
+
+
+        [Header("Look at the wrist to open")]
+        [Tooltip(
+            "On: the panel opens while the user looks at the raised " +
+            "wrist. Off: always shown on the wrist (simulator)."
+        )]
+        [SerializeField]
+        private bool autoShow =
+            true;
+
+        [Tooltip("The wrist must be within this angle of the view centre.")]
+        [SerializeField]
+        [Range(10.0f, 70.0f)]
+        private float viewConeDegrees =
+            40.0f;
+
+        [Tooltip("The wrist must be closer to the eyes than this.")]
+        [SerializeField]
+        [Range(0.3f, 1.2f)]
+        private float maxWristDistanceMeters =
+            0.75f;
+
+        [Tooltip(
+            "Back-of-wrist direction in left-controller space; it " +
+            "must point roughly at the eyes (like reading a watch)."
+        )]
+        [SerializeField]
+        private Vector3 wristFaceNormal =
+            new Vector3(-1.0f, 0.5f, 0.0f);
+
+        [Tooltip("Minimum dot product of the wrist normal and the eye direction.")]
+        [SerializeField]
+        [Range(-1.0f, 1.0f)]
+        private float facingThreshold =
+            0.25f;
+
+        [SerializeField]
+        [Range(0.0f, 1.0f)]
+        private float showDelaySeconds =
+            0.15f;
+
+        [Tooltip("Kept open this long after the gesture ends (and while a ray is on it).")]
+        [SerializeField]
+        [Range(0.0f, 3.0f)]
+        private float hideDelaySeconds =
+            0.6f;
 
         [Tooltip(
             "Draws after other transparent objects (the selection " +
@@ -93,14 +184,13 @@ namespace UrbanAnalytics.XR
 
 
         [Header("Input")]
-        [Tooltip("Shows/hides the panel.")]
+        [Tooltip(
+            "Pins the panel where it is (stays open, world-locked) / " +
+            "sends it back to the wrist."
+        )]
         [SerializeField]
         private string toggleBinding =
             "<XRController>{LeftHand}/primaryButton";
-
-        [SerializeField]
-        private bool startVisible =
-            true;
 
 
         [Header("Systems (found automatically when empty)")]
@@ -121,6 +211,18 @@ namespace UrbanAnalytics.XR
 
         [SerializeField]
         private StudySession studySession;
+
+        [Tooltip("Keeps the panel open while a controller ray is on it.")]
+        [SerializeField]
+        private XRControllerPointer pointer;
+
+        [Tooltip(
+            "Labelled controller diagram on the Help tab " +
+            "(Assets/Textures/UrbanAnalytics/VR/vr_controls.png, drawn by " +
+            "Tools/make_vr_controls_image.ps1). Text only when empty."
+        )]
+        [SerializeField]
+        private Texture2D controlsImage;
 
 
         // =========================================================
@@ -143,6 +245,16 @@ namespace UrbanAnalytics.XR
         private InputAction toggleAction;
 
         private bool started;
+
+        // Wrist behaviour
+        private bool pinned;
+
+        private float gestureOnSeconds;
+
+        private float gestureOffSeconds;
+
+        private bool snapNextFollow =
+            true;
 
 
         // Info
@@ -244,6 +356,12 @@ namespace UrbanAnalytics.XR
             {
                 eventCamera =
                     Camera.main;
+            }
+
+            if (pointer == null)
+            {
+                pointer =
+                    FindFirstObjectByType<XRControllerPointer>();
             }
 
 
@@ -403,16 +521,103 @@ namespace UrbanAnalytics.XR
             root.activeSelf;
 
 
+        /// <summary>Pinned: open and fixed in the room (X).</summary>
+        public bool IsPinned =>
+            pinned;
+
+
+        /// <summary>
+        /// On: opens on the look-at-wrist gesture. Off: always shown on
+        /// the wrist (used with the XR Device Simulator).
+        /// </summary>
+        public bool AutoShow
+        {
+            get => autoShow;
+            set
+            {
+                autoShow =
+                    value;
+
+                gestureOnSeconds =
+                    0.0f;
+
+                gestureOffSeconds =
+                    0.0f;
+
+                if (!autoShow &&
+                    !pinned)
+                {
+                    SetVisible(true);
+                }
+            }
+        }
+
+
         public void SetVisible(
             bool visible
         )
         {
-            if (root != null)
+            if (root == null ||
+                root.activeSelf == visible)
             {
-                root.SetActive(
-                    visible
-                );
+                return;
             }
+
+
+            root.SetActive(
+                visible
+            );
+
+            snapNextFollow =
+                true;
+
+            studySession?.LogEvent(
+                "vr_menu",
+                ("visible", visible),
+                ("pinned", pinned),
+                ("tab", currentTab.ToString())
+            );
+        }
+
+
+        /// <summary>
+        /// Pins the panel where it is (opening it at the wrist first if
+        /// it was closed), or sends a pinned panel back to the wrist.
+        /// </summary>
+        public void SetPinned(
+            bool pin
+        )
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+
+            if (pin &&
+                !root.activeSelf)
+            {
+                SetVisible(true);
+
+                FollowWrist(true);
+            }
+
+
+            pinned =
+                pin;
+
+            snapNextFollow =
+                !pin;
+
+            gestureOffSeconds =
+                0.0f;
+
+            studySession?.LogEvent(
+                "vr_menu",
+                ("visible", root.activeSelf),
+                ("pinned", pinned),
+                ("tab", currentTab.ToString())
+            );
         }
 
 
@@ -440,9 +645,215 @@ namespace UrbanAnalytics.XR
             InputAction.CallbackContext context
         )
         {
-            SetVisible(
-                !IsVisible
+            SetPinned(
+                !pinned
             );
+        }
+
+
+        // =========================================================
+        // WRIST
+        // =========================================================
+
+        private void LateUpdate()
+        {
+            if (root == null ||
+                anchor == null ||
+                eventCamera == null)
+            {
+                return;
+            }
+
+
+            if (pinned)
+            {
+                return;
+            }
+
+
+            if (autoShow)
+            {
+                UpdateGesture(
+                    Time.unscaledDeltaTime
+                );
+            }
+
+
+            if (root.activeSelf)
+            {
+                FollowWrist(
+                    snapNextFollow
+                );
+
+                snapNextFollow =
+                    false;
+            }
+        }
+
+
+        /// <summary>
+        /// Opens the panel while the user looks at the raised wrist and
+        /// closes it after <see cref="hideDelaySeconds"/> once they stop
+        /// (never while a controller ray is on it).
+        /// </summary>
+        private void UpdateGesture(
+            float deltaTime
+        )
+        {
+            Transform space =
+                root.transform.parent;
+
+            Vector3 wrist =
+                space.InverseTransformPoint(
+                    anchor.TransformPoint(wristOffsetMeters)
+                );
+
+            Vector3 head =
+                space.InverseTransformPoint(
+                    eventCamera.transform.position
+                );
+
+            Vector3 toHead =
+                head - wrist;
+
+            float distance =
+                toHead.magnitude;
+
+
+            bool looking =
+                false;
+
+
+            if (distance > 1e-4f &&
+                distance < maxWristDistanceMeters)
+            {
+                Vector3 toHeadDirection =
+                    toHead / distance;
+
+                Vector3 headForward =
+                    space.InverseTransformDirection(
+                        eventCamera.transform.forward
+                    );
+
+                Vector3 faceNormal =
+                    space.InverseTransformDirection(
+                        anchor.TransformDirection(
+                            wristFaceNormal.normalized
+                        )
+                    ).normalized;
+
+                Vector3 controllerForward =
+                    space.InverseTransformDirection(
+                        anchor.forward
+                    ).normalized;
+
+
+                looking =
+                    Vector3.Angle(headForward, -toHeadDirection) < viewConeDegrees &&
+                    Vector3.Dot(faceNormal, toHeadDirection) > facingThreshold &&
+                    // Not aiming the left controller away (pointing
+                    // at the table with the left hand).
+                    Vector3.Dot(controllerForward, toHeadDirection) > -0.6f;
+            }
+
+
+            if (looking)
+            {
+                gestureOnSeconds +=
+                    deltaTime;
+
+                gestureOffSeconds =
+                    0.0f;
+            }
+            else
+            {
+                gestureOffSeconds +=
+                    deltaTime;
+
+                gestureOnSeconds =
+                    0.0f;
+            }
+
+
+            if (!root.activeSelf &&
+                gestureOnSeconds >= showDelaySeconds)
+            {
+                SetVisible(true);
+            }
+            else if (root.activeSelf &&
+                     gestureOffSeconds >= hideDelaySeconds &&
+                     (pointer == null ||
+                      !pointer.IsAnyHandPointingAt(root.transform)))
+            {
+                SetVisible(false);
+            }
+        }
+
+
+        /// <summary>
+        /// Places the panel just above the wrist, upright and facing the
+        /// eyes (smoothed unless <paramref name="snap"/>).
+        /// </summary>
+        private void FollowWrist(
+            bool snap
+        )
+        {
+            Transform space =
+                root.transform.parent;
+
+            Vector3 wrist =
+                space.InverseTransformPoint(
+                    anchor.TransformPoint(wristOffsetMeters)
+                );
+
+            Vector3 head =
+                space.InverseTransformPoint(
+                    eventCamera.transform.position
+                );
+
+
+            Vector3 position =
+                wrist +
+                Vector3.up *
+                (0.5f * sizeUnits.y * metersPerUnit + panelGapMeters);
+
+
+            Vector3 view =
+                position - head;
+
+            if (view.sqrMagnitude < 1e-6f)
+            {
+                return;
+            }
+
+
+            // A canvas is read from its -Z side: forward points away
+            // from the eyes.
+            Quaternion rotation =
+                Quaternion.LookRotation(
+                    view.normalized,
+                    Vector3.up
+                );
+
+
+            float t =
+                snap
+                    ? 1.0f
+                    : 1.0f - Mathf.Exp(-followSharpness * Time.unscaledDeltaTime);
+
+            root.transform.localPosition =
+                Vector3.Lerp(
+                    root.transform.localPosition,
+                    position,
+                    t
+                );
+
+            root.transform.localRotation =
+                Quaternion.Slerp(
+                    root.transform.localRotation,
+                    rotation,
+                    t
+                );
         }
 
 
@@ -500,16 +911,16 @@ namespace UrbanAnalytics.XR
                     typeof(RectTransform)
                 );
 
+            // Lives in the controller's parent space (Camera Offset under
+            // the scaled XR Origin): local units are real metres, and a
+            // pinned panel stays put in the room, also when the table is
+            // resized.
             root.transform.SetParent(
-                anchor,
+                anchor.parent != null
+                    ? anchor.parent
+                    : anchor,
                 false
             );
-
-            root.transform.localPosition =
-                localPositionMeters;
-
-            root.transform.localEulerAngles =
-                localEulerAngles;
 
             root.transform.localScale =
                 Vector3.one * metersPerUnit;
@@ -634,9 +1045,14 @@ namespace UrbanAnalytics.XR
             tabPages[Tab.Task] =
                 BuildTaskPage(panel);
 
+            tabPages[Tab.Help] =
+                BuildHelpPage(panel);
 
+
+            // Opens on the look-at-wrist gesture; always on the wrist
+            // without it.
             root.SetActive(
-                startVisible
+                !autoShow
             );
         }
 
@@ -888,7 +1304,7 @@ namespace UrbanAnalytics.XR
             comparePlaceholder =
                 RuntimeUi.CreateText(
                     page,
-                    "Select an area, then Info → Copy → A / B.",
+                    "Select an area, then press A (or Info → Copy → A / B).",
                     RuntimeUi.BodySize,
                     RuntimeUi.MutedColor
                 );
@@ -1043,6 +1459,59 @@ namespace UrbanAnalytics.XR
         }
 
 
+        private GameObject BuildHelpPage(
+            Transform panel
+        )
+        {
+            RectTransform page =
+                CreatePage(panel, "HelpPage");
+
+
+            RectTransform content =
+                CreateScroll(
+                    page,
+                    out _
+                );
+
+
+            if (controlsImage != null)
+            {
+                RectTransform imageRect =
+                    RuntimeUi.CreateRect(
+                        "ControlsImage",
+                        content
+                    );
+
+                imageRect.gameObject
+                    .AddComponent<RawImage>()
+                    .texture =
+                    controlsImage;
+
+                // Full panel width (minus padding and the scrollbar),
+                // keeping the image's aspect ratio.
+                float width =
+                    sizeUnits.x - 50.0f;
+
+                RuntimeUi.Layout(
+                    imageRect.gameObject,
+                    width,
+                    width * controlsImage.height / controlsImage.width
+                );
+            }
+
+
+            RuntimeUi.CreateText(
+                content,
+                ControlsText,
+                RuntimeUi.BodySize,
+                RuntimeUi.TextColor
+            );
+
+
+            return page.gameObject;
+        }
+
+
         private static Color Opaque(
             Color color
         )
@@ -1066,6 +1535,15 @@ namespace UrbanAnalytics.XR
                 studySession == null)
             {
                 tab = Tab.Views;
+            }
+
+
+            if (tab != currentTab)
+            {
+                studySession?.LogEvent(
+                    "vr_menu_tab",
+                    ("tab", tab.ToString())
+                );
             }
 
 
@@ -1184,7 +1662,7 @@ namespace UrbanAnalytics.XR
                 Button header =
                     RuntimeUi.CreateButton(
                         infoContent,
-                        (open ? "▾ " : "▸ ") + section.Title,
+                        (open ? "- " : "+ ") + section.Title,
                         () =>
                         {
                             if (!expandedSections.Remove(key))
@@ -1696,7 +2174,9 @@ namespace UrbanAnalytics.XR
 
 
             taskQuestion.text =
-                scenario.question;
+                scenario.QuestionFor(
+                    studySession.Condition
+                );
 
 
             bool hasOptions =

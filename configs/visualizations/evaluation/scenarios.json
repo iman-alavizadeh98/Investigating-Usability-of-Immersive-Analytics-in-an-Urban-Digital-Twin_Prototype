@@ -6,6 +6,7 @@
       "title": "Training: navigation and picking",
       "presetId": "x2_income_population",
       "question": "Training (about 4 min). Pan, orbit and zoom; hover a cell to see its values; click to select it; press C on two cells to compare them. Say aloud what you see. No answer needed.",
+      "questionVr": "Training (about 4 min). Walk around the table; point the right controller at a cell to see its values; pull the trigger to select it; press A on two cells to compare them. Look at your left wrist to open the menu. Say aloud what you see. No answer needed.",
       "options": [],
       "expected": "",
       "training": true
