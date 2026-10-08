@@ -1,0 +1,27 @@
+{
+  "id": "x2_income_population",
+  "displayName": "X2 Population (height) and income (colour)",
+  "layers": [
+    {
+      "id": "grid_population_income",
+      "enabled": true,
+      "mark": 1,
+      "target": { "kind": 0, "layerId": "ruta", "mapping": { "mode": 0, "associationId": "" } },
+      "encodings": [
+        {
+          "channel": 1, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_population", "variableId": "population_density" } ] },
+          "scale": { "type": 4 },
+          "height": { "maximumVisualHeight": 0.2, "minimumVisualHeight": 0.012 }
+        },
+        {
+          "channel": 0, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_income", "variableId": "mean_economic_standard" } ] },
+          "scale": { "type": 4 },
+          "color": { "paletteId": "viridis" }
+        }
+      ],
+      "heightSurface": { "method": 1, "insetFactor": 1.0 }
+    }
+  ]
+}

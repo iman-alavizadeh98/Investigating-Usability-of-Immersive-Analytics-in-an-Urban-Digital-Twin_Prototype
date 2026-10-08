@@ -37,6 +37,11 @@ namespace UrbanAnalytics.Associations
             associations.Count;
 
 
+        /// <summary>Ids of all registered association sets.</summary>
+        public IReadOnlyCollection<string> AssociationIds =>
+            associations.Keys;
+
+
         public void Register(
             string associationId,
             string sourceId,

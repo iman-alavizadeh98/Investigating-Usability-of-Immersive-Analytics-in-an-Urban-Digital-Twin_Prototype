@@ -12,6 +12,9 @@ namespace UrbanAnalytics.Visualization
     {
         private readonly double[] breaks;
 
+        /// <summary>Rank only: all valid values, ascending.</summary>
+        private readonly double[] rankValues;
+
 
         /// <summary>
         /// Low end of the input range. For Diverging this is
@@ -129,6 +132,64 @@ namespace UrbanAnalytics.Visualization
 
             Description =
                 description ?? string.Empty;
+
+            rankValues =
+                null;
+        }
+
+
+        /// <summary>Rank scale over the given ascending values.</summary>
+        public ResolvedNumericScale(
+            double[] sortedValues,
+            string description
+        )
+            : this(
+                ScaleType.Rank,
+                sortedValues[0],
+                sortedValues[sortedValues.Length - 1],
+                0.0,
+                null,
+                0,
+                0,
+                description
+            )
+        {
+            rankValues =
+                sortedValues;
+        }
+
+
+        /// <summary>
+        /// Value at a normalized position (inverse of Normalize).
+        /// Rank: the value at that percentile; otherwise linear
+        /// between Minimum and Maximum. Used for legend labels.
+        /// </summary>
+        public double ValueAt(
+            float normalized
+        )
+        {
+            double t =
+                Math.Max(0.0, Math.Min(1.0, normalized));
+
+            if (Type == ScaleType.Rank &&
+                rankValues != null &&
+                rankValues.Length > 1)
+            {
+                double position =
+                    t * (rankValues.Length - 1);
+
+                int low =
+                    (int)Math.Floor(position);
+
+                int high =
+                    Math.Min(rankValues.Length - 1, low + 1);
+
+                return rankValues[low] +
+                       (rankValues[high] - rankValues[low]) *
+                       (position - low);
+            }
+
+            return Minimum + (Maximum - Minimum) * t;
         }
 
 
@@ -208,6 +269,14 @@ namespace UrbanAnalytics.Visualization
                             ClassOf(
                                 value
                             )
+                        );
+                    }
+
+
+                case ScaleType.Rank:
+                    {
+                        return RankOf(
+                            value
                         );
                     }
 
@@ -304,6 +373,100 @@ namespace UrbanAnalytics.Visualization
             return ClassCount < 2
                 ? 0.5f
                 : classIndex / (float)(ClassCount - 1);
+        }
+
+
+        /// <summary>
+        /// Rank only: position of a value among the sorted values,
+        /// in [0, 1]. Tied values share their mean position;
+        /// values between two data values are interpolated; the
+        /// smallest value maps to 0 and the largest to 1.
+        /// </summary>
+        private float RankOf(
+            double value
+        )
+        {
+            if (rankValues == null ||
+                rankValues.Length < 2)
+            {
+                return 0.5f;
+            }
+
+            int n =
+                rankValues.Length;
+
+            if (value <= rankValues[0])
+            {
+                return 0.0f;
+            }
+
+            if (value >= rankValues[n - 1])
+            {
+                return 1.0f;
+            }
+
+            int firstAtLeast =
+                LowerBound(value);
+
+            int firstAbove =
+                firstAtLeast;
+
+            while (firstAbove < n &&
+                   rankValues[firstAbove] <= value)
+            {
+                firstAbove++;
+            }
+
+            double position;
+
+            if (firstAbove > firstAtLeast)
+            {
+                // Present in the data: mean position of the ties.
+                position =
+                    (firstAtLeast + firstAbove - 1) * 0.5;
+            }
+            else
+            {
+                int below =
+                    firstAtLeast - 1;
+
+                double low =
+                    rankValues[below];
+
+                double high =
+                    rankValues[firstAtLeast];
+
+                position =
+                    below + (value - low) / (high - low);
+            }
+
+            return (float)(position / (n - 1));
+        }
+
+
+        private int LowerBound(
+            double value
+        )
+        {
+            int low = 0;
+            int high = rankValues.Length;
+
+            while (low < high)
+            {
+                int middle =
+                    (low + high) >> 1;
+
+                if (rankValues[middle] < value)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle;
+                }
+            }
+
+            return low;
         }
     }
 
@@ -432,6 +595,17 @@ namespace UrbanAnalytics.Visualization
                 return ResolveQuantile(
                     sorted,
                     spec
+                );
+            }
+
+
+            if (spec.Type == ScaleType.Rank)
+            {
+                // The whole distribution defines the scale; the
+                // domain mode does not apply.
+                return new ResolvedNumericScale(
+                    sorted,
+                    $"rank of {sorted.Length} values"
                 );
             }
 

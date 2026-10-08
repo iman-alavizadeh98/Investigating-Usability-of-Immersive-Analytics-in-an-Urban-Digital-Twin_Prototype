@@ -1,0 +1,73 @@
+{
+  "studyId": "helsingborg_expert_walkthrough_v1",
+  "scenarios": [
+    {
+      "id": "T0",
+      "title": "Training: navigation and picking",
+      "presetId": "x2_income_population",
+      "question": "Training (about 4 min). Pan, orbit and zoom; hover a cell to see its values; click to select it; press C on two cells to compare them. Say aloud what you see. No answer needed.",
+      "options": [],
+      "expected": "",
+      "training": true
+    },
+    {
+      "id": "S1",
+      "title": "Turnout by voting district",
+      "presetId": "s1_turnout_districts",
+      "question": "Which voting district has the LOWEST turnout?",
+      "options": ["Furutorp", "Eneborg M", "Söder", "Tågaborg N"],
+      "expected": "Furutorp",
+      "training": false
+    },
+    {
+      "id": "S2",
+      "title": "Income vs turnout",
+      "presetId": "s2_income_turnout",
+      "question": "Column height = estimated mean income, colour = turnout. Do the lowest-income districts have lower or higher turnout than the rest?",
+      "options": ["Lower turnout", "Higher turnout", "No clear difference"],
+      "expected": "Lower turnout",
+      "training": false
+    },
+    {
+      "id": "S3",
+      "title": "Income vs Sweden Democrats",
+      "presetId": "s3_sd_income",
+      "question": "Column height = estimated mean income, colour = SD vote share. Where is the SD share highest?",
+      "options": ["In the lowest-income districts", "In middle-income districts", "In the highest-income districts"],
+      "expected": "In middle-income districts",
+      "training": false
+    },
+    {
+      "id": "S4",
+      "title": "DeSO: median income and country of birth",
+      "presetId": "s4_deso_income_origin",
+      "question": "DeSO areas: height = median income, colour = share born abroad. How do the two relate?",
+      "options": ["Higher income where more residents are born abroad", "Higher income where fewer residents are born abroad", "No clear relation"],
+      "expected": "Higher income where fewer residents are born abroad",
+      "training": false
+    },
+    {
+      "id": "S5",
+      "title": "Four variables at once",
+      "presetId": "s5_four_variables",
+      "question": "Grid columns: up = population density, down = share aged 65+, colour = mean income; buildings = turnout of their voting district. Find the tallest columns (densest cells). Which description fits them best?",
+      "options": [
+        "Low income, few residents 65+, low-turnout district",
+        "High income, many residents 65+, high-turnout district",
+        "Low income, many residents 65+, high-turnout district",
+        "High income, few residents 65+, low-turnout district"
+      ],
+      "expected": "Low income, few residents 65+, low-turnout district",
+      "training": false
+    },
+    {
+      "id": "S6",
+      "title": "Children and older residents (optional)",
+      "presetId": "s6_age_composition",
+      "question": "Grid columns: up = share of children 0-15, down = share aged 65+. Look at the tall columns (many children): how deep do they go below the ground?",
+      "options": ["Shallow: where children are many, older residents are few", "Deep: children and older residents live in the same places", "No clear pattern"],
+      "expected": "Shallow: where children are many, older residents are few",
+      "training": false
+    }
+  ]
+}

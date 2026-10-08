@@ -21,7 +21,8 @@ namespace UrbanAnalytics.Visualization
 
         /// <summary>
         /// A Positive-role variable goes up and a Negative-role
-        /// variable goes down, on one shared scale.
+        /// variable goes down, on one shared scale (or one scale per
+        /// side with BidirectionalHeightSettings.IndependentScales).
         /// </summary>
         TwoSided = 2
     }
@@ -132,9 +133,26 @@ namespace UrbanAnalytics.Visualization
             float maximumHeight
         )
         {
+            return TwoSided(
+                positiveNormalized,
+                negativeNormalized,
+                maximumHeight,
+                maximumHeight
+            );
+        }
+
+
+        /// <summary>Each side with its own maximum height.</summary>
+        public static HeightExtent TwoSided(
+            float positiveNormalized,
+            float negativeNormalized,
+            float positiveMaximumHeight,
+            float negativeMaximumHeight
+        )
+        {
             return new HeightExtent(
-                -Mathf.Clamp01(negativeNormalized) * maximumHeight,
-                Mathf.Clamp01(positiveNormalized) * maximumHeight,
+                -Mathf.Clamp01(negativeNormalized) * negativeMaximumHeight,
+                Mathf.Clamp01(positiveNormalized) * positiveMaximumHeight,
                 true
             );
         }
@@ -180,6 +198,80 @@ namespace UrbanAnalytics.Visualization
             get;
         }
 
+        /// <summary>
+        /// TwoSided only: the downward side's scale and maximum
+        /// height. Equal to Scale / MaximumHeight unless the layer
+        /// asks for independent scales.
+        /// </summary>
+        public ResolvedNumericScale NegativeScale
+        {
+            get;
+        }
+
+        public float NegativeMaximumHeight
+        {
+            get;
+        }
+
+        public bool HasIndependentScales
+        {
+            get;
+        }
+
+        /// <summary>
+        /// Lowest height of a valid value, as a fraction of the
+        /// maximum (upward side / downward side). 0 = from flat.
+        /// </summary>
+        public float MinimumFraction
+        {
+            get;
+            private set;
+        }
+
+        public float NegativeMinimumFraction
+        {
+            get;
+            private set;
+        }
+
+
+        private ResolvedHeightBinding WithMinimumHeights(
+            VisualizationEncodingSpec positiveOrPrimary,
+            VisualizationEncodingSpec negative
+        )
+        {
+            MinimumFraction =
+                Fraction(positiveOrPrimary, MaximumHeight);
+
+            NegativeMinimumFraction =
+                negative != null
+                    ? Fraction(negative, NegativeMaximumHeight)
+                    : MinimumFraction;
+
+            return this;
+        }
+
+
+        private static float Fraction(
+            VisualizationEncodingSpec encoding,
+            float maximumHeight
+        )
+        {
+            return maximumHeight > 0.0f
+                ? Mathf.Clamp01(encoding.Height.MinimumVisualHeight / maximumHeight)
+                : 0.0f;
+        }
+
+
+        /// <summary>Lifts a normalized value so the lowest valid value sits at the minimum height.</summary>
+        private static float Lift(
+            float normalized,
+            float minimumFraction
+        )
+        {
+            return minimumFraction + Mathf.Clamp01(normalized) * (1.0f - minimumFraction);
+        }
+
         public bool IsBidirectional =>
             Mode != HeightBindingMode.Unidirectional;
 
@@ -192,8 +284,44 @@ namespace UrbanAnalytics.Visualization
             DataVariableReference positiveVariable,
             DataLayer negativeLayer,
             DataVariableReference negativeVariable
+        ) : this(
+            mode,
+            scale,
+            maximumHeight,
+            positiveLayer,
+            positiveVariable,
+            negativeLayer,
+            negativeVariable,
+            scale,
+            maximumHeight,
+            false
         )
         {
+        }
+
+
+        private ResolvedHeightBinding(
+            HeightBindingMode mode,
+            ResolvedNumericScale scale,
+            float maximumHeight,
+            DataLayer positiveLayer,
+            DataVariableReference positiveVariable,
+            DataLayer negativeLayer,
+            DataVariableReference negativeVariable,
+            ResolvedNumericScale negativeScale,
+            float negativeMaximumHeight,
+            bool independentScales
+        )
+        {
+            NegativeScale =
+                negativeScale;
+
+            NegativeMaximumHeight =
+                negativeMaximumHeight;
+
+            HasIndependentScales =
+                independentScales;
+
             Mode =
                 mode;
 
@@ -258,16 +386,17 @@ namespace UrbanAnalytics.Visualization
 
 
                         return HeightExtentMath.TwoSided(
-                            Scale.Normalize(positive),
-                            Scale.Normalize(negative),
-                            MaximumHeight
+                            Lift(Scale.Normalize(positive), MinimumFraction),
+                            Lift(NegativeScale.Normalize(negative), NegativeMinimumFraction),
+                            MaximumHeight,
+                            NegativeMaximumHeight
                         );
                     }
 
 
                 default:
                     return HeightExtentMath.Unidirectional(
-                        Scale.Normalize(positive),
+                        Lift(Scale.Normalize(positive), MinimumFraction),
                         MaximumHeight
                     );
             }
@@ -362,6 +491,62 @@ namespace UrbanAnalytics.Visualization
                     : "height " + Scale.Description,
                 Color.gray
             );
+        }
+
+
+        /// <summary>
+        /// Height legends: one for a single or signed height, two
+        /// (up, down) for a two-sided height.
+        /// </summary>
+        public IReadOnlyList<VisualizationLegendInfo> CreateHeightLegends(
+            string targetLayerId
+        )
+        {
+            switch (Mode)
+            {
+                case HeightBindingMode.TwoSided:
+                    return new[]
+                    {
+                        VisualizationLegendInfo.ForHeight(
+                            positiveLayer,
+                            PositiveVariable,
+                            targetLayerId,
+                            Scale,
+                            "Height ↑"
+                        ),
+                        VisualizationLegendInfo.ForHeight(
+                            negativeLayer,
+                            NegativeVariable,
+                            targetLayerId,
+                            NegativeScale,
+                            "Height ↓"
+                        )
+                    };
+
+                case HeightBindingMode.Signed:
+                    return new[]
+                    {
+                        VisualizationLegendInfo.ForHeight(
+                            positiveLayer,
+                            PositiveVariable,
+                            targetLayerId,
+                            Scale,
+                            "Height ↑↓ (signed)"
+                        )
+                    };
+
+                default:
+                    return new[]
+                    {
+                        VisualizationLegendInfo.ForHeight(
+                            positiveLayer,
+                            PositiveVariable,
+                            targetLayerId,
+                            Scale,
+                            "Height"
+                        )
+                    };
+            }
         }
 
 
@@ -567,6 +752,9 @@ namespace UrbanAnalytics.Visualization
                 variable,
                 null,
                 null
+            ).WithMinimumHeights(
+                primary,
+                null
             );
         }
 
@@ -587,11 +775,12 @@ namespace UrbanAnalytics.Visualization
 
 
             if (type != ScaleType.Linear &&
-                type != ScaleType.Log)
+                type != ScaleType.Log &&
+                type != ScaleType.Rank)
             {
                 throw new NotSupportedException(
                     $"Layer '{spec.Id}': two-sided height needs a " +
-                    $"Linear or Log scale (got {type})."
+                    $"Linear, Log or Rank scale (got {type})."
                 );
             }
 
@@ -635,6 +824,47 @@ namespace UrbanAnalytics.Visualization
                 negativeVariable.VariableId,
                 out double[] negativeValues
             );
+
+
+            if (spec.Bidirectional.IndependentScales)
+            {
+                // Different variables (possibly different units):
+                // each side has its own scale and maximum height.
+                if (negative.Scale.Type != ScaleType.Linear &&
+                    negative.Scale.Type != ScaleType.Log &&
+                    negative.Scale.Type != ScaleType.Rank)
+                {
+                    throw new NotSupportedException(
+                        $"Layer '{spec.Id}': two-sided height needs a " +
+                        $"Linear, Log or Rank scale on both sides " +
+                        $"(Negative: {negative.Scale.Type})."
+                    );
+                }
+
+                return new ResolvedHeightBinding(
+                    HeightBindingMode.TwoSided,
+                    VisualizationScaleUtility.Resolve(
+                        positiveValues ?? Array.Empty<double>(),
+                        positive.Scale,
+                        includeZero
+                    ),
+                    positive.Height.MaximumVisualHeight,
+                    positiveLayer,
+                    positiveVariable,
+                    negativeLayer,
+                    negativeVariable,
+                    VisualizationScaleUtility.Resolve(
+                        negativeValues ?? Array.Empty<double>(),
+                        negative.Scale,
+                        includeZero
+                    ),
+                    negative.Height.MaximumVisualHeight,
+                    true
+                ).WithMinimumHeights(
+                    positive,
+                    negative
+                );
+            }
 
 
             // One scale over both sides, so equal values have
@@ -685,6 +915,9 @@ namespace UrbanAnalytics.Visualization
                 positiveVariable,
                 negativeLayer,
                 negativeVariable
+            ).WithMinimumHeights(
+                positive,
+                positive
             );
         }
 

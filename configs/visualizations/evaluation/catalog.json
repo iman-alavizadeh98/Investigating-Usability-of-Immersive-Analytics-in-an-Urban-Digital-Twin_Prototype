@@ -1,0 +1,13 @@
+{
+  "visualizations": [
+    { "id": "x1_population", "displayName": "X1 Population density", "file": "x1_population.json" },
+    { "id": "x2_income_population", "displayName": "X2 Population + income", "file": "x2_income_population.json" },
+    { "id": "x3_origin_income_turnout", "displayName": "X3 Born abroad + income + turnout", "file": "x3_origin_income_turnout.json" },
+    { "id": "s1_turnout_districts", "displayName": "S1 Turnout by voting district", "file": "s1_turnout_districts.json" },
+    { "id": "s2_income_turnout", "displayName": "S2 Income vs turnout", "file": "s2_income_turnout.json" },
+    { "id": "s3_sd_income", "displayName": "S3 Income vs SD share", "file": "s3_sd_income.json" },
+    { "id": "s4_deso_income_origin", "displayName": "S4 DeSO income vs born abroad", "file": "s4_deso_income_origin.json" },
+    { "id": "s5_four_variables", "displayName": "S5 Four variables at once", "file": "s5_four_variables.json" },
+    { "id": "s6_age_composition", "displayName": "S6 Children vs residents 65+", "file": "s6_age_composition.json" }
+  ]
+}

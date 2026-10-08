@@ -551,6 +551,8 @@ namespace UrbanAnalytics.Visualization
                         colorEncoding,
                         spec.Target.LayerId,
                         colorScale.Value
+                    ).WithChannel(
+                        "Column colour"
                     )
                 );
             }
@@ -560,9 +562,20 @@ namespace UrbanAnalytics.Visualization
                     height.CreateDirectionLegend(
                         spec.Target.LayerId,
                         spec.Bidirectional
+                    ).WithChannel(
+                        "Column colour"
                     )
                 );
             }
+
+
+            // One legend per height variable, so every encoded
+            // variable is named on screen.
+            legends.AddRange(
+                height.CreateHeightLegends(
+                    spec.Target.LayerId
+                )
+            );
 
 
             Debug.Log(

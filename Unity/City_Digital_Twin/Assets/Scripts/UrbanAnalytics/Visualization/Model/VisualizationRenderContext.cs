@@ -195,7 +195,65 @@ namespace UrbanAnalytics.Visualization
             }
 
 
+            // A layer hidden by default (or hidden after an
+            // earlier visualization) is shown while it is used.
+            if (!root.activeSelf)
+            {
+                root.SetActive(
+                    true
+                );
+            }
+
+            usedSpatialLayers.Add(
+                spatialLayerId
+            );
+
+
             return root;
+        }
+
+
+        private readonly HashSet<string> usedSpatialLayers =
+            new HashSet<string>(
+                StringComparer.Ordinal
+            );
+
+
+        /// <summary>
+        /// Spatial layers rendered for the current visualization.
+        /// </summary>
+        public IReadOnlyCollection<string> UsedSpatialLayers =>
+            usedSpatialLayers;
+
+
+        /// <summary>
+        /// Hides the layers the cleared visualization used whose
+        /// definition is not visible by default (e.g. DeSO and
+        /// voting districts), so they do not stay on screen and
+        /// overlap the next visualization.
+        /// </summary>
+        public void HideUnusedDefaultHiddenLayers()
+        {
+            foreach (string layerId in usedSpatialLayers)
+            {
+                bool visibleByDefault =
+                    SpatialLayers != null &&
+                    SpatialLayers.TryGetLayer(
+                        layerId,
+                        out SpatialLayer layer
+                    ) &&
+                    layer.Definition.VisibleByDefault;
+
+                if (!visibleByDefault)
+                {
+                    Geometry.SetLayerVisible(
+                        layerId,
+                        false
+                    );
+                }
+            }
+
+            usedSpatialLayers.Clear();
         }
 
 

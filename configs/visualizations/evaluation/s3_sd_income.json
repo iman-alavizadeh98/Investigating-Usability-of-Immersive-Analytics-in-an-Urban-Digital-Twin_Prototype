@@ -1,0 +1,27 @@
+{
+  "id": "s3_sd_income",
+  "displayName": "S3 Income (height) vs SD share (colour)",
+  "layers": [
+    {
+      "id": "district_income_sd",
+      "enabled": true,
+      "mark": 1,
+      "target": { "kind": 0, "layerId": "valdistrikt", "mapping": { "mode": 0, "associationId": "" } },
+      "encodings": [
+        {
+          "channel": 1, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_estimates", "variableId": "mean_economic_standard_est" } ] },
+          "scale": { "type": 4 },
+          "height": { "maximumVisualHeight": 0.3, "minimumVisualHeight": 0.02 }
+        },
+        {
+          "channel": 0, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "share_sd" } ] },
+          "scale": { "type": 4 },
+          "color": { "paletteId": "ylorrd" }
+        }
+      ],
+      "heightSurface": { "method": 1, "insetFactor": 1.0 }
+    }
+  ]
+}

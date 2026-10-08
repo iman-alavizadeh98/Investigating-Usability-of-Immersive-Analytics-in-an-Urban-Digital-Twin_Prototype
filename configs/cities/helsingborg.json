@@ -17,5 +17,19 @@
   "buildings": {
     "source": "Processed_data/Helsingborg_Final/lidar_heights/buildings_lidar_added.gpkg",
     "layer": null
-  }
+  },
+  "statistics": {
+    "population": "Raw_data/1-Helsingborig/befolkningShp_helsingborg",
+    "income": "Raw_data/1-Helsingborig/inkomsterShp_helsingborg"
+  },
+  "election": {
+    "folder": "Raw_data/1-Helsingborig/election",
+    "municipalityCode": "1283",
+    "minPartySharePct": 0.5
+  },
+  "estimates": {
+    "storeyHeightM": 3.0,
+    "minCoveragePct": 99.0
+  },
+  "visualizations": "configs/visualizations/evaluation"
 }

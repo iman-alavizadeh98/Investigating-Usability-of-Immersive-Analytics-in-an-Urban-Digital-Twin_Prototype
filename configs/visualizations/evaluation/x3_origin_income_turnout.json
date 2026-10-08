@@ -1,0 +1,42 @@
+{
+  "id": "x3_origin_income_turnout",
+  "displayName": "X3 Born abroad, income and turnout (grid + buildings)",
+  "layers": [
+    {
+      "id": "grid_origin_income",
+      "enabled": true,
+      "mark": 1,
+      "target": { "kind": 0, "layerId": "ruta", "mapping": { "mode": 0, "associationId": "" } },
+      "encodings": [
+        {
+          "channel": 1, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_population", "variableId": "share_born_abroad" } ] },
+          "scale": { "type": 4 },
+          "height": { "maximumVisualHeight": 0.2, "minimumVisualHeight": 0.012 }
+        },
+        {
+          "channel": 0, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_income", "variableId": "mean_economic_standard" } ] },
+          "scale": { "type": 4 },
+          "color": { "paletteId": "viridis" }
+        }
+      ],
+      "heightSurface": { "method": 1, "insetFactor": 1.0 }
+    },
+    {
+      "id": "buildings_turnout",
+      "enabled": true,
+      "mark": 0,
+      "target": { "kind": 1, "layerId": "buildings", "mapping": { "mode": 1, "associationId": "buildings_to_valdistrikt" } },
+      "encodings": [
+        {
+          "channel": 0, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "turnout" } ] },
+          "scale": { "type": 4 },
+          "color": { "paletteId": "ylorrd" }
+        }
+      ],
+      "urbanContextPlacement": { "mode": 1, "sourceVisualizationLayerId": "grid_origin_income" }
+    }
+  ]
+}

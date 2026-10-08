@@ -274,6 +274,8 @@ namespace UrbanAnalytics.Visualization
                     colorEncoding,
                     spec.Target.LayerId,
                     scale
+                ).WithChannel(
+                    "Area colour (" + spec.Target.LayerId + ")"
                 );
 
 

@@ -15,7 +15,21 @@ Example (configs/cities/<city>.json):
   "buildings": {
     "source": "Processed_data/<city>/lidar_heights/buildings_lidar_added.gpkg",
     "layer": null
-  }
+  },
+  "statistics": {                          optional: SCB grid + DeSO layers
+    "population": "Raw_data/<city>/<SCB befolkning folder>",
+    "income": "Raw_data/<city>/<SCB inkomster folder>"
+  },
+  "election": {                            optional: voting districts
+    "folder": "Raw_data/<city>/<folder with results .xlsx + districts>",
+    "municipalityCode": "<4-digit Kommunkod>",
+    "minPartySharePct": 0.5
+  },
+  "estimates": {                           optional: building-based estimates per district
+    "storeyHeightM": 3.0,
+    "minCoveragePct": 99.0
+  },
+  "visualizations": "configs/visualizations/<set>"   optional: preset folder with catalog.json
 }
 
 Relative paths are resolved against the repository root.
@@ -51,6 +65,25 @@ class BuildingsSource:
 
 
 @dataclass
+class StatisticsSource:
+    population: Path
+    income: Optional[Path] = None
+
+
+@dataclass
+class ElectionSource:
+    folder: Path
+    municipality_code: str
+    min_party_share_pct: float = 0.5
+
+
+@dataclass
+class EstimateSettings:
+    storey_height_m: float = 3.0
+    min_coverage_pct: float = 99.0
+
+
+@dataclass
 class CityConfig:
     city_id: str
     display_name: str
@@ -62,6 +95,10 @@ class CityConfig:
     origin_elevation: float
     meters_to_unity: float
     buildings: Optional[BuildingsSource] = None
+    statistics: Optional[StatisticsSource] = None
+    election: Optional[ElectionSource] = None
+    estimates: EstimateSettings = field(default_factory=EstimateSettings)
+    visualizations: Optional[Path] = None
     config_path: Optional[Path] = None
     raw: Dict = field(default_factory=dict)
 
@@ -106,6 +143,32 @@ def load_city_config(path: Path, repo_root: Path) -> CityConfig:
         b = raw["buildings"]
         buildings = BuildingsSource(source=resolve(_require(b, "source", "buildings.")), layer=b.get("layer"))
 
+    statistics = None
+    if raw.get("statistics"):
+        s = raw["statistics"]
+        statistics = StatisticsSource(
+            population=resolve(_require(s, "population", "statistics.")),
+            income=resolve(s["income"]) if s.get("income") else None,
+        )
+
+    election = None
+    if raw.get("election"):
+        e = raw["election"]
+        code = str(_require(e, "municipalityCode", "election."))
+        if not re.fullmatch(r"\d{4}", code):
+            raise ValueError(f"City config: election.municipalityCode must be 4 digits, got '{code}'")
+        election = ElectionSource(
+            folder=resolve(_require(e, "folder", "election.")),
+            municipality_code=code,
+            min_party_share_pct=float(e.get("minPartySharePct", 0.5)),
+        )
+
+    est = raw.get("estimates") or {}
+    estimates = EstimateSettings(
+        storey_height_m=float(est.get("storeyHeightM", 3.0)),
+        min_coverage_pct=float(est.get("minCoveragePct", 99.0)),
+    )
+
     return CityConfig(
         city_id=city_id,
         display_name=_require(city, "displayName", "city."),
@@ -117,6 +180,10 @@ def load_city_config(path: Path, repo_root: Path) -> CityConfig:
         origin_elevation=float(origin.get("elevation", 0.0)),
         meters_to_unity=float(_require(unity, "metersToUnity", "unity.")),
         buildings=buildings,
+        statistics=statistics,
+        election=election,
+        estimates=estimates,
+        visualizations=resolve(raw["visualizations"]) if raw.get("visualizations") else None,
         config_path=path,
         raw=raw,
     )

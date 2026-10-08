@@ -526,6 +526,23 @@ namespace UrbanAnalytics.UrbanContext
                     cancellationToken
                 );
 
+                // Building → unit links listed in the manifest
+                // (buildings_to_ruta / _deso / _valdistrikt, ...).
+                IReadOnlyDictionary<string, int> links =
+                    await AssociationPackageLoader.LoadAsync(
+                        projectManager,
+                        associationManager,
+                        cancellationToken
+                    );
+
+                foreach (KeyValuePair<string, int> link in links)
+                {
+                    Debug.Log(
+                        $"Association '{link.Key}': {link.Value:N0} links",
+                        this
+                    );
+                }
+
                 return;
             }
 

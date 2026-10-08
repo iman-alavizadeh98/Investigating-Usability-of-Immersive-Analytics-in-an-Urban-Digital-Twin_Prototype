@@ -87,6 +87,95 @@ namespace UrbanAnalytics.Visualization
         public bool IsCategorical =>
             Categories.Count > 0;
 
+        /// <summary>
+        /// Which visual channel this legend explains, e.g.
+        /// "Building colour", "Column colour", "Height ↑",
+        /// "Height ↓". Empty = not set by the renderer.
+        /// </summary>
+        public string Channel { get; private set; } = string.Empty;
+
+        /// <summary>Display name of the data layer (carries its year).</summary>
+        public string SourceName { get; private set; } = string.Empty;
+
+        /// <summary>True for a height legend (a length scale, not colours).</summary>
+        public bool IsHeight { get; private set; }
+
+        /// <summary>
+        /// Rank scales only: the value at the middle of the legend
+        /// (the median), shown between minimum and maximum because
+        /// a rank legend is not linear in value.
+        /// </summary>
+        public double? Median { get; private set; }
+
+
+        /// <summary>Sets the channel label; returns this legend.</summary>
+        public VisualizationLegendInfo WithChannel(
+            string channel
+        )
+        {
+            Channel = channel ?? string.Empty;
+
+            return this;
+        }
+
+
+        /// <summary>
+        /// Legend for a height encoding: the variable, its unit and
+        /// the value range mapped from zero to the maximum height
+        /// (drawn as a light-to-dark grey bar).
+        /// </summary>
+        public static VisualizationLegendInfo ForHeight(
+            DataLayer dataLayer,
+            DataVariableReference variable,
+            string targetLayerId,
+            ResolvedNumericScale scale,
+            string channel
+        )
+        {
+            string displayName = variable.VariableId;
+            string unit = string.Empty;
+
+            if (dataLayer.TryGetVariableDefinition(
+                    variable.VariableId,
+                    out DataVariableDefinition definition
+                ))
+            {
+                if (!string.IsNullOrWhiteSpace(definition.DisplayName))
+                {
+                    displayName = definition.DisplayName;
+                }
+
+                unit = definition.Unit ?? string.Empty;
+            }
+
+            var legend =
+                new VisualizationLegendInfo(
+                    dataLayer.Id,
+                    variable.VariableId,
+                    displayName,
+                    unit,
+                    targetLayerId,
+                    scale.Minimum,
+                    scale.Maximum,
+                    new Color32[]
+                    {
+                        new Color32(200, 204, 210, 255),
+                        new Color32(70, 76, 86, 255)
+                    },
+                    "height " + scale.Description,
+                    scale.Type,
+                    null,
+                    Color.gray
+                )
+                {
+                    IsHeight = true,
+                    SourceName = dataLayer.DisplayName ?? string.Empty,
+                    Median = scale.Type == ScaleType.Rank ? scale.ValueAt(0.5f) : (double?)null
+                };
+
+            return legend.WithChannel(channel);
+        }
+
 
         public VisualizationLegendInfo(
             string dataLayerId,
@@ -322,7 +411,11 @@ namespace UrbanAnalytics.Visualization
                 scale.Type,
                 scale.Breaks,
                 encoding.Color.NoDataColor
-            );
+            )
+            {
+                SourceName = dataLayer.DisplayName ?? string.Empty,
+                Median = scale.Type == ScaleType.Rank ? scale.ValueAt(0.5f) : (double?)null
+            };
         }
     }
 }

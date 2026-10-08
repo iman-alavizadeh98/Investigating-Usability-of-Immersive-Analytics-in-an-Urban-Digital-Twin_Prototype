@@ -1,0 +1,27 @@
+{
+  "id": "s4_deso_income_origin",
+  "displayName": "S4 DeSO: median income (height) vs born abroad (colour)",
+  "layers": [
+    {
+      "id": "deso_income_origin",
+      "enabled": true,
+      "mark": 1,
+      "target": { "kind": 0, "layerId": "deso", "mapping": { "mode": 0, "associationId": "" } },
+      "encodings": [
+        {
+          "channel": 1, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "deso_income", "variableId": "median_income" } ] },
+          "scale": { "type": 4 },
+          "height": { "maximumVisualHeight": 0.3, "minimumVisualHeight": 0.02 }
+        },
+        {
+          "channel": 0, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "deso_population", "variableId": "share_born_abroad" } ] },
+          "scale": { "type": 4 },
+          "color": { "paletteId": "magma" }
+        }
+      ],
+      "heightSurface": { "method": 1, "insetFactor": 1.0 }
+    }
+  ]
+}

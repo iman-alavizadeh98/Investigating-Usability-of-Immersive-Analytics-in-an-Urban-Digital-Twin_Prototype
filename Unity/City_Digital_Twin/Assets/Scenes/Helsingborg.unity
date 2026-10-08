@@ -875,6 +875,56 @@ Transform:
   - {fileID: 1165010119}
   - {fileID: 1518023359}
   - {fileID: 484038851}
+  - {fileID: 1360989553}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1120057228
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1120057230}
+  - component: {fileID: 1120057229}
+  m_Layer: 0
+  m_Name: LegendUI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1120057229
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1120057228}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e764d0f503d9bcc44b3bb4424f5fd6fe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Visualization.UI.LegendStackView
+  visualizationManager: {fileID: 0}
+  panelName: LegendPanel
+  panelWidth: 330
+  margin: {x: 12, y: 12}
+  sortingOrder: 90
+--- !u!4 &1120057230
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1120057228}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1165010118
@@ -967,6 +1017,109 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1118706098}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1262286559
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1262286561}
+  - component: {fileID: 1262286560}
+  m_Layer: 0
+  m_Name: StudySession
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1262286560
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1262286559}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8973d409b90e701448e78e991eda7e21, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Study.StudySession
+  participantId: P01
+  condition: desktop
+  scenarioFile: cities/helsingborg/visualizations/scenarios.json
+  poseHz: 2
+  projectManager: {fileID: 0}
+  visualizationManager: {fileID: 0}
+  visualizationSwitcher: {fileID: 0}
+  interactionManager: {fileID: 0}
+  comparisonManager: {fileID: 0}
+  viewCamera: {fileID: 0}
+--- !u!4 &1262286561
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1262286559}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1360989552
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1360989553}
+  - component: {fileID: 1360989554}
+  m_Layer: 0
+  m_Name: VisualizationSwitcherSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1360989553
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1360989552}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1118706098}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1360989554
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1360989552}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 530b8bb05f1377f4fa1af270cab00e66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UrbanAnalytics.Interaction.VisualizationSwitcher
+  visualizationManager: {fileID: 0}
+  projectManager: {fileID: 0}
+  catalogPath: cities/helsingborg/visualizations/catalog.json
+  includeStartupVisualization: 1
+  enableNumberKeys: 1
 --- !u!1 &1404773526
 GameObject:
   m_ObjectHideFlags: 0
@@ -1149,3 +1302,5 @@ SceneRoots:
   - {fileID: 13641797}
   - {fileID: 136792623}
   - {fileID: 380636589}
+  - {fileID: 1120057230}
+  - {fileID: 1262286561}

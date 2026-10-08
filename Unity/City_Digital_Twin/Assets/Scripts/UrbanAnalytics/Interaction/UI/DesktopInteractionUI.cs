@@ -152,6 +152,10 @@ namespace UrbanAnalytics.Interaction.UI
         private ScrollRect selectionScroll;
         private Button selectCellButton;
 
+        // Detail sections the user opened (by title); kept across selections.
+        private readonly HashSet<string> expandedSections =
+            new HashSet<string>(System.StringComparer.Ordinal);
+
         // Compare
         private GameObject comparePanel;
         private RectTransform compareTable;
@@ -1175,11 +1179,11 @@ namespace UrbanAnalytics.Interaction.UI
                 };
 
 
-            if (!string.IsNullOrEmpty(pick.VisualizationLayerId))
+            if (!string.IsNullOrEmpty(info.Subtitle))
             {
                 lines.Add(
                     RuntimeUi.Colorize(
-                        $"on layer '{pick.VisualizationLayerId}'",
+                        info.Subtitle,
                         RuntimeUi.MutedColor
                     )
                 );
@@ -1190,32 +1194,18 @@ namespace UrbanAnalytics.Interaction.UI
                 0;
 
 
-            foreach (EntityInfoRow row in info.DataRows)
+            foreach (EntityInfoRow row in info.Highlights)
             {
-                if (!row.IsEncoded ||
-                    shown >= 8)
+                if (shown >= 5)
                 {
-                    continue;
+                    break;
                 }
 
-
                 lines.Add(
-                    $"{row.Label}: {ValueWithUnit(row)}"
+                    $"{row.Label}: <b>{ValueWithUnit(row)}</b>"
                 );
 
                 shown++;
-            }
-
-
-            if (pick.Entity.Kind == EntityKind.Building &&
-                !pick.Entity.HasUnit)
-            {
-                lines.Add(
-                    RuntimeUi.Colorize(
-                        "not associated with a cell",
-                        RuntimeUi.MutedColor
-                    )
-                );
             }
 
 
@@ -1445,16 +1435,6 @@ namespace UrbanAnalytics.Interaction.UI
                 );
 
 
-            // ----- legend for the markers -----
-
-            RuntimeUi.CreateText(
-                panel.transform,
-                RuntimeUi.Colorize("●", RuntimeUi.AccentColor) +
-                " shown in the current visualization   " +
-                "p = percentile among all cells",
-                RuntimeUi.SmallSize,
-                RuntimeUi.MutedColor
-            );
 
 
             // ----- values -----
@@ -1532,30 +1512,72 @@ namespace UrbanAnalytics.Interaction.UI
             );
 
 
-            foreach (EntityInfoSection section in info.Sections)
+            // 1) What the current view shows for this entity: large.
+            foreach (EntityInfoRow row in info.Highlights)
             {
-                TMP_Text sectionTitle =
+                CreateHighlightRow(
+                    selectionContent,
+                    row
+                );
+            }
+
+
+            // 2) Everything else, folded under section headings.
+            if (info.Sections.Count > 0)
+            {
+                TMP_Text more =
                     RuntimeUi.CreateText(
                         selectionContent,
-                        $"<b>{section.Title}</b>" +
-                        (string.IsNullOrEmpty(section.Subtitle) ||
-                         section.Subtitle == section.Title
-                            ? string.Empty
-                            : "   " +
-                              RuntimeUi.Colorize(
-                                  section.Subtitle,
-                                  RuntimeUi.MutedColor
-                              )),
-                        RuntimeUi.BodySize + 1.0f,
-                        RuntimeUi.AccentColor
+                        "More details (click to open)",
+                        RuntimeUi.SmallSize,
+                        RuntimeUi.MutedColor
                     );
 
-
                 RuntimeUi.Layout(
-                    sectionTitle.gameObject,
-                    preferredHeight: 30.0f
+                    more.gameObject,
+                    preferredHeight: 26.0f
                 );
+            }
 
+            foreach (EntityInfoSection section in info.Sections)
+            {
+                string sectionKey =
+                    section.Title;
+
+                bool open =
+                    !section.Collapsed ||
+                    expandedSections.Contains(sectionKey);
+
+                Button header =
+                    RuntimeUi.CreateButton(
+                        selectionContent,
+                        (open ? "▾ " : "▸ ") + section.Title,
+                        () =>
+                        {
+                            if (!expandedSections.Remove(sectionKey))
+                            {
+                                expandedSections.Add(sectionKey);
+                            }
+
+                            RefreshSelection();
+                        },
+                        -1.0f,
+                        30.0f
+                    );
+
+                TMP_Text headerText =
+                    header.GetComponentInChildren<TMP_Text>();
+
+                if (headerText != null)
+                {
+                    headerText.alignment =
+                        TextAlignmentOptions.Left;
+                }
+
+                if (!open)
+                {
+                    continue;
+                }
 
                 foreach (EntityInfoRow row in section.Rows)
                 {
@@ -1567,6 +1589,18 @@ namespace UrbanAnalytics.Interaction.UI
             }
 
 
+            // 3) Technical identifiers last, small.
+            if (!string.IsNullOrEmpty(info.Footer))
+            {
+                RuntimeUi.CreateText(
+                    selectionContent,
+                    info.Footer,
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.MutedColor
+                );
+            }
+
+
             selectionScroll.verticalNormalizedPosition =
                 1.0f;
 
@@ -1574,6 +1608,80 @@ namespace UrbanAnalytics.Interaction.UI
             selectionPanel.SetActive(
                 true
             );
+        }
+
+
+        /// <summary>
+        /// A value shown in the current view: small label (with the
+        /// channel / area), large value with unit, and its rank in
+        /// words.
+        /// </summary>
+        private static void CreateHighlightRow(
+            Transform parent,
+            EntityInfoRow row
+        )
+        {
+            RectTransform block =
+                RuntimeUi.CreateRect(
+                    "Highlight",
+                    parent
+                );
+
+            RuntimeUi.Vertical(
+                block.gameObject,
+                2,
+                0.0f
+            );
+
+            string note =
+                string.IsNullOrEmpty(row.Note)
+                    ? string.Empty
+                    : "  " + RuntimeUi.Colorize(row.Note, RuntimeUi.AccentColor);
+
+            RuntimeUi.CreateText(
+                block,
+                row.Label + note,
+                RuntimeUi.SmallSize,
+                RuntimeUi.MutedColor
+            );
+
+            RuntimeUi.CreateText(
+                block,
+                $"<b>{ValueWithUnit(row)}</b>",
+                RuntimeUi.TitleSize,
+                row.Value.HasValue || row.Key == null
+                    ? RuntimeUi.TextColor
+                    : RuntimeUi.MutedColor
+            );
+
+            if (row.Percentile.HasValue)
+            {
+                RuntimeUi.CreateText(
+                    block,
+                    RankInWords(row.Percentile.Value),
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.MutedColor
+                );
+            }
+        }
+
+
+        /// <summary>"higher than 72 % of areas" / "lowest" / "highest".</summary>
+        public static string RankInWords(
+            double percentile
+        )
+        {
+            if (percentile >= 99.5)
+            {
+                return "highest of all areas";
+            }
+
+            if (percentile <= 0.5)
+            {
+                return "lowest of all areas";
+            }
+
+            return $"higher than {percentile:0} % of areas";
         }
 
 

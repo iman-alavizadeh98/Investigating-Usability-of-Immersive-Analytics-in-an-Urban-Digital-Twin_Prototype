@@ -103,7 +103,16 @@ namespace UrbanAnalytics.Visualization
         /// N classes holding (about) equal numbers of units.
         /// Output is stepped: class i of N maps to i / (N - 1).
         /// </summary>
-        Quantile = 3
+        Quantile = 3,
+
+        /// <summary>
+        /// Continuous percentile rank: a value maps to its position
+        /// among all valid values (interpolated between neighbours).
+        /// Spreads skewed data evenly over every colour shade and
+        /// height, so a few large values cannot flatten the rest.
+        /// Order is exact; distances between values are not.
+        /// </summary>
+        Rank = 4
     }
 
 
@@ -341,6 +350,30 @@ namespace UrbanAnalytics.Visualization
             target.IsConfigured;
 
 
+        /// <summary>
+        /// A building layer without colour that sits on top of the
+        /// given HeightSurface layer (used when a view extrudes units
+        /// but has no building layer of its own).
+        /// </summary>
+        public static VisualizationLayerSpec CreateBuildingFollower(
+            string id,
+            string buildingsLayerId,
+            string associationId,
+            string sourceLayerId
+        )
+        {
+            return JsonUtility.FromJson<VisualizationLayerSpec>(
+                "{" +
+                $"\"id\":\"{id}\",\"enabled\":true,\"mark\":0," +
+                $"\"target\":{{\"kind\":1,\"layerId\":\"{buildingsLayerId}\"," +
+                $"\"mapping\":{{\"mode\":1,\"associationId\":\"{associationId}\"}}}}," +
+                "\"encodings\":[]," +
+                $"\"urbanContextPlacement\":{{\"mode\":1,\"sourceVisualizationLayerId\":\"{sourceLayerId}\"}}" +
+                "}"
+            );
+        }
+
+
         public bool TryGetEncoding(
             VisualizationChannel channel,
             out VisualizationEncodingSpec encoding
@@ -518,6 +551,19 @@ namespace UrbanAnalytics.Visualization
             mode ==
             UrbanContextPlacementMode
                 .FollowHeightSurface;
+
+
+        /// <summary>Make the layer follow the given HeightSurface layer.</summary>
+        internal void Follow(
+            string sourceLayerId
+        )
+        {
+            mode =
+                UrbanContextPlacementMode.FollowHeightSurface;
+
+            sourceVisualizationLayerId =
+                sourceLayerId;
+        }
     }
 
 
@@ -1005,9 +1051,22 @@ namespace UrbanAnalytics.Visualization
         private float maximumVisualHeight =
             0.25f;
 
+        [Tooltip(
+            "Height of the lowest valid value, in Unity units " +
+            "(0.01 = 10 m). Above 0, every unit with data is " +
+            "visibly raised, so low values never look flat or " +
+            "missing; values map to [minimum, maximum]."
+        )]
+        [SerializeField]
+        [Min(0.0f)]
+        private float minimumVisualHeight;
+
 
         public float MaximumVisualHeight =>
             maximumVisualHeight;
+
+        public float MinimumVisualHeight =>
+            Mathf.Min(minimumVisualHeight, maximumVisualHeight);
     }
 
 
@@ -1096,12 +1155,25 @@ namespace UrbanAnalytics.Visualization
         private Color negativeColor =
             new Color32(0xb2, 0x18, 0x2b, 255);
 
+        [Tooltip(
+            "Two-sided height only. Off (default): one scale over the " +
+            "pooled values of both sides, so equal values have equal " +
+            "lengths up and down. On: each side has its own scale and " +
+            "maximum height (from its own encoding); use it when the " +
+            "two variables have different units."
+        )]
+        [SerializeField]
+        private bool independentScales;
+
 
         public Color32 PositiveColor =>
             positiveColor;
 
         public Color32 NegativeColor =>
             negativeColor;
+
+        public bool IndependentScales =>
+            independentScales;
     }
 
 

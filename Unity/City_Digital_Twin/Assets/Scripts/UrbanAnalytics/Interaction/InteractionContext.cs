@@ -278,13 +278,18 @@ namespace UrbanAnalytics.Interaction
             string layerId =
                 null;
 
+            string unitId =
+                ResolveBuildingUnit(
+                    range
+                );
+
 
             if (!string.IsNullOrWhiteSpace(
-                    range.AssociatedSpatialUnitId
+                    unitId
                 ))
             {
                 TryResolveUnitLayer(
-                    range.AssociatedSpatialUnitId,
+                    unitId,
                     out layerId
                 );
             }
@@ -293,7 +298,7 @@ namespace UrbanAnalytics.Interaction
             return EntityReference.ForBuilding(
                 range.BuildingId,
                 layerId != null
-                    ? range.AssociatedSpatialUnitId
+                    ? unitId
                     : null,
                 layerId
             );
@@ -328,12 +333,62 @@ namespace UrbanAnalytics.Interaction
 
                 buildingIndex =
                     BuildingIndex.Build(
-                        UrbanContext.BuildingChunks
+                        UrbanContext.BuildingChunks,
+                        Associations
                     );
 
 
                 return buildingIndex;
             }
+        }
+
+
+        private Associations.AssociationManager associations;
+
+
+        /// <summary>
+        /// Building → unit links (from the city package). Found on
+        /// first use; null in scenes without an AssociationManager.
+        /// </summary>
+        public Associations.AssociationManager Associations
+        {
+            get
+            {
+                if (associations == null)
+                {
+                    associations =
+                        UnityEngine.Object.FindFirstObjectByType<Associations.AssociationManager>();
+                }
+
+                return associations;
+            }
+        }
+
+
+        /// <summary>
+        /// A building's home unit: the unit stored with the building
+        /// (legacy binary), else the target of the urban-context
+        /// manager's building association (buildings_to_ruta).
+        /// </summary>
+        public string ResolveBuildingUnit(
+            BuildingMeshUnitRange range
+        )
+        {
+            if (!string.IsNullOrWhiteSpace(range.AssociatedSpatialUnitId))
+            {
+                return range.AssociatedSpatialUnitId;
+            }
+
+            string associationId =
+                UrbanContext != null
+                    ? UrbanContext.BuildingToRutaAssociationId
+                    : null;
+
+            return Associations != null &&
+                   !string.IsNullOrWhiteSpace(associationId) &&
+                   Associations.TryResolve(associationId, range.BuildingId, out string unitId)
+                ? unitId
+                : null;
         }
 
 
@@ -484,8 +539,40 @@ namespace UrbanAnalytics.Interaction
             IReadOnlyList<BuildingMeshChunk> chunks
         )
         {
+            return Build(
+                chunks,
+                null
+            );
+        }
+
+
+        /// <summary>
+        /// Also indexes every building under the target unit of each
+        /// building association ("buildings_to_*"), so units of any
+        /// layer (grid cell, DeSO area, voting district) know their
+        /// buildings.
+        /// </summary>
+        public static BuildingIndex Build(
+            IReadOnlyList<BuildingMeshChunk> chunks,
+            Associations.AssociationManager associations
+        )
+        {
             var index =
                 new BuildingIndex();
+
+            var buildingAssociations =
+                new List<string>();
+
+            if (associations != null)
+            {
+                foreach (string id in associations.AssociationIds)
+                {
+                    if (id.StartsWith("buildings_to_", StringComparison.Ordinal))
+                    {
+                        buildingAssociations.Add(id);
+                    }
+                }
+            }
 
 
             foreach (BuildingMeshChunk chunk in chunks)
@@ -512,37 +599,62 @@ namespace UrbanAnalytics.Interaction
                         location;
 
 
-                    if (string.IsNullOrWhiteSpace(
+                    if (!string.IsNullOrWhiteSpace(
                             range.AssociatedSpatialUnitId
                         ))
                     {
-                        continue;
-                    }
-
-
-                    if (!index.byUnit.TryGetValue(
+                        index.AddToUnit(
                             range.AssociatedSpatialUnitId,
-                            out List<Location> list
-                        ))
-                    {
-                        list =
-                            new List<Location>();
-
-                        index.byUnit.Add(
-                            range.AssociatedSpatialUnitId,
-                            list
+                            location
                         );
                     }
 
 
-                    list.Add(
-                        location
-                    );
+                    foreach (string associationId in buildingAssociations)
+                    {
+                        if (associations.TryResolve(
+                                associationId,
+                                range.BuildingId,
+                                out string unitId
+                            ) &&
+                            unitId != range.AssociatedSpatialUnitId)
+                        {
+                            index.AddToUnit(
+                                unitId,
+                                location
+                            );
+                        }
+                    }
                 }
             }
 
 
             return index;
+        }
+
+
+        private void AddToUnit(
+            string unitId,
+            Location location
+        )
+        {
+            if (!byUnit.TryGetValue(
+                    unitId,
+                    out List<Location> list
+                ))
+            {
+                list =
+                    new List<Location>();
+
+                byUnit.Add(
+                    unitId,
+                    list
+                );
+            }
+
+            list.Add(
+                location
+            );
         }
 
 

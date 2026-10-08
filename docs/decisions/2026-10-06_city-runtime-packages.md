@@ -53,3 +53,20 @@
 - float32 coordinates relative to the origin keep millimetre precision only within about 16 km. The exporter refuses data farther from the origin, so a large city needs an origin near its centre.
 - **The building → Ruta association is no longer baked into the binary.** It will be computed when the Ruta layer of the city is exported, as part of the next step (data layers).
 - `SampleScene` and the root-level Gothenburg package still load through the legacy path. They are historical, and nothing new is added to them.
+
+## Update 2026-10-07: analytical layers, associations and views
+
+The package now also holds analytical layers. They come from the config sections `statistics`, `election`, `estimates` and `visualizations` (build steps `analytics` and `visualizations`):
+
+```
+spatial_layers/{ruta,deso,valdistrikt}/   layer.json + geometry.json (MultiPolygon, hidden until a view uses them)
+data_layers/<id>/                         layer.json + values.json (DataLayerFileDto)
+associations/buildings_to_<layer>/        layer.json + pairs.json (sourceIds[] → targetIds[])
+visualizations/                           catalog.json, presets, scenarios.json (copied from configs/visualizations/<set>/)
+analytics_report.json                     counts, coverage, dasymetric validation
+```
+
+- **Associations (done).** The building → Ruta link above is now computed by Python (point inside the footprint), with links to DeSO and voting districts as well. `AssociationPackageLoader` loads them after the buildings.
+- **Views** are authored in the repository, because they hold no data. The build checks every layer, variable and association a view names against the package, and fails if one is missing.
+- **Coordinate precision.** Spatial layers keep EPSG:3006 doubles in JSON and are converted at load. Voting districts reach about 30 km from the origin, which float32 at 1 unit = 1 km still resolves to about 2 mm. The 16 km limit applies only to the float32 metre offsets in the building binary.
+- **Details:** `docs/data-analysis/2026-10-08_helsingborg_analytics_package_integration.md`, `docs/decisions/2026-10-07_dasymetric-grid-to-district.md`.

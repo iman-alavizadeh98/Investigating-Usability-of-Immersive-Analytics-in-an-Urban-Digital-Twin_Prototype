@@ -1,0 +1,34 @@
+{
+  "id": "s1_turnout_districts",
+  "displayName": "S1 Turnout by voting district",
+  "layers": [
+    {
+      "id": "district_turnout",
+      "enabled": true,
+      "mark": 0,
+      "target": { "kind": 0, "layerId": "valdistrikt", "mapping": { "mode": 0, "associationId": "" } },
+      "encodings": [
+        {
+          "channel": 0, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "turnout" } ] },
+          "scale": { "type": 4 },
+          "color": { "paletteId": "ylgnbu" }
+        }
+      ]
+    },
+    {
+      "id": "buildings_turnout",
+      "enabled": true,
+      "mark": 0,
+      "target": { "kind": 1, "layerId": "buildings", "mapping": { "mode": 1, "associationId": "buildings_to_valdistrikt" } },
+      "encodings": [
+        {
+          "channel": 0, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "turnout" } ] },
+          "scale": { "type": 4 },
+          "color": { "paletteId": "ylgnbu" }
+        }
+      ]
+    }
+  ]
+}

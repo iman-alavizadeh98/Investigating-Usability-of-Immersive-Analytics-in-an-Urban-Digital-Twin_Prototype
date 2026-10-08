@@ -294,6 +294,25 @@ namespace UrbanAnalytics.Visualization
                             );
 
 
+                        // The surface being followed may be on another
+                        // unit than the colour data (e.g. colour per
+                        // voting district, columns per grid cell): the
+                        // lift then needs the building's own unit in the
+                        // followed layer.
+                        string positionUnitId =
+                            ResolvePositionUnitId(
+                                context,
+                                elevationField,
+                                spatialUnitId,
+                                range
+                            );
+
+                        bool hasPositionUnit =
+                            !string.IsNullOrWhiteSpace(
+                                positionUnitId
+                            );
+
+
                         // -----------------------------------------
                         // POSITION
                         // -----------------------------------------
@@ -303,9 +322,9 @@ namespace UrbanAnalytics.Visualization
                         // building's footprint and position about
                         // the same anchor so it stays on the column.
                         if (elevationField != null &&
-                            hasAssociation &&
+                            hasPositionUnit &&
                             elevationField.TryGetHorizontalInset(
-                                spatialUnitId,
+                                positionUnitId,
                                 out Vector3 anchorWorld,
                                 out float insetScale
                             ))
@@ -356,9 +375,9 @@ namespace UrbanAnalytics.Visualization
 
 
                         if (elevationField != null &&
-                            hasAssociation &&
+                            hasPositionUnit &&
                             elevationField.TryGetTopOffset(
-                                spatialUnitId,
+                                positionUnitId,
                                 out float topOffset
                             ))
                         {
@@ -515,6 +534,10 @@ namespace UrbanAnalytics.Visualization
                         colorEncoding,
                         spec.Target.LayerId,
                         colorScale.Value
+                    ).WithChannel(
+                        "Building colour (from " +
+                        colorDataLayer.TargetSpatialLayerId +
+                        ")"
                     )
                 );
             }
@@ -736,6 +759,48 @@ namespace UrbanAnalytics.Visualization
 
 
             return null;
+        }
+
+
+        /// <summary>
+        /// The building's unit in the followed surface's layer: the
+        /// colour unit when it belongs to that layer, otherwise the
+        /// target of the association "buildings_to_&lt;layer&gt;".
+        /// </summary>
+        private static string ResolvePositionUnitId(
+            VisualizationRenderContext context,
+            SurfaceElevationField field,
+            string colorUnitId,
+            BuildingMeshUnitRange range
+        )
+        {
+            if (field == null)
+            {
+                return null;
+            }
+
+            string prefix =
+                field.SpatialLayerId + ":";
+
+            if (!string.IsNullOrEmpty(colorUnitId) &&
+                colorUnitId.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return colorUnitId;
+            }
+
+            if (context.Associations.TryResolve(
+                    "buildings_to_" + field.SpatialLayerId,
+                    range.BuildingId,
+                    out string unitId
+                ))
+            {
+                return unitId;
+            }
+
+            return !string.IsNullOrEmpty(range.AssociatedSpatialUnitId) &&
+                   range.AssociatedSpatialUnitId.StartsWith(prefix, StringComparison.Ordinal)
+                ? range.AssociatedSpatialUnitId
+                : null;
         }
 
 

@@ -44,6 +44,13 @@ namespace UrbanAnalytics.Interaction
         /// variable.
         /// </summary>
         public bool IsEncoded;
+
+        /// <summary>
+        /// Short context shown with highlighted values, e.g. the
+        /// channel ("Height ↑") and, for a building, the area the
+        /// value belongs to ("Furutorp").
+        /// </summary>
+        public string Note;
     }
 
 
@@ -52,6 +59,9 @@ namespace UrbanAnalytics.Interaction
         public string Title;
 
         public string Subtitle;
+
+        /// <summary>Detail section: shown folded until opened.</summary>
+        public bool Collapsed;
 
         public readonly List<EntityInfoRow> Rows =
             new List<EntityInfoRow>();
@@ -71,8 +81,19 @@ namespace UrbanAnalytics.Interaction
 
         public string Subtitle;
 
+        /// <summary>
+        /// The values the active view shows for this entity, in
+        /// layer order (for a building: the values of the units it
+        /// belongs to). Shown first, large.
+        /// </summary>
+        public readonly List<EntityInfoRow> Highlights =
+            new List<EntityInfoRow>();
+
         public readonly List<EntityInfoSection> Sections =
             new List<EntityInfoSection>();
+
+        /// <summary>Technical identifiers, shown small at the bottom.</summary>
+        public string Footer;
 
 
         public IEnumerable<EntityInfoRow> DataRows
@@ -197,52 +218,396 @@ namespace UrbanAnalytics.Interaction
             }
 
 
+            AddHighlights(
+                info,
+                entity,
+                activeVisualization
+            );
+
+
             if (entity.Kind == EntityKind.SpatialUnit)
             {
+                string unitName =
+                    UnitDisplayName(
+                        entity.SpatialLayerId,
+                        entity.UnitId
+                    );
+
+                string areaName =
+                    AreaName(
+                        entity.SpatialLayerId,
+                        entity.UnitId
+                    );
+
                 info.Title =
-                    $"Cell {EntityReference.ShortId(entity.Id)}";
+                    unitName ?? LayerDisplayName(entity.SpatialLayerId);
 
                 info.Subtitle =
-                    LayerDisplayName(
-                        entity.SpatialLayerId
-                    );
+                    areaName != null && areaName != unitName
+                        ? $"in {areaName} · {LayerDisplayName(entity.SpatialLayerId)}"
+                        : LayerDisplayName(entity.SpatialLayerId);
+
+                info.Footer =
+                    $"id {EntityReference.ShortId(entity.Id)}";
             }
             else if (TryGetBuildingAttributes(
                          entity.Id,
                          out BuildingAttributeTable attributes
                      ))
             {
+                string name =
+                    FirstValue(attributes, entity.Id, "name");
+
+                string type =
+                    FirstValue(attributes, entity.Id, "purpose", "type");
+
+                string area =
+                    BuildingPlaceName(entity) ??
+                    (entity.HasUnit
+                        ? AreaName(entity.SpatialLayerId, entity.UnitId)
+                        : null);
+
                 info.Title =
-                    FirstValue(
-                        attributes,
-                        entity.Id,
-                        "name",
-                        "type"
-                    )
-                    ?? $"Building {EntityReference.ShortId(entity.Id)}";
+                    name ?? type ?? "Building";
 
                 info.Subtitle =
-                    FirstValue(
-                        attributes,
-                        entity.Id,
-                        "purpose",
-                        "type"
-                    )
-                    ?? string.Empty;
+                    JoinNonEmpty(
+                        name != null ? type : null,
+                        area != null ? "in " + area : null
+                    );
+
+                info.Footer =
+                    $"building {EntityReference.ShortId(entity.Id)}";
             }
             else
             {
                 info.Title =
-                    $"Building {EntityReference.ShortId(entity.Id)}";
+                    "Building";
 
                 info.Subtitle =
                     entity.HasUnit
-                        ? $"in cell {EntityReference.ShortId(entity.UnitId)}"
-                        : "not associated with a cell";
+                        ? $"in {AreaName(entity.SpatialLayerId, entity.UnitId) ?? LayerDisplayName(entity.SpatialLayerId)}"
+                        : string.Empty;
+
+                info.Footer =
+                    $"building {EntityReference.ShortId(entity.Id)}";
             }
 
 
             return info;
+        }
+
+
+        // =========================================================
+        // HIGHLIGHTS ("in this view")
+        // =========================================================
+
+        private Associations.AssociationManager associations;
+
+
+        /// <summary>
+        /// One row per variable the active view encodes, with the
+        /// value for this entity: the entity's own unit, or for a
+        /// building the unit it belongs to in that variable's
+        /// spatial layer (association "buildings_to_&lt;layer&gt;").
+        /// A building also gets its height first.
+        /// </summary>
+        private void AddHighlights(
+            EntityInfo info,
+            EntityReference entity,
+            VisualizationSpec visualization
+        )
+        {
+            if (entity.Kind == EntityKind.Building &&
+                TryGetBuildingAttributes(entity.Id, out BuildingAttributeTable attributes) &&
+                attributes.TryGetValue(entity.Id, "height", out BuildingAttributeValue height))
+            {
+                info.Highlights.Add(
+                    new EntityInfoRow
+                    {
+                        Label = "Building height",
+                        ValueText = height.Text,
+                        Unit = "m",
+                        Value = height.Number
+                    }
+                );
+            }
+
+            if (visualization == null)
+            {
+                return;
+            }
+
+            var seen =
+                new HashSet<string>(StringComparer.Ordinal);
+
+            foreach ((DataVariableReference variable, string channel) in EncodedVariables(visualization))
+            {
+                string key =
+                    Key(variable.DataLayerId, variable.VariableId);
+
+                if (!seen.Add(key) ||
+                    !context.DataLayers.TryGetLayer(variable.DataLayerId, out DataLayer dataLayer) ||
+                    !dataLayer.TryGetVariableDefinition(variable.VariableId, out DataVariableDefinition definition))
+                {
+                    continue;
+                }
+
+                string layerId =
+                    dataLayer.TargetSpatialLayerId;
+
+                string unitId =
+                    UnitIn(entity, layerId);
+
+                if (unitId == null)
+                {
+                    continue;
+                }
+
+                var row =
+                    new EntityInfoRow
+                    {
+                        Label = string.IsNullOrWhiteSpace(definition.DisplayName) ? variable.VariableId : definition.DisplayName,
+                        Unit = definition.Unit,
+                        Key = key,
+                        IsEncoded = true,
+                        ValueText = "no data",
+                        Note = entity.Kind == EntityKind.Building
+                            ? JoinNonEmpty(channel, UnitDisplayName(layerId, unitId))
+                            : channel
+                    };
+
+                if (dataLayer.TryGetDouble(unitId, variable.VariableId, out double value))
+                {
+                    row.Value = value;
+                    row.ValueText = FormatNumber(value);
+                    row.Percentile = PercentileRank(dataLayer, variable.VariableId, value);
+                }
+                else if (dataLayer.TryGetString(unitId, variable.VariableId, out string text) && text != null)
+                {
+                    row.ValueText = text;
+                }
+
+                info.Highlights.Add(
+                    row
+                );
+            }
+        }
+
+
+        /// <summary>The entity's unit in a spatial layer, or null.</summary>
+        private string UnitIn(
+            EntityReference entity,
+            string layerId
+        )
+        {
+            string prefix =
+                layerId + ":";
+
+            if (entity.HasUnit &&
+                entity.UnitId.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return entity.UnitId;
+            }
+
+            if (entity.Kind != EntityKind.Building)
+            {
+                return null;
+            }
+
+            if (associations == null)
+            {
+                associations =
+                    UnityEngine.Object.FindFirstObjectByType<Associations.AssociationManager>();
+            }
+
+            return associations != null &&
+                   associations.TryResolve("buildings_to_" + layerId, entity.Id, out string unitId)
+                ? unitId
+                : null;
+        }
+
+
+        /// <summary>Every encoded variable of a view with a channel label, in layer order.</summary>
+        private static IEnumerable<(DataVariableReference, string)> EncodedVariables(
+            VisualizationSpec visualization
+        )
+        {
+            foreach (VisualizationLayerSpec layer in visualization.Layers)
+            {
+                if (layer == null || !layer.Enabled)
+                {
+                    continue;
+                }
+
+                bool buildings =
+                    layer.Target != null &&
+                    layer.Target.Kind == VisualizationTargetKind.UrbanContextLayer;
+
+                foreach (VisualizationEncodingSpec encoding in layer.Encodings)
+                {
+                    if (encoding?.Data?.Variables == null)
+                    {
+                        continue;
+                    }
+
+                    string channel =
+                        ChannelLabel(encoding, buildings, layer.Mark);
+
+                    foreach (DataVariableReference variable in encoding.Data.Variables)
+                    {
+                        if (variable != null && variable.IsConfigured)
+                        {
+                            yield return (variable, channel);
+                        }
+                    }
+                }
+            }
+        }
+
+
+        private static string ChannelLabel(
+            VisualizationEncodingSpec encoding,
+            bool buildings,
+            VisualizationMark mark
+        )
+        {
+            switch (encoding.Channel)
+            {
+                case VisualizationChannel.Color:
+                    return buildings ? "building colour" : "colour";
+
+                case VisualizationChannel.Height:
+                    return encoding.Role == VisualizationEncodingRole.Positive ? "height ↑"
+                        : encoding.Role == VisualizationEncodingRole.Negative ? "height ↓"
+                        : "height";
+
+                case VisualizationChannel.Segments:
+                    return mark == VisualizationMark.RadialGlyph ? "glyph" : "bar segment";
+
+                default:
+                    return encoding.Channel.ToString().ToLowerInvariant();
+            }
+        }
+
+
+        /// <summary>Display name of a unit (e.g. a district name), or null.</summary>
+        private string UnitDisplayName(
+            string layerId,
+            string unitId
+        )
+        {
+            return context.SpatialLayers.TryGetUnit(layerId, unitId, out SpatialUnit unit) &&
+                   !string.IsNullOrWhiteSpace(unit.DisplayName) &&
+                   unit.DisplayName != unitId &&
+                   unit.DisplayName != EntityReference.ShortId(unitId)
+                ? unit.DisplayName
+                : null;
+        }
+
+
+        /// <summary>
+        /// A place name for a unit: the String variable "area_name"
+        /// of any data layer on its spatial layer (e.g. the voting
+        /// district a grid cell lies in), or the unit's own name for
+        /// named units such as voting districts.
+        /// </summary>
+        private string AreaName(
+            string layerId,
+            string unitId
+        )
+        {
+            foreach (KeyValuePair<string, DataLayer> pair in context.DataLayers.LoadedLayers)
+            {
+                DataLayer layer = pair.Value;
+
+                if (string.Equals(layer.TargetSpatialLayerId, layerId, StringComparison.Ordinal) &&
+                    layer.ContainsVariable("area_name") &&
+                    layer.TryGetString(unitId, "area_name", out string name) &&
+                    !string.IsNullOrWhiteSpace(name))
+                {
+                    return name;
+                }
+            }
+
+            string own =
+                UnitDisplayName(layerId, unitId);
+
+            return own != null && !IsGenericName(own)
+                ? own
+                : null;
+        }
+
+
+        /// <summary>
+        /// The name of a named unit the building belongs to (e.g. its
+        /// voting district), through the "buildings_to_*" links.
+        /// Generic units (grid cells, DeSO areas) are skipped.
+        /// </summary>
+        private string BuildingPlaceName(
+            EntityReference building
+        )
+        {
+            if (associations == null)
+            {
+                associations =
+                    UnityEngine.Object.FindFirstObjectByType<Associations.AssociationManager>();
+            }
+
+            if (associations == null)
+            {
+                return null;
+            }
+
+            foreach (string associationId in associations.AssociationIds)
+            {
+                if (!associationId.StartsWith("buildings_to_", StringComparison.Ordinal) ||
+                    !associations.TryResolve(associationId, building.Id, out string unitId))
+                {
+                    continue;
+                }
+
+                string layerId =
+                    associationId.Substring("buildings_to_".Length);
+
+                string name =
+                    UnitDisplayName(layerId, unitId);
+
+                if (name != null && !IsGenericName(name))
+                {
+                    return name;
+                }
+            }
+
+            return null;
+        }
+
+
+        private static bool IsGenericName(
+            string name
+        )
+        {
+            return name.EndsWith("grid cell", StringComparison.Ordinal) ||
+                   name == "DeSO area";
+        }
+
+
+        private static string JoinNonEmpty(
+            params string[] parts
+        )
+        {
+            var kept =
+                new List<string>();
+
+            foreach (string part in parts)
+            {
+                if (!string.IsNullOrWhiteSpace(part))
+                {
+                    kept.Add(part);
+                }
+            }
+
+            return string.Join(" · ", kept);
         }
 
 
@@ -363,7 +728,10 @@ namespace UrbanAnalytics.Interaction
                         new EntityInfoSection
                         {
                             Title =
-                                group
+                                group,
+
+                            Collapsed =
+                                true
                         };
 
                     sections.Add(
@@ -400,19 +768,6 @@ namespace UrbanAnalytics.Interaction
             }
 
 
-            if (entity.HasUnit &&
-                sections.TryGetValue(
-                    "Identity",
-                    out EntityInfoSection identity
-                ))
-            {
-                identity.Rows.Add(
-                    Text(
-                        "Cell",
-                        entity.UnitId
-                    )
-                );
-            }
         }
 
 
@@ -477,21 +832,11 @@ namespace UrbanAnalytics.Interaction
                 new EntityInfoSection
                 {
                     Title =
-                        "Cell",
+                        "About this area",
 
-                    Subtitle =
-                        LayerDisplayName(
-                            layerId
-                        )
+                    Collapsed =
+                        true
                 };
-
-
-            cell.Rows.Add(
-                Text(
-                    "ID",
-                    unitId
-                )
-            );
 
 
             if (context.SpatialLayers.TryGetUnit(
@@ -500,35 +845,6 @@ namespace UrbanAnalytics.Interaction
                     out SpatialUnit unit
                 ))
             {
-                if (!string.IsNullOrWhiteSpace(
-                        unit.DisplayName
-                    ) &&
-                    unit.DisplayName != unitId &&
-                    unit.DisplayName !=
-                        EntityReference.ShortId(unitId))
-                {
-                    cell.Rows.Add(
-                        Text(
-                            "Name",
-                            unit.DisplayName
-                        )
-                    );
-                }
-
-
-                cell.Rows.Add(
-                    Text(
-                        "Centre (SWEREF 99 TM)",
-                        string.Format(
-                            CultureInfo.InvariantCulture,
-                            "E {0:0}, N {1:0}",
-                            unit.Centroid.Easting,
-                            unit.Centroid.Northing
-                        )
-                    )
-                );
-
-
                 double area =
                     AreaOf(
                         unit.Geometry
@@ -540,8 +856,8 @@ namespace UrbanAnalytics.Interaction
                     cell.Rows.Add(
                         Number(
                             "Area",
-                            area,
-                            "m²",
+                            Math.Round(area / 1_000_000.0, 3),
+                            "km²",
                             "cell/area"
                         )
                     );
@@ -582,11 +898,14 @@ namespace UrbanAnalytics.Interaction
                 in context.DataLayers.LoadedLayers
             )
             {
+                // Place-name layers only label the unit (title/subtitle).
                 if (string.Equals(
                         pair.Value.TargetSpatialLayerId,
                         layerId,
                         StringComparison.Ordinal
-                    ))
+                    ) &&
+                    !(pair.Value.Definition.Variables.Count == 1 &&
+                      pair.Value.ContainsVariable("area_name")))
                 {
                     dataLayers.Add(
                         pair.Value
@@ -714,8 +1033,8 @@ namespace UrbanAnalytics.Interaction
                             ? dataLayer.Id
                             : dataLayer.DisplayName,
 
-                    Subtitle =
-                        dataLayer.Id
+                    Collapsed =
+                        true
                 };
 
 
@@ -723,6 +1042,19 @@ namespace UrbanAnalytics.Interaction
                 dataLayer.ContainsUnit(
                     unitId
                 );
+
+
+            if (!hasUnit)
+            {
+                section.Rows.Add(
+                    Text(
+                        "No data for this area",
+                        string.Empty
+                    )
+                );
+
+                return section;
+            }
 
 
             foreach (
