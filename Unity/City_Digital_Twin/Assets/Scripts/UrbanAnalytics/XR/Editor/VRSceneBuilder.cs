@@ -46,8 +46,10 @@ namespace UrbanAnalytics.XR.Editor
         private const string XriSampleRoot =
             "Assets/Samples/XR Interaction Toolkit/3.6.1";
 
+        // Controllers AND tracked hands (XRInputModalityManager switches
+        // between them): pinch rays, finger poke, Quest hand visuals.
         private const string RigPrefabPath =
-            XriSampleRoot + "/Starter Assets/Prefabs/XR Origin (XR Rig).prefab";
+            XriSampleRoot + "/Hands Interaction Demo/Prefabs/XR Origin Hands (XR Rig).prefab";
 
         private const string InputActionsPath =
             XriSampleRoot + "/Starter Assets/XRI Default Input Actions.inputactions";
@@ -96,22 +98,6 @@ namespace UrbanAnalytics.XR.Editor
                 Require<GameObject>(SimulatorPrefabPath);
 
 
-            Dictionary<string, InputActionReference> actions =
-                AssetDatabase
-                    .LoadAllAssetsAtPath(InputActionsPath)
-                    .OfType<InputActionReference>()
-                    // The asset holds more than one reference per
-                    // action (hidden ones); any of them works.
-                    .GroupBy(
-                        reference => reference.action.actionMap.name +
-                                     "/" + reference.action.name
-                    )
-                    .ToDictionary(
-                        group => group.Key,
-                        group => group.First()
-                    );
-
-
             // ----- copy the desktop scene -----
 
             Scene source =
@@ -131,6 +117,30 @@ namespace UrbanAnalytics.XR.Editor
                     TargetScenePath,
                     OpenSceneMode.Single
                 );
+
+
+            // Loaded AFTER the scenes are opened: opening a scene in
+            // single mode unloads assets loaded before it, and these
+            // references then serialized as empty ({fileID: 0}), so no
+            // trigger or pinch ever reached the pointer (bug found
+            // 2026-10-08). Visible references are preferred over the
+            // importer's hidden duplicates.
+            Dictionary<string, InputActionReference> actions =
+                AssetDatabase
+                    .LoadAllAssetsAtPath(InputActionsPath)
+                    .OfType<InputActionReference>()
+                    .Where(reference => reference.action != null)
+                    .GroupBy(
+                        reference => reference.action.actionMap.name +
+                                     "/" + reference.action.name
+                    )
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group
+                            .OrderBy(reference =>
+                                (reference.hideFlags & HideFlags.HideInHierarchy) != 0)
+                            .First()
+                    );
 
             report.AppendLine(
                 $"Copied {SourceScenePath} → {TargetScenePath}."
@@ -222,10 +232,10 @@ namespace UrbanAnalytics.XR.Editor
 
 
             NearFarInteractor right =
-                FindInteractor(rig, InteractorHandedness.Right);
+                FindInteractor(rig, InteractorHandedness.Right, "Right Controller");
 
             NearFarInteractor left =
-                FindInteractor(rig, InteractorHandedness.Left);
+                FindInteractor(rig, InteractorHandedness.Left, "Left Controller");
 
 
             // ----- materials -----
@@ -303,8 +313,18 @@ namespace UrbanAnalytics.XR.Editor
             SerializedProperty handsProperty =
                 pointerSerialized.FindProperty("hands");
 
+            // Controllers first (trigger selects, grip = area modifier),
+            // then the tracked hands (pinch selects: XRI "UI Press" is
+            // bound to the trigger and to the hand pinch). The pointer
+            // only uses entries that are tracked at the moment.
+            NearFarInteractor rightHand =
+                FindInteractor(rig, InteractorHandedness.Right, "Right Hand");
+
+            NearFarInteractor leftHand =
+                FindInteractor(rig, InteractorHandedness.Left, "Left Hand");
+
             handsProperty.arraySize =
-                2;
+                4;
 
             SetHand(
                 handsProperty.GetArrayElementAtIndex(0),
@@ -322,6 +342,27 @@ namespace UrbanAnalytics.XR.Editor
                 actions["XRI Left Interaction/Select"]
             );
 
+            SetHand(
+                handsProperty.GetArrayElementAtIndex(2),
+                "Right Hand",
+                rightHand,
+                actions["XRI Right Interaction/UI Press"],
+                null
+            );
+
+            SetHand(
+                handsProperty.GetArrayElementAtIndex(3),
+                "Left Hand",
+                leftHand,
+                actions["XRI Left Interaction/UI Press"],
+                null
+            );
+
+            report.AppendLine(
+                $"Pointer: controllers '{right?.name}' / '{left?.name}', " +
+                $"hands '{rightHand?.transform.parent.name}' / '{leftHand?.transform.parent.name}'."
+            );
+
             pointerSerialized.FindProperty("rayMaterial").objectReferenceValue =
                 rayMaterial;
 
@@ -329,6 +370,28 @@ namespace UrbanAnalytics.XR.Editor
                 reticleMaterial;
 
             pointerSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+
+            // Fail loudly: without a select action no click ever reaches
+            // the pointer, and the scene silently cannot select.
+            pointerSerialized.Update();
+
+            for (int i = 0; i < handsProperty.arraySize; i++)
+            {
+                SerializedProperty hand =
+                    handsProperty.GetArrayElementAtIndex(i);
+
+                if (hand.FindPropertyRelative("selectAction")
+                        .FindPropertyRelative("m_Reference")
+                        .objectReferenceValue == null)
+                {
+                    throw new System.InvalidOperationException(
+                        "VRSceneBuilder: pointer hand '" +
+                        hand.FindPropertyRelative("name").stringValue +
+                        "' has no select action."
+                    );
+                }
+            }
 
 
             // ----- VR UI: wrist menu (left wrist), hover label, table
@@ -380,12 +443,62 @@ namespace UrbanAnalytics.XR.Editor
                 ("tableBoard", tableBoard)
             );
 
+            // With hand tracking the left hand's pinch-grab pose drives
+            // the table grab (a fist), instead of the controller.
+            Transform leftHandGrabPose =
+                rig.GetComponentsInChildren<Transform>(true)
+                    .FirstOrDefault(
+                        t => t.name == "Pinch Grab Pose" &&
+                             t.parent != null &&
+                             t.parent.name == "Left Hand"
+                    );
+
             SetFields(
                 vrUi.AddComponent<XRTableMover>(),
                 ("controller", leftController),
+                ("trackedHand", leftHandGrabPose),
                 ("viewCamera", xrCamera),
                 ("tabletopRig", tabletopRig),
                 ("pointer", pointer)
+            );
+
+
+            // Pop-out copies of the selection (A / toolbar "Copy"),
+            // grabbed with the grip or a hand pinch.
+            XRSelectionCopies selectionCopies =
+                vrUi.AddComponent<XRSelectionCopies>();
+
+            SetFields(
+                selectionCopies,
+                ("pointer", pointer),
+                ("viewCamera", xrCamera),
+                ("lineMaterial", rayMaterial)
+            );
+
+            var copiesSerialized =
+                new SerializedObject(selectionCopies);
+
+            SetActionReference(
+                copiesSerialized.FindProperty("rightGrabAction"),
+                actions["XRI Right Interaction/Select"]
+            );
+
+            SetActionReference(
+                copiesSerialized.FindProperty("leftGrabAction"),
+                actions["XRI Left Interaction/Select"]
+            );
+
+            copiesSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+
+            // Table-edge toolbar: every function without controller
+            // buttons (hand tracking).
+            SetFields(
+                vrUi.AddComponent<XRTableToolbar>(),
+                ("tabletopRig", tabletopRig),
+                ("viewCamera", xrCamera),
+                ("copies", selectionCopies),
+                ("board", tableBoard)
             );
 
             report.AppendLine(
@@ -574,15 +687,24 @@ namespace UrbanAnalytics.XR.Editor
         }
 
 
+        /// <summary>
+        /// The Near-Far Interactor of one hand, directly under the rig
+        /// object named <paramref name="parentName"/> ("Right Controller",
+        /// "Right Hand", …): the hands rig has one per controller and
+        /// one per tracked hand.
+        /// </summary>
         private static NearFarInteractor FindInteractor(
             GameObject rig,
-            InteractorHandedness handedness
+            InteractorHandedness handedness,
+            string parentName
         )
         {
             return rig
                 .GetComponentsInChildren<NearFarInteractor>(true)
                 .FirstOrDefault(
-                    interactor => interactor.handedness == handedness
+                    interactor => interactor.handedness == handedness &&
+                                  interactor.transform.parent != null &&
+                                  interactor.transform.parent.name == parentName
                 );
         }
 

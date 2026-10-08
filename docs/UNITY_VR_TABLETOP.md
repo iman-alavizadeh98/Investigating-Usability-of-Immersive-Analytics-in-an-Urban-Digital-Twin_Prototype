@@ -15,6 +15,15 @@ Status (2026-10-08):
 - **First headset run (2026-10-08)** found the simulator taking over the
   Quest (fixed, see Assumptions and limits). The fixed build has not yet been
   run in the headset.
+- **Second headset run (2026-10-08):** resize, grab, turn and recall worked;
+  clicking never selected anything. Cause: the pointer's select actions were
+  saved empty (`{fileID: 0}`) by `VRSceneBuilder`; fixed (see Hand tracking
+  and selection).
+- **Hand tracking (2026-10-08):** the rig is now XRI's `XR Origin Hands (XR
+  Rig)`: controllers **and** tracked hands (XR Hands 1.7.3), switched
+  automatically. Plus a table-edge **toolbar**, pop-out **copies**, a
+  **buildings on/off** toggle and a label that stays above the selection.
+  Not yet run in the headset.
 
 The desktop screen-space panels still show on the PC monitor for the
 facilitator. In the VR scene their help line lists only the facilitator's PC
@@ -46,7 +55,8 @@ Controls (also on the wrist menu's **Help** tab):
 | Point the right controller | Hover (white overlay + yellow reticle + label) | mouse hover |
 | Trigger | Select; on empty table: clear the selection | click |
 | Grip held + trigger | Select the area (cell) of a building | Alt+click |
-| A (right) | Copy the selection to compare (A, then B) | C |
+| A (right) | Pop-out copy of the selection (compare A/B: wrist menu → Info) | C (compare) |
+| Grip with the ray on a copy | Grab the copy, move it, let go | — |
 | B (right) | Clear the selection | Esc |
 | Right thumbstick left / right | Previous / next view | 1–9 |
 | Right thumbstick up / down (held) | Bigger / smaller table | — |
@@ -59,6 +69,23 @@ Controls (also on the wrist menu's **Help** tab):
 | Trigger on the left controller | Point with the left hand instead | — |
 | Ray on a panel + trigger / thumbstick | Press a button / scroll | click / wheel |
 | PC keyboard (facilitator) | 1–9 views, 0 clear view, Esc, C, F2 study panel, [ ] panel size, H | — |
+
+**Hands** (put the controllers down; XRI's `XRInputModalityManager` switches
+to the tracked hands and back when a controller is picked up):
+
+| Gesture | Action |
+|---|---|
+| Point (aim ray from the hand) | Hover |
+| Pinch (thumb + index) | Select / press a panel button (XRI `UI Press`, bound to `<MetaAimHand>/indexPressed` and `<HandInteraction>/pointerActivated`) |
+| Pinch with the ray on a copy | Grab the copy, move it, let go |
+| Left fist (`<HandInteraction>{LeftHand}/graspFirm`) | Grab the table: move and turn it |
+| Fingertip on a button | Poke (XRI poke interactor) |
+| Look at the back of the left wrist | Open the wrist menu (wrist + palm joints from XR Hands) |
+
+**Toolbar** at the table edge (`XRTableToolbar`), for everything a hand
+cannot do with buttons: `< View` · view name · `View >` · `Buildings: on/off`
+· `Copy` · `Clear` · `Remove copies` / `Smaller` · `Bigger` · `Turn left` ·
+`Turn right` · `Bring here` · `Board` · `Menu`.
 
 While any controller ray is on a panel, the thumbstick scrolls the panel
 and does not resize, turn or switch views. The left grip is also the left
@@ -87,6 +114,66 @@ ADB="/c/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Data/PlaybackEngines/A
 
 Run the last command after testing; the setting is also reset by a reboot.
 Without adb: cover the sensor between the lenses.
+
+## Hand tracking and selection
+
+**Setup.** Package `com.unity.xr.hands` 1.7.3; OpenXR (Windows) features
+**Hand Tracking Subsystem**, **Meta Hand Tracking Aim** and **Hand
+Interaction Profile** enabled (the Quest Link runtime offers
+`XR_EXT_hand_tracking`, `XR_EXT_hand_interaction`, `XR_FB_hand_tracking_aim`,
+`XR_FB_hand_tracking_mesh`, microgestures and simultaneous hands +
+controllers). Samples imported: XR Hands **HandVisualizer** (hand meshes)
+and XRI **Hands Interaction Demo**, whose `XR Origin Hands (XR Rig)` the
+builder now uses: Left/Right Controller **and** Left/Right Hand (Near-Far +
+poke interactors, aim pose, pinch visual, Quest hand visual, One Euro
+smoothing, Meta system-gesture detector).
+
+**Pointer.** `XRControllerPointer` has four entries: `Right`, `Left`
+(controllers: trigger = select, grip = area modifier) and `Right Hand`,
+`Left Hand` (pinch = select via XRI `UI Press`). Only entries whose
+interactor is active (tracked now) are used; when the active one disappears
+it falls back to a tracked one.
+
+**The click bug (fixed).** `VRSceneBuilder` loaded the input-action
+references *before* opening the scenes; opening a scene in single mode
+unloaded them and they were saved as `{fileID: 0}`. So no trigger press ever
+reached the pointer and nothing could be selected in the headset (scripted
+checks called `Select` directly and missed it). The references are now loaded
+after the scenes are opened, visible ones preferred, and the builder throws
+if any pointer hand has no select action. Every click is logged:
+`InteractionManager: click selected …` / `… on empty table, selection
+cleared` / `… on a panel (UI)` / `… ignored, picking not ready`.
+
+**Picking** (`InteractionManager.Pick(Ray)`) now walks all hits (nearest
+first): it skips the rig's `CharacterController` capsule (it made rays
+return "nothing" and clear the selection), skips buildings while
+`BuildingsSelectable` is off (the ray reaches the area below; no rebake), and
+any other non-map collider (e.g. the table top) stops the ray.
+
+**Selected label.** `XRHoverLabel` shows the hovered entity; with nothing
+hovered it stays above the **selected** entity (tagged "Selected", values of
+the current view), so a selection always shows its information where the
+user looks.
+
+**Pop-out copies** (`XRSelectionCopies`, A / toolbar `Copy`): a complete
+copy of everything drawn for the selection (`InteractionManager.
+CollectGeometry`, building or area with its columns/surface), 12 cm above the
+original, with a coloured line back to it and a label (copy number, view,
+name, top values). Grab it with the grip or a hand pinch while the ray is on
+it, move it, let go. Snapshots (keep the view they were made in); up to 8
+(oldest removed); `Remove copies` clears them. Only a grab box (≥ 5 cm) on the
+**Ignore Raycast** layer: city picking never hits it and the pointer treats
+it like a panel (no city click through a copy; the table grab does not start
+on a copy).
+
+**Toolbar** (`XRTableToolbar`): 1.15 × 0.18 m, 1.2 mm per canvas unit, 10 cm
+outside the table edge on the user's side, tilted 50° toward them, follows
+the user around the table (50° hysteresis). Ray and poke both work.
+Resize ×1.15 per press, turn ±30°.
+
+**Git.** The hand meshes are `.fbx` (ignored by `*.fbx`); `.gitignore`
+has an exception for `Assets/Samples/XR Hands/*/HandVisualizer/Models/*.fbx`
+(+ meta). The VR scene needs no other `.fbx`.
 
 ## VR UI
 
@@ -190,7 +277,7 @@ Scene**. It overwrites `Helsingborg_VR.unity`; do not hand-edit the VR scene.
 following:
 - copies the desktop scene;
 - removes the `DesktopCameraController` camera;
-- adds the XRI rig `XR Origin (XR Rig)`, sets its tracking origin to
+- adds XRI's rig `XR Origin Hands (XR Rig)` (controllers + tracked hands), sets its tracking origin to
   **Floor**, and disables `Locomotion`, every `*Teleport*` object and the
   `Poke Point Affordances` (see limits);
 - turns off XRI's `CurveVisualController` line visuals;
@@ -220,6 +307,8 @@ All runtime scripts are in `Assets/Scripts/UrbanAnalytics/XR/` (namespace
 | `XR/XRControllerShortcuts.cs` | A / B / Y buttons and the right thumbstick (view flick, held resize); logs finished resizes |
 | `XR/XRTableMover.cs` | Left grip grab (move + turn), left thumbstick turn, thumbstick press recall; logs moves |
 | `XR/XRVirtualHands.cs` | Stylised hands on the controllers (fingers follow trigger / grip); hides the controller models |
+| `XR/XRSelectionCopies.cs` | Pop-out copies of the selection (grab box on Ignore Raycast, stem line, label); grab with grip / pinch |
+| `XR/XRTableToolbar.cs` | Table-edge toolbar (views, buildings on/off, copy, clear, remove copies, size, turn, bring here, board, menu) |
 | `Tools/make_vr_controls_image.ps1` | Draws the Help tab's controller diagram (`vr_controls.png`) |
 | `XR/XRSimulatorFallback.cs` | Editor only: starts the XR Device Simulator when no headset is active, removes it when the headset starts |
 | `XR/XRHandMenu.cs` | Wrist menu (tabs Info / Views / Legend / Compare / Task / Help), see VR UI |
@@ -286,6 +375,8 @@ Extra events (StudyLog JSON lines, only while a session runs):
 | `vr_menu_tab` | `tab` | Tab shown (by the user or automatically) |
 | `vr_board` | `visible` | Board shown/hidden (Y) |
 | `vr_table_move` | `how` (grab / turn / recall), `centerX`, `centerZ`, `yawDegrees` | Grab released, turn finished, table recalled |
+| `vr_copy` | `how` (create / move / remove / limit), `copy`, `entity`, `position` | Copy made, released after a grab, removed |
+| `vr_buildings_selectable` | `selectable` | Toolbar toggle |
 
 Selections, views and comparisons are logged as on the desktop. Logged camera
 poses are in world units: divide by the current `worldUnitsPerMeter` for
@@ -380,6 +471,20 @@ the Editor renders on the GTX 1080, D3D12, Single Pass Instanced):
     open and fully closed (trigger + grip) poses.
   - Help tab: the diagram fills the panel width, the text list follows.
   - 0 console errors / warnings; EditMode tests 62/62.
+- Hand tracking, click fix, toggle, copies, toolbar (simulator, scripted):
+  - Saved scene: all four pointer select actions and both copy-grab actions
+    have real references (were `{fileID: 0}`); in Play they resolve to the
+    trigger controls.
+  - A trigger press injected through the Input System (full state event on
+    the simulated right controller), ray on the table → `InteractionManager:
+    click selected SpatialUnit 'valdistrikt:12830210'`, selection set.
+  - `BuildingsSelectable`: the same ray picks a building when on, the voting
+    district under it when off, the building again when on.
+  - Copies of a building (13 triangles) and its grid cell (1,341 triangles):
+    12 cm above, grab boxes on layer 2; grip injected with the ray on copy 1,
+    controller moved → the copy followed to the expected point; released.
+  - Toolbar capture: both rows readable; row 1 widened to fit (960 units).
+  - 0 console errors; EditMode tests 62/62.
 - Headset test of this build: to do (checklist in
   [HANDOFF_VR_HEADSET_TEST.md](HANDOFF_VR_HEADSET_TEST.md)).
 
@@ -398,3 +503,6 @@ the Editor renders on the GTX 1080, D3D12, Single Pass Instanced):
 | Play pressed before Link is running | `XRSimulatorFallback: no headset active (no XR loader active)`; start Link, stop and press Play again |
 | Link running, headset not worn yet | Simulator after 15 s; removed automatically when the headset becomes active (`… simulator removed`) |
 | Headset taken off during Play | Session pauses (proximity sensor); resumes when worn. For testing see "Testing with the headset off" |
+| A pointer hand without a select action | `VRSceneBuilder` throws (the scene could not select) |
+| Copy of something with no drawn geometry | `XRSelectionCopies: nothing drawn for …`, no copy |
+| Hands not tracked (bad light, out of view) | That hand's ray disappears; the other hand / a controller takes over |

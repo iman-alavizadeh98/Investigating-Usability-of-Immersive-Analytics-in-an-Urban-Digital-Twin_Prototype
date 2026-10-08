@@ -3,6 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using UnityEngine.XR.Hands;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 
 using UrbanAnalytics.Interaction;
@@ -65,7 +66,8 @@ namespace UrbanAnalytics.XR
             "• Point at the table: see the values\n" +
             "• Trigger: select · on empty table: clear\n" +
             "• Grip + trigger: select the area of a building\n" +
-            "• A: copy the selection to compare (A, then B)\n" +
+            "• A: pop-out copy of the selection\n" +
+            "• Grip with the ray on a copy: grab it, move it, let go\n" +
             "• B: clear the selection\n" +
             "• Thumbstick left / right: previous / next view\n" +
             "• Thumbstick up / down: bigger / smaller table\n" +
@@ -79,8 +81,19 @@ namespace UrbanAnalytics.XR
             "• Thumbstick press: bring the table to you\n" +
             "• Trigger: point with the left hand instead\n" +
             "\n" +
+            "<b>Hands (controllers put down)</b>\n" +
+            "• Point, then pinch (thumb + index): select\n" +
+            "• Pinch with the ray on a copy: grab it, move it, let go\n" +
+            "• Left fist: grab the table, move and turn it\n" +
+            "• Poke a button with your finger\n" +
+            "• Look at your left wrist: open this menu\n" +
+            "\n" +
+            "<b>Toolbar at the table edge</b>\n" +
+            "• Views, buildings on/off, copy, clear, table size,\n" +
+            "  turn, bring here, board, menu\n" +
+            "\n" +
             "<b>On a panel</b>\n" +
-            "• Point + trigger: press · thumbstick: scroll";
+            "• Point + trigger or pinch: press · thumbstick: scroll";
 
 
         private const float ButtonHeight =
@@ -156,6 +169,14 @@ namespace UrbanAnalytics.XR
         [SerializeField]
         private Vector3 wristFaceNormal =
             new Vector3(-1.0f, 0.5f, 0.0f);
+
+        [Tooltip(
+            "Hand tracking: back-of-wrist direction in the palm joint's " +
+            "space (+Y = back of the hand)."
+        )]
+        [SerializeField]
+        private Vector3 handFaceNormal =
+            Vector3.up;
 
         [Tooltip("Minimum dot product of the wrist normal and the eye direction.")]
         [SerializeField]
@@ -247,6 +268,11 @@ namespace UrbanAnalytics.XR
         private bool started;
 
         // Wrist behaviour
+        private static readonly List<XRHandSubsystem> HandSubsystems =
+            new List<XRHandSubsystem>();
+
+        private XRHandSubsystem handSubsystem;
+
         private bool pinned;
 
         private float gestureOnSeconds;
@@ -581,6 +607,67 @@ namespace UrbanAnalytics.XR
 
 
         /// <summary>
+        /// Opens the panel pinned 45 cm in front of the eyes (a little
+        /// below eye level), on the given tab. Used by the table toolbar,
+        /// e.g. when only hands are used.
+        /// </summary>
+        public void PinInFront(
+            string tabName
+        )
+        {
+            if (root == null ||
+                eventCamera == null)
+            {
+                return;
+            }
+
+
+            Transform space =
+                root.transform.parent;
+
+            Vector3 head =
+                space.InverseTransformPoint(
+                    eventCamera.transform.position
+                );
+
+            Vector3 forward =
+                space.InverseTransformDirection(
+                    eventCamera.transform.forward
+                );
+
+            forward.y =
+                0.0f;
+
+            if (forward.sqrMagnitude < 1e-6f)
+            {
+                forward =
+                    Vector3.forward;
+            }
+
+            forward.Normalize();
+
+
+            SetVisible(true);
+
+            root.transform.localPosition =
+                head + forward * 0.45f + Vector3.down * 0.12f;
+
+            root.transform.localRotation =
+                Quaternion.LookRotation(
+                    root.transform.localPosition - head,
+                    Vector3.up
+                );
+
+            SetPinned(true);
+
+            if (!string.IsNullOrEmpty(tabName))
+            {
+                ShowTab(tabName);
+            }
+        }
+
+
+        /// <summary>
         /// Pins the panel where it is (opening it at the wrist first if
         /// it was closed), or sends a pinned panel back to the wrist.
         /// </summary>
@@ -703,9 +790,12 @@ namespace UrbanAnalytics.XR
             Transform space =
                 root.transform.parent;
 
-            Vector3 wrist =
-                space.InverseTransformPoint(
-                    anchor.TransformPoint(wristOffsetMeters)
+            bool tracked =
+                TryGetWrist(
+                    space,
+                    out Vector3 wrist,
+                    out Vector3 faceNormal,
+                    out Vector3 controllerForward
                 );
 
             Vector3 head =
@@ -724,7 +814,8 @@ namespace UrbanAnalytics.XR
                 false;
 
 
-            if (distance > 1e-4f &&
+            if (tracked &&
+                distance > 1e-4f &&
                 distance < maxWristDistanceMeters)
             {
                 Vector3 toHeadDirection =
@@ -734,19 +825,6 @@ namespace UrbanAnalytics.XR
                     space.InverseTransformDirection(
                         eventCamera.transform.forward
                     );
-
-                Vector3 faceNormal =
-                    space.InverseTransformDirection(
-                        anchor.TransformDirection(
-                            wristFaceNormal.normalized
-                        )
-                    ).normalized;
-
-                Vector3 controllerForward =
-                    space.InverseTransformDirection(
-                        anchor.forward
-                    ).normalized;
-
 
                 looking =
                     Vector3.Angle(headForward, -toHeadDirection) < viewConeDegrees &&
@@ -791,6 +869,123 @@ namespace UrbanAnalytics.XR
 
 
         /// <summary>
+        /// The left wrist in the rig's tracking space (the controllers'
+        /// parent): from hand tracking while the left hand is tracked
+        /// (wrist joint; back of the hand = palm joint's up), otherwise
+        /// from the left controller. False when neither is tracked.
+        /// </summary>
+        private bool TryGetWrist(
+            Transform space,
+            out Vector3 wrist,
+            out Vector3 faceNormal,
+            out Vector3 forward
+        )
+        {
+            // XR Hands joint poses are in the same tracking space as
+            // the tracked controllers, i.e. local to Camera Offset.
+            if (TryGetTrackedLeftHand(out Pose wristPose, out Pose palmPose))
+            {
+                wrist =
+                    wristPose.position;
+
+                faceNormal =
+                    palmPose.rotation * handFaceNormal.normalized;
+
+                forward =
+                    palmPose.forward;
+
+                return true;
+            }
+
+
+            if (anchor != null &&
+                anchor.gameObject.activeInHierarchy)
+            {
+                wrist =
+                    space.InverseTransformPoint(
+                        anchor.TransformPoint(wristOffsetMeters)
+                    );
+
+                faceNormal =
+                    space.InverseTransformDirection(
+                        anchor.TransformDirection(
+                            wristFaceNormal.normalized
+                        )
+                    ).normalized;
+
+                forward =
+                    space.InverseTransformDirection(
+                        anchor.forward
+                    ).normalized;
+
+                return true;
+            }
+
+
+            wrist =
+                default;
+
+            faceNormal =
+                default;
+
+            forward =
+                default;
+
+            return false;
+        }
+
+
+        private bool TryGetTrackedLeftHand(
+            out Pose wrist,
+            out Pose palm
+        )
+        {
+            wrist =
+                default;
+
+            palm =
+                default;
+
+
+            if (handSubsystem == null ||
+                !handSubsystem.running)
+            {
+                handSubsystem =
+                    null;
+
+                SubsystemManager.GetSubsystems(
+                    HandSubsystems
+                );
+
+                foreach (XRHandSubsystem subsystem in HandSubsystems)
+                {
+                    if (subsystem.running)
+                    {
+                        handSubsystem =
+                            subsystem;
+
+                        break;
+                    }
+                }
+            }
+
+
+            if (handSubsystem == null)
+            {
+                return false;
+            }
+
+
+            XRHand hand =
+                handSubsystem.leftHand;
+
+            return hand.isTracked &&
+                   hand.GetJoint(XRHandJointID.Wrist).TryGetPose(out wrist) &&
+                   hand.GetJoint(XRHandJointID.Palm).TryGetPose(out palm);
+        }
+
+
+        /// <summary>
         /// Places the panel just above the wrist, upright and facing the
         /// eyes (smoothed unless <paramref name="snap"/>).
         /// </summary>
@@ -801,10 +996,10 @@ namespace UrbanAnalytics.XR
             Transform space =
                 root.transform.parent;
 
-            Vector3 wrist =
-                space.InverseTransformPoint(
-                    anchor.TransformPoint(wristOffsetMeters)
-                );
+            if (!TryGetWrist(space, out Vector3 wrist, out _, out _))
+            {
+                return;
+            }
 
             Vector3 head =
                 space.InverseTransformPoint(

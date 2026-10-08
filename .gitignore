@@ -68,6 +68,13 @@ Processed_data/
 *.gltf.meta
 *.fbx.meta
 
+# Exception: the XR Hands sample's hand meshes (Unity package sample assets,
+# not project data, ~0.3–0.6 MB each). The VR scene's tracked hands
+# (XR Origin Hands rig) render them; without them the hands are invisible
+# on a fresh clone.
+!Unity/*/Assets/Samples/XR Hands/*/HandVisualizer/Models/*.fbx
+!Unity/*/Assets/Samples/XR Hands/*/HandVisualizer/Models/*.fbx.meta
+
 
 # =========================
 # PYTHON

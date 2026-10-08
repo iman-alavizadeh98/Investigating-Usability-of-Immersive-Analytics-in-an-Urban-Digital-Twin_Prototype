@@ -114,6 +114,18 @@ This has never been seen in a headset. Check, note the results, and fix:
 - [ ] **Compass.** N / E / S / W readable on the table edges; N matches the
       map (Öresund to the west of Helsingborg).
 - [ ] **Help tab.** The controller diagram is readable without zooming.
+- [ ] **Selecting (bug fixed).** Trigger on a building / area selects it; the
+      label stays above the selection; the Editor log shows
+      `InteractionManager: click selected …` for every click.
+- [ ] **Hands.** Put the controllers down: tracked hands appear; pinch
+      selects; pinch on a toolbar button presses it; poking works; left fist
+      grabs the table; the wrist menu opens when looking at the back of the
+      left wrist (tune `handFaceNormal` if not). Pick a controller up: it
+      takes over again.
+- [ ] **Toolbar.** Reachable and readable at the table edge; follows you
+      around the table; Buildings on/off makes buildings unselectable.
+- [ ] **Copies.** A / Copy makes a copy above the selection with a line and a
+      label; grip / pinch on it moves it; Remove copies clears them.
 - [ ] **Hover label** (`XRHoverLabel.metersPerUnit` 0.0006, 3 cm above the
       point): readable, not in the way.
 - [ ] **Tabs.**

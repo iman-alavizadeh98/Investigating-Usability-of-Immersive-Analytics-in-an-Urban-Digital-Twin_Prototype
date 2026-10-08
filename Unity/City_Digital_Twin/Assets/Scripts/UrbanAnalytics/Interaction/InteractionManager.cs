@@ -93,6 +93,15 @@ namespace UrbanAnalytics.Interaction
         private bool pickBuildings =
             true;
 
+        [Tooltip(
+            "Runtime switch: off = buildings are not hovered or " +
+            "selected; rays pass through them to the area below. " +
+            "Their colliders stay baked (no rebake)."
+        )]
+        [SerializeField]
+        private bool buildingsSelectable =
+            true;
+
 
         [Header("Highlight")]
         [Tooltip(
@@ -213,9 +222,40 @@ namespace UrbanAnalytics.Interaction
             pointer;
 
 
+        /// <summary>
+        /// Off: buildings are not hovered or selected; picking rays
+        /// pass through them to the area below (VR toolbar toggle).
+        /// </summary>
+        public bool BuildingsSelectable
+        {
+            get => buildingsSelectable;
+            set
+            {
+                if (buildingsSelectable == value)
+                {
+                    return;
+                }
+
+                buildingsSelectable =
+                    value;
+
+                Debug.Log(
+                    $"InteractionManager: buildings selectable = {value}.",
+                    this
+                );
+
+                BuildingsSelectableChanged?.Invoke(
+                    value
+                );
+            }
+        }
+
+
         // =========================================================
         // EVENTS
         // =========================================================
+
+        public event Action<bool> BuildingsSelectableChanged;
 
         public event Action<PickResult> HoverChanged;
 
@@ -753,10 +793,33 @@ namespace UrbanAnalytics.Interaction
 
             // ----- click -----
 
-            if (!frame.Clicked ||
-                frame.Blocked ||
-                !IsPickingReady)
+            if (!frame.Clicked)
             {
+                return;
+            }
+
+
+            // Every click is logged with its outcome, so "nothing
+            // happened" can be told apart from "selected, but shown
+            // elsewhere" in the Editor log.
+            if (frame.Blocked)
+            {
+                Debug.Log(
+                    "InteractionManager: click on a panel (UI), not on the city.",
+                    this
+                );
+
+                return;
+            }
+
+            if (!IsPickingReady)
+            {
+                Debug.Log(
+                    $"InteractionManager: click ignored, picking not ready " +
+                    $"({PickingStatus}).",
+                    this
+                );
+
                 return;
             }
 
@@ -770,10 +833,23 @@ namespace UrbanAnalytics.Interaction
 
             if (!pick.IsValid)
             {
+                Debug.Log(
+                    "InteractionManager: click on empty table, selection cleared.",
+                    this
+                );
+
                 ClearSelection();
 
                 return;
             }
+
+
+            Debug.Log(
+                $"InteractionManager: click selected {pick.Entity.Kind} " +
+                $"'{pick.Entity}'" +
+                (frame.SelectBlock ? " (area of the building requested)." : "."),
+                this
+            );
 
 
             if (frame.SelectBlock &&
@@ -832,22 +908,77 @@ namespace UrbanAnalytics.Interaction
             }
 
 
-            if (!Physics.Raycast(
+            int count =
+                Physics.RaycastNonAlloc(
                     ray,
-                    out RaycastHit hit,
+                    rayHits,
                     maxDistance,
                     Physics.DefaultRaycastLayers,
                     QueryTriggerInteraction.Ignore
-                ))
+                );
+
+            Array.Sort(
+                rayHits,
+                0,
+                count,
+                HitDistanceComparer
+            );
+
+
+            // Nearest hit that is a city entity. Skipped: the XR rig's
+            // body capsule (CharacterController), and buildings while
+            // they are not selectable (the ray goes on to the area
+            // below). Any other collider (e.g. the VR table top) stops
+            // the ray: nothing is picked.
+            for (int i = 0; i < count; i++)
             {
-                return default;
+                RaycastHit hit =
+                    rayHits[i];
+
+                if (hit.collider is CharacterController)
+                {
+                    continue;
+                }
+
+
+                PickResult result =
+                    Resolve(
+                        hit
+                    );
+
+                if (!result.IsValid)
+                {
+                    if (hit.collider.TryGetComponent(out SpatialMeshChunk _) ||
+                        hit.collider.TryGetComponent(out BuildingMeshChunk _))
+                    {
+                        continue;
+                    }
+
+                    return default;
+                }
+
+                if (!buildingsSelectable &&
+                    result.Entity.Kind == EntityKind.Building)
+                {
+                    continue;
+                }
+
+                return result;
             }
 
 
-            return Resolve(
-                hit
-            );
+            return default;
         }
+
+
+        private static readonly RaycastHit[] rayHits =
+            new RaycastHit[64];
+
+
+        private static readonly IComparer<RaycastHit> HitDistanceComparer =
+            Comparer<RaycastHit>.Create(
+                (a, b) => a.distance.CompareTo(b.distance)
+            );
 
 
         /// <summary>

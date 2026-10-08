@@ -33,6 +33,13 @@ namespace UrbanAnalytics.XR
         [SerializeField]
         private Transform controller;
 
+        [Tooltip(
+            "The tracked left hand (e.g. its Pinch Grab Pose); used while " +
+            "the hand is tracked instead of the controller."
+        )]
+        [SerializeField]
+        private Transform trackedHand;
+
         [SerializeField]
         private Camera viewCamera;
 
@@ -41,6 +48,11 @@ namespace UrbanAnalytics.XR
         [SerializeField]
         private string grabBinding =
             "<XRController>{LeftHand}/gripPressed";
+
+        [Tooltip("Hand tracking: a firm fist grabs the table.")]
+        [SerializeField]
+        private string handGrabBinding =
+            "<HandInteraction>{LeftHand}/graspFirm";
 
         [SerializeField]
         private string thumbstickBinding =
@@ -108,6 +120,18 @@ namespace UrbanAnalytics.XR
             grabbing;
 
 
+        /// <summary>
+        /// The left controller, or the tracked left hand while hand
+        /// tracking is active (XRInputModalityManager switches them).
+        /// </summary>
+        private Transform Source =>
+            controller != null && controller.gameObject.activeInHierarchy
+                ? controller
+                : trackedHand != null && trackedHand.gameObject.activeInHierarchy
+                    ? trackedHand
+                    : null;
+
+
         // =========================================================
         // UNITY
         // =========================================================
@@ -144,6 +168,16 @@ namespace UrbanAnalytics.XR
         {
             grabAction =
                 CreateAction("XR Table Grab", InputActionType.Button, grabBinding, null);
+
+            if (grabAction != null &&
+                !string.IsNullOrEmpty(handGrabBinding))
+            {
+                grabAction.Disable();
+
+                grabAction.AddBinding(handGrabBinding);
+
+                grabAction.Enable();
+            }
 
             thumbstickAction =
                 CreateAction("XR Table Turn", InputActionType.Value, thumbstickBinding, "Vector2");
@@ -191,7 +225,7 @@ namespace UrbanAnalytics.XR
         {
             if (tabletopRig == null ||
                 !tabletopRig.IsPlaced ||
-                controller == null)
+                Source == null)
             {
                 return;
             }
@@ -220,8 +254,21 @@ namespace UrbanAnalytics.XR
                 grabAction.IsPressed();
 
 
+            // The same press grabs a pop-out copy when the left ray is on
+            // one; then the table stays put.
             if (held &&
-                !grabbing)
+                !grabbing &&
+                grabAction.WasPressedThisFrame() &&
+                pointer != null &&
+                pointer.IsSideRayOnBlocker("Left"))
+            {
+                return;
+            }
+
+
+            if (held &&
+                !grabbing &&
+                grabAction.WasPressedThisFrame())
             {
                 grabbing =
                     true;
@@ -280,7 +327,7 @@ namespace UrbanAnalytics.XR
         private Vector3 HandRig()
         {
             return tabletopRig.Origin.InverseTransformPoint(
-                controller.position
+                Source.position
             );
         }
 
@@ -290,7 +337,7 @@ namespace UrbanAnalytics.XR
         {
             Vector3 forward =
                 tabletopRig.Origin.InverseTransformDirection(
-                    controller.forward
+                    Source.forward
                 );
 
             // Pointing straight up/down has no heading; use the
@@ -299,7 +346,7 @@ namespace UrbanAnalytics.XR
             {
                 forward =
                     tabletopRig.Origin.InverseTransformDirection(
-                        controller.up
+                        Source.up
                     );
             }
 

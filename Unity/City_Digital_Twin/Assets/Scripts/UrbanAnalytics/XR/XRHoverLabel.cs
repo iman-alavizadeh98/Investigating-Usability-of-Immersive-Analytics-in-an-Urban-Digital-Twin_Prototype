@@ -14,6 +14,10 @@ namespace UrbanAnalytics.XR
     /// the first values of the current view (same text as the desktop
     /// tooltip).
     ///
+    /// When nothing is hovered, the label stays above the selected
+    /// entity (marked "Selected"), so a selection always shows its
+    /// values where the user is looking.
+    ///
     /// Sized in real metres and multiplied by the rig scale (the XR
     /// camera's world scale), so it reads the same at any table scale.
     /// The label is visual only: it has no raycaster or collider, so it
@@ -61,6 +65,14 @@ namespace UrbanAnalytics.XR
 
         private TMP_Text text;
 
+        private string hoverText;
+
+        private string selectionText;
+
+        private Vector3 selectionPoint;
+
+        private bool showingHover;
+
 
         private void Awake()
         {
@@ -86,6 +98,12 @@ namespace UrbanAnalytics.XR
             {
                 interactionManager.HoverChanged +=
                     HandleHoverChanged;
+
+                interactionManager.SelectionChanged +=
+                    HandleSelectionChanged;
+
+                interactionManager.SceneRefreshed +=
+                    RefreshSelection;
             }
         }
 
@@ -96,6 +114,12 @@ namespace UrbanAnalytics.XR
             {
                 interactionManager.HoverChanged -=
                     HandleHoverChanged;
+
+                interactionManager.SelectionChanged -=
+                    HandleSelectionChanged;
+
+                interactionManager.SceneRefreshed -=
+                    RefreshSelection;
             }
 
             if (canvasRect != null)
@@ -206,31 +230,105 @@ namespace UrbanAnalytics.XR
             PickResult pick
         )
         {
-            if (canvasRect == null)
+            hoverText =
+                pick.IsValid
+                    ? BuildText(pick.Entity, false)
+                    : null;
+        }
+
+
+        private void HandleSelectionChanged(
+            EntityReference entity
+        )
+        {
+            RefreshSelection();
+        }
+
+
+        /// <summary>
+        /// Text and anchor (top centre of everything drawn for it) of
+        /// the current selection; rebuilt when the view changes.
+        /// </summary>
+        private void RefreshSelection()
+        {
+            selectionText =
+                null;
+
+            if (interactionManager == null ||
+                !interactionManager.HasSelection)
             {
                 return;
             }
 
 
-            if (!pick.IsValid)
-            {
-                canvasRect.gameObject.SetActive(false);
+            EntityReference selected =
+                interactionManager.Selected;
 
+            EntityGeometry geometry =
+                interactionManager.CollectGeometry(
+                    selected,
+                    true
+                );
+
+            if (geometry.IsEmpty)
+            {
+                geometry =
+                    interactionManager.CollectFootprint(
+                        selected
+                    );
+            }
+
+            if (geometry.IsEmpty)
+            {
                 return;
             }
 
 
+            Bounds bounds =
+                geometry.Bounds;
+
+            selectionPoint =
+                new Vector3(
+                    bounds.center.x,
+                    bounds.max.y,
+                    bounds.center.z
+                );
+
+            selectionText =
+                BuildText(
+                    selected,
+                    true
+                );
+        }
+
+
+        private string BuildText(
+            EntityReference entity,
+            bool selected
+        )
+        {
             EntityInfo info =
                 interactionManager.BuildInfo(
-                    pick.Entity
+                    entity
                 );
 
 
             var lines =
-                new List<string>
-                {
-                    $"<b>{info.Title}</b>"
-                };
+                new List<string>();
+
+            if (selected)
+            {
+                lines.Add(
+                    RuntimeUi.Colorize(
+                        "Selected",
+                        RuntimeUi.AccentColor
+                    )
+                );
+            }
+
+            lines.Add(
+                $"<b>{info.Title}</b>"
+            );
 
             if (!string.IsNullOrEmpty(info.Subtitle))
             {
@@ -261,20 +359,16 @@ namespace UrbanAnalytics.XR
             }
 
 
-            text.text =
-                string.Join(
-                    "\n",
-                    lines
-                );
-
-            canvasRect.gameObject.SetActive(true);
+            return string.Join(
+                "\n",
+                lines
+            );
         }
 
 
         private void LateUpdate()
         {
             if (canvasRect == null ||
-                !canvasRect.gameObject.activeSelf ||
                 interactionManager == null ||
                 viewCamera == null)
             {
@@ -282,16 +376,45 @@ namespace UrbanAnalytics.XR
             }
 
 
+            // Hover wins; otherwise the selection keeps its label.
             PickResult hovered =
                 interactionManager.Hovered;
 
+            bool hover =
+                hovered.IsValid &&
+                hoverText != null;
 
-            if (!hovered.IsValid)
+            bool selection =
+                !hover &&
+                selectionText != null &&
+                interactionManager.HasSelection;
+
+
+            if (!hover &&
+                !selection)
             {
                 canvasRect.gameObject.SetActive(false);
 
                 return;
             }
+
+
+            string wanted =
+                hover
+                    ? hoverText
+                    : selectionText;
+
+            if (text.text != wanted ||
+                showingHover != hover)
+            {
+                text.text =
+                    wanted;
+
+                showingHover =
+                    hover;
+            }
+
+            canvasRect.gameObject.SetActive(true);
 
 
             // World units per real metre (the rig is scaled).
@@ -303,7 +426,7 @@ namespace UrbanAnalytics.XR
 
 
             Vector3 position =
-                hovered.Point +
+                (hover ? hovered.Point : selectionPoint) +
                 Vector3.up * (heightAboveMeters * worldScale);
 
 

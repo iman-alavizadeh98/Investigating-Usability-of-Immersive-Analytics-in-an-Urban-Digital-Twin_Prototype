@@ -155,8 +155,8 @@ Label "right" ($y0 + 60)  "TRIGGER"              "Select  (empty table: clear)" 
 Label "right" ($y0 + 180) "THUMBSTICK  $LR"     "Previous / next view"               ($c.Stick[0] + 40) $c.Stick[1]
 Label "right" ($y0 + 290) "THUMBSTICK  $UD" "Bigger / smaller table"            ($c.Stick[0] + 20) ($c.Stick[1] + 30)
 Label "left"  ($y0 + 110) "B"                    "Clear the selection"                ($c.B1[0] - 24) $c.B1[1]
-Label "left"  ($y0 + 220) "A"                    "Copy to compare (A, then B)"        ($c.B2[0] - 24) $c.B2[1]
-Label "left"  ($y0 + 370) "GRIP + TRIGGER"       "Select the area of a building"      ($c.Grip[0] - 13) $c.Grip[1]
+Label "left"  ($y0 + 220) "A"                    "Pop-out copy of the selection"        ($c.B2[0] - 24) $c.B2[1]
+Label "left"  ($y0 + 370) "GRIP"                 "On a copy: grab it. + Trigger: area"      ($c.Grip[0] - 13) $c.Grip[1]
 $g.DrawString("Meta button (hold): recentre the view", $fNote, $bMuted, (New-Object System.Drawing.RectangleF(24, ($y0 + 540), ($W - 48), 40)), $center)
 
 $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)

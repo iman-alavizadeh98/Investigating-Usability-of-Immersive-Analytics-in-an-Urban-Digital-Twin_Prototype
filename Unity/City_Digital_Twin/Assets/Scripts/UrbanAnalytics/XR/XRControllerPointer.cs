@@ -87,6 +87,15 @@ namespace UrbanAnalytics.XR
             4.0f;
 
 
+        [Tooltip(
+            "Objects on these layers block the city like a panel does " +
+            "(the pop-out copies' grab boxes are on Ignore Raycast)."
+        )]
+        [SerializeField]
+        private LayerMask blockingLayers =
+            1 << 2;
+
+
         [Header("Visual (real metres)")]
         [SerializeField]
         private bool drawRay =
@@ -154,6 +163,65 @@ namespace UrbanAnalytics.XR
         public bool ActiveHandOnUi =>
             IsValidHand(activeHand) &&
             IsPointingAtUi(hands[activeHand]);
+
+
+        /// <summary>
+        /// The ray of the first tracked hand whose name starts with
+        /// <paramref name="side"/> ("Right" / "Left": the controller or
+        /// the tracked hand of that side, whichever is active).
+        /// </summary>
+        public bool TryGetSideRay(
+            string side,
+            out Ray ray,
+            out float maxDistance
+        )
+        {
+            foreach (Hand hand in hands)
+            {
+                if (hand != null &&
+                    hand.name.StartsWith(side, StringComparison.Ordinal) &&
+                    TryGetRay(hand, out ray, out float worldScale))
+                {
+                    maxDistance =
+                        maxDistanceMeters * worldScale;
+
+                    return true;
+                }
+            }
+
+            ray =
+                default;
+
+            maxDistance =
+                0.0f;
+
+            return false;
+        }
+
+
+        /// <summary>True while the side's ray is on a blocking object (a copy).</summary>
+        public bool IsSideRayOnBlocker(
+            string side
+        )
+        {
+            return TryGetSideRay(side, out Ray ray, out float maxDistance) &&
+                   IsOnBlocker(ray, maxDistance);
+        }
+
+
+        private bool IsOnBlocker(
+            Ray ray,
+            float maxDistance
+        )
+        {
+            return blockingLayers.value != 0 &&
+                   Physics.Raycast(
+                       ray,
+                       maxDistance,
+                       blockingLayers,
+                       QueryTriggerInteraction.Collide
+                   );
+        }
 
 
         /// <summary>True while any hand's ray is on UI.</summary>
@@ -351,8 +419,11 @@ namespace UrbanAnalytics.XR
                     hands[i]?.selectAction.action;
 
 
+                // Only hands that are tracked now (controller or hand
+                // tracking, switched by XRInputModalityManager) count.
                 if (select != null &&
-                    select.WasPressedThisFrame())
+                    select.WasPressedThisFrame() &&
+                    TryGetRay(hands[i], out _, out _))
                 {
                     activeHand =
                         i;
@@ -368,6 +439,24 @@ namespace UrbanAnalytics.XR
             if (!IsValidHand(activeHand))
             {
                 return false;
+            }
+
+
+            // Controllers put down / hands appeared: fall back to the
+            // first entry that is tracked now.
+            if (!TryGetRay(hands[activeHand], out _, out _))
+            {
+                for (int i = 0; i < hands.Length; i++)
+                {
+                    if (hands[i] != null &&
+                        TryGetRay(hands[i], out _, out _))
+                    {
+                        activeHand =
+                            i;
+
+                        break;
+                    }
+                }
             }
 
 
@@ -395,9 +484,9 @@ namespace UrbanAnalytics.XR
                     HasRay = true,
                     Ray = ray,
                     MaxDistance = maxDistanceMeters * worldScale,
-                    Blocked = IsPointingAtUi(
-                        hand
-                    ),
+                    Blocked =
+                        IsPointingAtUi(hand) ||
+                        IsOnBlocker(ray, maxDistanceMeters * worldScale),
                     Clicked = clicked,
                     SelectBlock =
                         modifier != null &&

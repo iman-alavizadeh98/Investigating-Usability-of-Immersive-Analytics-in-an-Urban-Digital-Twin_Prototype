@@ -297,6 +297,35 @@ namespace UrbanAnalytics.Interaction
         // PUBLIC
         // =========================================================
 
+        /// <summary>
+        /// Applies the previous (step &lt; 0) or next (step &gt; 0) option,
+        /// wrapping around; from "nothing shown" it starts at the first
+        /// or last option. Ignored while a view is being applied.
+        /// </summary>
+        public void Step(
+            int step
+        )
+        {
+            if (IsApplying ||
+                options.Count == 0 ||
+                step == 0)
+            {
+                return;
+            }
+
+
+            int next =
+                ActiveIndex < 0
+                    ? (step > 0 ? 0 : options.Count - 1)
+                    : ((ActiveIndex + step) % options.Count + options.Count) % options.Count;
+
+
+            Apply(
+                next
+            );
+        }
+
+
         public async void Apply(
             int index
         )

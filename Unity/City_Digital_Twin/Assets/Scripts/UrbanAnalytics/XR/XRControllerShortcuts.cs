@@ -10,7 +10,8 @@ namespace UrbanAnalytics.XR
     /// VR equivalents of the desktop keyboard shortcuts, on the
     /// controller buttons and the right thumbstick:
     ///
-    ///   A (right primary)      copy the selection to compare (= C)
+    ///   A (right primary)      pop-out copy of the selection (XRSelectionCopies;
+    ///                          without it: copy to compare, = C)
     ///   B (right secondary)    clear the selection (= Esc)
     ///   Y (left secondary)     show / hide the table board
     ///   Right thumbstick ← →   previous / next view (= 1–9)
@@ -97,6 +98,9 @@ namespace UrbanAnalytics.XR
         private XRTableBoard tableBoard;
 
         [SerializeField]
+        private XRSelectionCopies copies;
+
+        [SerializeField]
         private StudySession studySession;
 
 
@@ -158,6 +162,12 @@ namespace UrbanAnalytics.XR
             {
                 tableBoard =
                     FindFirstObjectByType<XRTableBoard>();
+            }
+
+            if (copies == null)
+            {
+                copies =
+                    FindFirstObjectByType<XRSelectionCopies>();
             }
 
             if (studySession == null)
@@ -250,6 +260,15 @@ namespace UrbanAnalytics.XR
             InputAction.CallbackContext context
         )
         {
+            // A = pop-out copy of the selection (grab and place it).
+            if (copies != null)
+            {
+                copies.CopySelected();
+
+                return;
+            }
+
+
             if (comparisonManager != null &&
                 interactionManager != null &&
                 interactionManager.HasSelection)
@@ -327,33 +346,8 @@ namespace UrbanAnalytics.XR
             int step
         )
         {
-            if (visualizationSwitcher == null ||
-                visualizationSwitcher.IsApplying)
-            {
-                return;
-            }
-
-
-            int count =
-                visualizationSwitcher.Options.Count;
-
-            if (count == 0)
-            {
-                return;
-            }
-
-
-            int current =
-                visualizationSwitcher.ActiveIndex;
-
-            int next =
-                current < 0
-                    ? (step > 0 ? 0 : count - 1)
-                    : ((current + step) % count + count) % count;
-
-
-            visualizationSwitcher.Apply(
-                next
+            visualizationSwitcher?.Step(
+                step
             );
         }
 
