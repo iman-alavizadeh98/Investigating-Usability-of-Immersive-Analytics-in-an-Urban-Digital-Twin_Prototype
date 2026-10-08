@@ -21,8 +21,12 @@ namespace UrbanAnalytics.Visualization.UI
     /// Built from code (no prefab), on its own screen-space canvas.
     /// The panel is named "LegendPanel", so DesktopInteractionUI
     /// scales it with the rest of the UI and places the selection
-    /// panel underneath. For VR, BuildEntries can fill a
-    /// world-space panel instead.
+    /// panel underneath.
+    ///
+    /// For VR, set <see cref="Container"/> before the component is
+    /// enabled (add it to an inactive GameObject): the legends then
+    /// fill that world-space container and no screen canvas is
+    /// built. Each instance owns its ramp textures.
     /// </summary>
     public sealed class LegendStackView : MonoBehaviour
     {
@@ -49,6 +53,17 @@ namespace UrbanAnalytics.Visualization.UI
 
         private RectTransform panel;
 
+
+        /// <summary>
+        /// Optional container (vertical layout) to fill instead of
+        /// building a screen-space canvas. Set it before Awake.
+        /// </summary>
+        public RectTransform Container
+        {
+            get;
+            set;
+        }
+
         private readonly List<Texture2D> textures =
             new List<Texture2D>();
 
@@ -61,7 +76,15 @@ namespace UrbanAnalytics.Visualization.UI
                     FindFirstObjectByType<VisualizationManager>();
             }
 
-            BuildCanvas();
+            if (Container != null)
+            {
+                panel =
+                    Container;
+            }
+            else
+            {
+                BuildCanvas();
+            }
         }
 
 

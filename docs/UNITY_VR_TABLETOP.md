@@ -5,11 +5,14 @@ VR mode for the `UrbanAnalytics` runtime on Meta Quest: the city is a fixed
 [VR_TABLETOP_PLAN.md](VR_TABLETOP_PLAN.md). Decision on the scale:
 [decisions/2026-10-08_vr-scale-the-rig-not-the-city.md](decisions/2026-10-08_vr-scale-the-rig-not-the-city.md).
 
-Status (2026-10-08): **XR setup, table, pointer abstraction and controller
-picking done and verified in the Editor with the XR Device Simulator. Not yet
-tested in a real headset.** No VR UI yet: the info panel, visualization list
-and study panel are still the desktop screen-space UI, which shows on the PC
-monitor only (usable by the facilitator).
+Status (2026-10-08):
+- **Done:** XR setup, table, pointer abstraction, controller picking and the
+  **VR UI** (hand menu + hover label).
+- **Verified** in the Editor with the XR Device Simulator.
+- **Not yet tested in a real headset.**
+
+The desktop screen-space panels still show on the PC monitor, so the
+facilitator keeps the study panel there.
 
 ## How to run
 
@@ -31,7 +34,44 @@ Controls:
 | Trigger | Select; on empty table: clear the selection |
 | Grip held + trigger | Select the cell (block) of a building |
 | Trigger on the other controller | Makes that hand the active pointer |
+| Ray on the hand menu + trigger | Press a button / tab |
+| Thumbstick while pointing at a list | Scroll |
+| X (left controller) | Show / hide the hand menu |
 | PC keyboard (facilitator) | Desktop keys still work: 1–9 visualizations, Esc, C, … |
+
+## VR UI
+
+**Hand menu** (`XRHandMenu`): a panel 31 × 38 cm (0.6 mm per canvas unit)
+held 10 cm above the left controller, tilted toward the eyes. It moves with
+the hand, so it stays readable from every side of the table. You operate it
+with the right controller's ray. Tabs:
+
+| Tab | Content |
+|---|---|
+| Info | The selection: name, "in this view" values (large, with rank in words), foldable detail sections, footer IDs. Buttons: Select cell (for a building), Copy → A, Copy → B, Clear. **Opens automatically on a new selection** |
+| Views | The visualization list (same catalog as the desktop list) + Clear view; the active view is highlighted |
+| Legend | One legend per encoded variable (a second `LegendStackView` filling the panel) |
+| Compare | Slots A/B: both block views (drag on a view rotates both) + table A, B, B − A (label on its own line, as the panel is narrow) |
+| Task | Current study question and answer options, **read only**. The facilitator runs the session on the PC and the participant answers aloud. **Opens automatically when the facilitator presses "Show view"** |
+
+The header line shows the active view.
+
+**Hover label** (`XRHoverLabel`): a small label 3 cm above the hovered
+point. It turns toward the user about the vertical axis and shows the name
+plus the first 3 values of the current view (same text as the desktop
+tooltip).
+
+Rendering rules for both:
+- **Backgrounds are fully opaque.** In linear colour space, the desktop panel
+  colour's 6 % transparency lets the bright map show through clearly.
+- **Canvas sorting order:** the menu is 110 and the label 100. The selection
+  highlight shader is `Transparent+10` and writes no depth, so with a lower
+  order it would draw over the panels.
+
+Formatting is shared with the desktop: `DesktopInteractionUI`'s
+`CreateHighlightRow`, `CreateValueRow`, `ValueWithUnit`, `CompareCell` and
+`Difference` are now `internal static` and reused, so values read the same in
+both modes.
 
 ## Rebuilding the VR scene
 
@@ -66,12 +106,19 @@ All runtime scripts are in `Assets/Scripts/UrbanAnalytics/XR/` (namespace
 | `XR/TabletopRig.cs` | Waits for the city to load, then scales and places the XR Origin, builds the table and floor, sets clip planes, and logs the scale |
 | `XR/XRControllerPointer.cs` | Controller ray from the XRI Near-Far Interactor's stabilized origin; trigger/grip actions; UI blocking; draws its own ray + reticle in real metres |
 | `XR/XRSimulatorFallback.cs` | Editor only: starts the XR Device Simulator when no headset is active |
+| `XR/XRHandMenu.cs` | Hand menu (tabs Info / Views / Legend / Compare / Task), see VR UI |
+| `XR/XRHoverLabel.cs` | Floating hover label, see VR UI |
 | `XR/Editor/VRSceneBuilder.cs` | Builds the VR scene (above) |
 
-Change to existing code: `InteractionManager` has a new optional
-`pointerSource` field (a component implementing `IInteractionPointer`), a
-`Pointer` property, and `Pick(Ray, float)`. `Pick(Vector2)` still exists and
-now delegates to it.
+Changes to existing code:
+- `InteractionManager` has a new optional `pointerSource` field (a component
+  implementing `IInteractionPointer`), a `Pointer` property, and
+  `Pick(Ray, float)`. `Pick(Vector2)` still exists and now delegates to it.
+- `LegendStackView.Container`: when set before Awake, the view fills that
+  container instead of building its own screen canvas.
+- `StudySession`: `ScenarioIndex`, `ScenarioCount`, `ViewShown` and the event
+  `Changed` (raised on every panel refresh).
+- `DesktopInteractionUI`: its formatting helpers are `internal` (see VR UI).
 
 ## How the table works
 
@@ -95,8 +142,15 @@ now delegates to it.
 
 - **Not yet tested on a headset.** In particular, the stereo separation on a
   scaled rig and the comfort of the 1:6517 scale need checking in the Quest.
-- **No VR UI yet.** Screen-space panels (info, visualizations, comparison,
-  study) render on the PC monitor only. Next step: world-space UI (plan item 5).
+- **UI size was chosen without a headset.** Tune `XRHandMenu.metersPerUnit`
+  and its position/tilt, and `XRHoverLabel.metersPerUnit`, in the Inspector
+  during the first headset test. Rebuilding the scene resets them to the code
+  defaults, so put good values back into the code.
+- **Study tasks are read only in VR.** The facilitator selects answers on the
+  PC. The current scenario texts in `scenarios.json` mention desktop controls
+  ("pan, orbit and zoom… press C"); VR sessions need VR wording.
+- No VR-specific log events yet (hand used, menu tab opened, hand-menu
+  visible). Selections, views and comparisons are logged as on the desktop.
 - XRI line visuals are off because they are sized in world units. If XRI
   visuals are wanted later, scale their widths and distances by S.
 - Columns of a signed/diverging height scale go **below** the base plane and
@@ -126,6 +180,22 @@ outside the repo):
    floor around it.
 6. Desktop scene unchanged: `Pointer` = `DesktopMousePointer`, and a simulated
    mouse click on a building selects it. EditMode tests: 62/62 pass.
+7. VR UI (head and both controllers posed by script):
+   - **real UI click:** the right ray aimed at the "S2 Income vs turnout"
+     button hits it through `TrackedDeviceGraphicRaycaster` (pointer
+     `Blocked` = true, so the city is not picked). A UI press through the
+     interactor's `uiPressInput` applied view S2;
+   - **Info:** a selection opens the tab with the title, values of the view
+     and sections;
+   - **Legend:** S2 shows column colour (turnout) and height (income);
+   - **Compare:** copies A/B show both views and the A/B/B − A table;
+   - **Task:** Start session + Show view opens the tab with "Task 1 / 7 ·
+     training";
+   - **hover label:** shows the name and values above the reticle;
+   - captures confirmed the opaque panels and that the highlight no longer
+     shows through. No console errors.
+8. Desktop scene after the UI changes: the screen-space legend still builds
+   (2 legends for S2); 62/62 tests pass.
 
 ## Failure cases
 

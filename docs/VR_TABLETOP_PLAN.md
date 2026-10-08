@@ -1,6 +1,6 @@
 # VR Tabletop Mode — Implementation Plan
 
-Status (2026-10-08): **items 1–4 done** and verified in the Editor with the XR Device Simulator; not yet tested in a headset. See [UNITY_VR_TABLETOP.md](UNITY_VR_TABLETOP.md). Next: item 5 (world-space UI).
+Status (2026-10-08): **items 1–5 done** (item 5 = hand menu + hover label) and verified in the Editor with the XR Device Simulator; not yet tested in a headset. See [UNITY_VR_TABLETOP.md](UNITY_VR_TABLETOP.md). Next: headset test, then item 6 (VR-specific log events).
 
 ## What is being built
 

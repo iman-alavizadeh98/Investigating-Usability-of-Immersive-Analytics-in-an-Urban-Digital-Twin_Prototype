@@ -127,6 +127,17 @@ namespace UrbanAnalytics.Study
         public StudyScenario Current =>
             index >= 0 && index < scenarios.Length ? scenarios[index] : null;
 
+        /// <summary>0-based index of the current scenario (-1 before the session).</summary>
+        public int ScenarioIndex => index;
+
+        public int ScenarioCount => scenarios.Length;
+
+        /// <summary>True once "Show view" was pressed for the current scenario.</summary>
+        public bool ViewShown => viewShown;
+
+        /// <summary>Raised whenever the session state shown in the panel changes (also used by the VR task card).</summary>
+        public event Action Changed;
+
 
         // =========================================================
         // UNITY
@@ -673,6 +684,8 @@ namespace UrbanAnalytics.Study
             }
 
             statusText.text = status;
+
+            Changed?.Invoke();
         }
 
 

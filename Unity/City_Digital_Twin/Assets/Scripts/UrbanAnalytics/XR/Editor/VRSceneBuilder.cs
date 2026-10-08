@@ -26,6 +26,7 @@ namespace UrbanAnalytics.XR.Editor
     /// Steps: copy the desktop scene; remove the desktop camera; add
     /// the XRI rig (locomotion and teleport off, XRI ray visuals off);
     /// add TabletopRig, XRControllerPointer and XRSimulatorFallback;
+    /// add the VR UI (XRHandMenu on the left controller, XRHoverLabel);
     /// wire InteractionManager and StudySession to the XR camera;
     /// swap the UI input module for the XR one. The desktop scene is
     /// not modified.
@@ -279,6 +280,30 @@ namespace UrbanAnalytics.XR.Editor
             pointerSerialized.ApplyModifiedPropertiesWithoutUndo();
 
 
+            // ----- VR UI: hand menu (left controller) + hover label -----
+
+            Transform leftController =
+                FindControllerRoot(left, "Left Controller");
+
+            var vrUi =
+                new GameObject("VRUI");
+
+            SetFields(
+                vrUi.AddComponent<XRHandMenu>(),
+                ("anchor", leftController),
+                ("eventCamera", xrCamera)
+            );
+
+            SetFields(
+                vrUi.AddComponent<XRHoverLabel>(),
+                ("viewCamera", xrCamera)
+            );
+
+            report.AppendLine(
+                $"Hand menu anchored to '{leftController?.name}'."
+            );
+
+
             // ----- simulator fallback (Editor only) -----
 
             var devTools =
@@ -406,6 +431,34 @@ namespace UrbanAnalytics.XR.Editor
                 .FirstOrDefault(
                     interactor => interactor.handedness == handedness
                 );
+        }
+
+
+        /// <summary>
+        /// The tracked controller object above an interactor (named
+        /// "Left Controller" / "Right Controller" in the XRI rig).
+        /// </summary>
+        private static Transform FindControllerRoot(
+            NearFarInteractor interactor,
+            string name
+        )
+        {
+            if (interactor == null)
+            {
+                return null;
+            }
+
+            for (Transform current = interactor.transform;
+                 current != null;
+                 current = current.parent)
+            {
+                if (current.name == name)
+                {
+                    return current;
+                }
+            }
+
+            return interactor.transform.parent;
         }
 
 

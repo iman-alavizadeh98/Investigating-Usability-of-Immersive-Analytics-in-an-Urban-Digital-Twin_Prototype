@@ -1616,7 +1616,7 @@ namespace UrbanAnalytics.Interaction.UI
         /// channel / area), large value with unit, and its rank in
         /// words.
         /// </summary>
-        private static void CreateHighlightRow(
+        internal static void CreateHighlightRow(
             Transform parent,
             EntityInfoRow row
         )
@@ -1685,7 +1685,7 @@ namespace UrbanAnalytics.Interaction.UI
         }
 
 
-        private static void CreateValueRow(
+        internal static void CreateValueRow(
             Transform parent,
             EntityInfoRow row
         )
@@ -2344,7 +2344,7 @@ namespace UrbanAnalytics.Interaction.UI
         }
 
 
-        private static void CreateTableRow(
+        internal static void CreateTableRow(
             RectTransform line,
             string label,
             string valueA,
@@ -2400,7 +2400,7 @@ namespace UrbanAnalytics.Interaction.UI
         }
 
 
-        private static string CompareCell(
+        internal static string CompareCell(
             EntityInfoRow row,
             bool filled
         )
@@ -2446,7 +2446,7 @@ namespace UrbanAnalytics.Interaction.UI
         /// <summary>
         /// B − A, and the change relative to A when A ≠ 0.
         /// </summary>
-        private static string Difference(
+        internal static string Difference(
             EntityInfoRow rowA,
             EntityInfoRow rowB
         )
@@ -2629,7 +2629,7 @@ namespace UrbanAnalytics.Interaction.UI
         // FORMATTING
         // =========================================================
 
-        private static string ValueWithUnit(
+        internal static string ValueWithUnit(
             EntityInfoRow row
         )
         {
