@@ -5,6 +5,7 @@
     {
       "id": "deso_income_origin",
       "enabled": true,
+      "outline": { "enabled": true, "width": 0.025, "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1.0 } },
       "mark": 1,
       "target": { "kind": 0, "layerId": "deso", "mapping": { "mode": 0, "associationId": "" } },
       "encodings": [
@@ -12,7 +13,7 @@
           "channel": 1, "role": 0,
           "data": { "mode": 0, "variables": [ { "dataLayerId": "deso_income", "variableId": "median_income" } ] },
           "scale": { "type": 4 },
-          "height": { "maximumVisualHeight": 0.3, "minimumVisualHeight": 0.02 }
+          "height": { "maximumVisualHeight": 0.6, "minimumVisualHeight": 0.01 }
         },
         {
           "channel": 0, "role": 0,

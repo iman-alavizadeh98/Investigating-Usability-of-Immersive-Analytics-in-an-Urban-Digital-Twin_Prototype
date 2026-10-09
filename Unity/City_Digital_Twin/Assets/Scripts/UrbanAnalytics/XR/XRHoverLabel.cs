@@ -60,6 +60,10 @@ namespace UrbanAnalytics.XR
         private float widthUnits =
             380.0f;
 
+        [Tooltip("Shows the active click tool (Copy / Compare) on the hover label.")]
+        [SerializeField]
+        private XRClickTools clickTools;
+
 
         private RectTransform canvasRect;
 
@@ -76,6 +80,12 @@ namespace UrbanAnalytics.XR
 
         private void Awake()
         {
+            if (clickTools == null)
+            {
+                clickTools =
+                    FindFirstObjectByType<XRClickTools>();
+            }
+
             if (interactionManager == null)
             {
                 interactionManager =
@@ -366,6 +376,28 @@ namespace UrbanAnalytics.XR
         }
 
 
+        /// <summary>First hover line when a click tool other than Select is on.</summary>
+        private string ToolLine()
+        {
+            if (clickTools == null)
+            {
+                return string.Empty;
+            }
+
+            switch (clickTools.Tool)
+            {
+                case XRClickTool.Copy:
+                    return RuntimeUi.Colorize("Click to copy", RuntimeUi.AccentColor) + "\n";
+
+                case XRClickTool.Compare:
+                    return RuntimeUi.Colorize("Click to compare", RuntimeUi.AccentColor) + "\n";
+
+                default:
+                    return string.Empty;
+            }
+        }
+
+
         private void LateUpdate()
         {
             if (canvasRect == null ||
@@ -401,7 +433,7 @@ namespace UrbanAnalytics.XR
 
             string wanted =
                 hover
-                    ? hoverText
+                    ? ToolLine() + hoverText
                     : selectionText;
 
             if (text.text != wanted ||

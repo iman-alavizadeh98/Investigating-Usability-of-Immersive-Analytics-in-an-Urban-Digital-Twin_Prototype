@@ -48,27 +48,27 @@ keys (no mouse camera or mouse picking in VR).
    recentre so you face the table. The Quest boundary must have a correct
    floor height, and room for the table (2.6 m long at start, up to 4 m).
 
-Controls (also on the wrist menu's **Help** tab):
+Controls (since 2026-10-09; taught by the start tutorial and shown as
+pictures on the Help panel):
 
 | Input | Action | Desktop key |
 |---|---|---|
 | Point the right controller | Hover (white overlay + yellow reticle + label) | mouse hover |
-| Trigger | Select; on empty table: clear the selection | click |
+| Trigger | Click: select (+ copy / compare with those tools on); on empty table: clear the selection | click |
 | Grip held + trigger | Select the area (cell) of a building | Alt+click |
-| A (right) | Pop-out copy of the selection (compare A/B: wrist menu → Info) | C (compare) |
-| Grip with the ray on a copy | Grab the copy, move it, let go | — |
-| B (right) | Clear the selection | Esc |
-| Right thumbstick left / right | Previous / next view | 1–9 |
+| Grip with the ray on a copy or a panel's Grab bar | Carry it, let go to drop | — |
+| A (right) | Copy what the ray points at (nothing hovered: the selection); same as the Copy tool | C (compare) |
+| B (right) | Unselect | Esc |
 | Right thumbstick up / down (held) | Bigger / smaller table | — |
 | Look at the left wrist | Open the wrist menu | — |
 | X (left) | Pin the menu in place / send it back to the wrist | — |
-| Y (left) | Show / hide the table board | — |
+| Y (left) | Show / hide the Info panel | — |
 | Left grip (hold) | Grab the table: it follows the hand and turns with the wrist | — |
 | Left thumbstick left / right | Turn the table about its centre | — |
 | Left thumbstick press | Bring the table in front of you (keeps its rotation) | — |
 | Trigger on the left controller | Point with the left hand instead | — |
 | Ray on a panel + trigger / thumbstick | Press a button / scroll | click / wheel |
-| PC keyboard (facilitator) | 1–9 views, 0 clear view, Esc, C, F2 study panel, [ ] panel size, H | — |
+| PC keyboard (facilitator) | 1–9 views, 0 clear view, Esc, C, F2 study panel, [ ] panel size, H, **F8 skip the VR tutorial** | — |
 
 **Hands** (put the controllers down; XRI's `XRInputModalityManager` switches
 to the tracked hands and back when a controller is picked up):
@@ -82,20 +82,23 @@ to the tracked hands and back when a controller is picked up):
 | Fingertip on a button | Poke (XRI poke interactor) |
 | Look at the back of the left wrist | Open the wrist menu (wrist + palm joints from XR Hands) |
 
-**Toolbar** at the table edge (`XRTableToolbar`), for everything a hand
-cannot do with buttons: `< View` · view name · `View >` · `Buildings: on/off`
-· `Copy` · `Clear` · `Remove copies` / `Smaller` · `Bigger` · `Turn left` ·
-`Turn right` · `Bring here` · `Board` · `Menu`.
+**Toolbar** at the table edge (`XRTableToolbar`); every button acts on the
+table:
+
+| Row | Buttons |
+|---|---|
+| DATA | `< View` · view name · `View >` · `Clear table` (view, selection and copies off; plain buildings stay) |
+| CLICK | `Select` · `Copy` · `Compare` (what the trigger does) · `Remove copies` · `Buildings: on/off` |
+| TABLE | `Smaller` · `Bigger` · `Turn left` · `Turn right` · `Bring here` |
 
 While any controller ray is on a panel, the thumbstick scrolls the panel
-and does not resize, turn or switch views. The left grip is also the left
-hand's "select the area" modifier; it only does that while the left hand is
-the active pointer and its trigger is pressed during the grab.
+and does not resize or turn. The left grip is also the left hand's "select
+the area" modifier; it only does that while the left hand is the active
+pointer and its trigger is pressed during the grab.
 
-The Help tab shows these controls as a labelled diagram of the two Quest 3
-controllers (`Assets/Textures/UrbanAnalytics/VR/vr_controls.png`, drawn by
-`Unity/City_Digital_Twin/Tools/make_vr_controls_image.ps1`; re-run it and
-update `XRHandMenu.ControlsText` whenever a control changes).
+Help pictures: `Assets/Textures/UrbanAnalytics/VR/help_*.png`, drawn by
+`Unity/City_Digital_Twin/Tools/make_vr_help_images.ps1`; re-run it and rebuild
+the VR scene whenever a control or the toolbar changes.
 
 ### Testing with the headset off (proximity sensor)
 
@@ -155,7 +158,7 @@ hovered it stays above the **selected** entity (tagged "Selected", values of
 the current view), so a selection always shows its information where the
 user looks.
 
-**Pop-out copies** (`XRSelectionCopies`, A / toolbar `Copy`): a complete
+**Copies** (`XRSelectionCopies`, toolbar Copy tool + click; until 2026-10-09: A): a complete
 copy of everything drawn for the selection (`InteractionManager.
 CollectGeometry`, building or area with its columns/surface), 12 cm above the
 original, with a coloured line back to it and a label (copy number, view,
@@ -234,26 +237,54 @@ it follows the wrist.
   resized); X again sends it back to the wrist.
 - All thresholds are Inspector fields on `VRUI/XRHandMenu`.
 
-Tabs (operated with the right controller's ray):
+Tabs (operated with the right controller's ray; since 2026-10-09):
 
 | Tab | Content |
 |---|---|
-| Info | The selection: name, "in this view" values (large, with rank in words), foldable detail sections (+ / −), footer IDs. Buttons: Select cell (for a building), Copy → A, Copy → B, Clear. **Opens automatically on a new selection** |
-| Views | The visualization list (same catalog as the desktop list) + Clear view; the active view is highlighted |
-| Legend | One legend per encoded variable (a second `LegendStackView` filling the panel) |
-| Compare | Slots A/B: both block views (drag on a view rotates both) + table A, B, B − A |
-| Task | Current study question (the scenario's `questionVr` when set) and answer options, **read only**. The facilitator runs the session on the PC and the participant answers aloud. **Opens automatically when the facilitator presses "Show view"** |
-| Help | The VR controls (`XRHandMenu.ControlsText`); no keyboard or mouse wording |
+| Views | The visualization list (same catalog as the desktop list) + Clear table; the active view is highlighted |
+| Task | The study session from VR: Start (training first), Show view, answer buttons, confidence 1–5, Submit / Done, Skip. **Opens automatically when a scenario view is shown** |
+| Panels | Info / Legend / Compare / Help show-hide, Reset panels, Restart tutorial, hand tracking (experimental) |
 
-The header line shows the active view.
+The header line shows the active view. Selection info, legend, comparison and
+help are separate panels (below), no longer tabs.
 
-**Table board** (`XRTableBoard`): a 1.28 × 0.80 m read-only board (2 mm per
-canvas unit, body text about 3 cm) standing 15 cm beyond the table edge on
-the far side from the user, its bottom 10 cm above the table top. It shows
-the current view, its legend and the selected area's values, so the user can
-read them without raising a hand. When the user walks more than 50° around
-the table it slides to the new opposite side; it follows table resizes. Y
-hides/shows it. Rays stop on it (it does not let picks through).
+**Panels at the table** (`XRTablePanel` base, real metres, opaque, kept out
+of the table — see "Panels and the table" below):
+
+| Panel | Where | Content |
+|---|---|---|
+| `XRTableLegend` | Far edge, opposite the user, centre 0.52 m above the table, 0.92 × 0.84 m (2 mm/unit). Fixed to the table, not grabbable | View name + one legend per encoded variable |
+| `XRInfoPanel` | User's side, 0.95 m to their right, 0.42 × 0.50 m (0.8 mm/unit). **Grab** bar. Y shows/hides; a new selection shows it | Selection: name, view values first (large), then all sections; Select its area, Unselect |
+| `XRComparePanel` | User's side, 0.95 m to their left, centre 0.33 m above the table, 0.48 × 0.53 m. **Grab** bar. Opens when the Compare tool is chosen or used | Slots A/B (3D views, Remove) + table A, B, B − A |
+| `XRHelpPanel` | In front of the user when opened, 0.88 × 0.62 m. Grab bar | Six picture cards (`help_*.png`): controllers, toolbar, click tools, panels, wrist menu, moving the table |
+| `XRTutorial` | Close to the user: their side of the table, 0.8 m to the left, centre 0.72 m above the table (≈ 1.6 m, eye height), 0.61 × 0.26 m (0.9 mm/unit); about 0.9 m from the eyes. Until the 2026-10-09 feedback it stood at the far edge and was too far away | The tutorial card (see below) |
+
+FarEdge/NearSide panels follow the user around the table with 50°
+hysteresis until carried by their Grab bar; **Reset panels** (wrist menu)
+returns them.
+
+**Tutorial** (`XRTutorial`, since 2026-10-09): starts once the table is placed
+and the head tracked. 13 steps: welcome (Next) · select · show data (View >)
+· panels (Next) · move the table (left grip) · size (stick / Bigger,
+Smaller) · copy (Copy tool + click) · grab the copy · compare (two areas) ·
+move a panel (Grab bar) · wrist menu (look at the wrist) · clear table ·
+ready (Finish). Action steps complete themselves ("Done!", 1 s pause).
+**Locked in:** `XRFeatureLock` allows only what has been taught (toolbar
+buttons greyed out; city clicks, grabbing, table grip, resize, wrist menu
+off). Facilitator: **F8** on the PC skips; wrist menu → Panels → Restart
+tutorial. Logged as `vr_tutorial`.
+
+**Click tools** (`XRClickTools`, toolbar CLICK row): Select / Copy / Compare.
+Every trigger click on the city selects; Copy additionally makes a copy
+(one per entity, pops up), Compare fills slot A then B and opens the Compare
+panel. The hover label shows "Click to copy / compare" while a tool is on.
+
+**Panels and the table:** `TabletopRig.KeepOutOfTable(world, radius,
+halfHeight, clearance)` pushes a panel the shortest way (up, or sideways past
+the nearest edge) out of the box "table footprint × floor … 25 cm above the
+table top". `XRGrabber` applies it while a panel (`XRGrabbable.KeepOutOfTable`)
+is carried, the panels after automatic placement. Copies may stand on the
+table; users may walk into it.
 
 **Virtual hands** (`XRVirtualHands`): stylised glove hands built from
 capsules around each controller (palm, thumb, four fingers of three
@@ -282,7 +313,7 @@ tooltip).
 Rendering rules:
 - **Backgrounds are fully opaque.** In linear colour space, the desktop panel
   colour's 6 % transparency lets the bright map show through clearly.
-- **Canvas sorting order:** menu 110, board 105, label 100. The selection
+- **Canvas sorting order:** menu 110, panels 106, toolbar 105, label 100. The selection
   highlight shader is `Transparent+10` and writes no depth, so with a lower
   order it would draw over the panels.
 - **Glyphs:** `LiberationSans SDF` has no ▾/▸; foldable sections use + / −
@@ -324,10 +355,13 @@ following:
   `Poke Point Affordances` (see limits);
 - turns off XRI's `CurveVisualController` line visuals;
 - adds `VRTable` (`TabletopRig`), `VRPointer` (`XRControllerPointer`, right
-  hand first, then left), `VRUI` (`XRHandMenu` with the controls image,
-  `XRHoverLabel`, `XRTableBoard`, `XRControllerShortcuts`, `XRTableMover`,
-  `XRVirtualHands` with the `VRHand` material and the controller models to
-  hide) and `VRDevTools` (`XRSimulatorFallback`);
+  hand first, then left), `VRUI` (`XRTableLegend`, `XRInfoPanel`,
+  `XRComparePanel`, `XRHelpPanel` with the `help_*.png` cards,
+  `XRSelectionCopies`, `XRClickTools`, `XRTableToolbar`, `XRHoverLabel`,
+  `XRControllerShortcuts`, `XRTableMover`, `XRGrabber`, `XRInputModeSwitch`,
+  `XRTutorial`, `XRHandMenu`, `XRVirtualHands` with the `VRHand` material and
+  the controller models to hide) and `VRDevTools` (`XRSimulatorFallback`);
+  a missing help picture is reported as a WARNING in the build report;
 - points `InteractionManager` (camera, pointer) and `StudySession` (camera,
   `condition = vr`) at the rig;
 - sets `DesktopInteractionUI.helpTextOverride` to the facilitator's PC keys;
@@ -346,18 +380,23 @@ All runtime scripts are in `Assets/Scripts/UrbanAnalytics/XR/` (namespace
 | `Interaction/DesktopMousePointer.cs` | The mouse behaviour that used to be built into `InteractionManager` (unchanged); used when `pointerSource` is empty |
 | `XR/TabletopRig.cs` | Waits for the city to load, then scales and places the XR Origin, builds the table and floor, sets clip planes, logs the scale; `SetTableLength` resizes around the fixed table centre; sets the eye-texture resolution scale |
 | `XR/XRControllerPointer.cs` | Controller ray from the XRI Near-Far Interactor's stabilized origin; trigger/grip actions; UI blocking (`ActiveHandOnUi`, `AnyHandOnUi`, `IsAnyHandPointingAt`); draws its own ray + reticle in real metres |
-| `XR/XRControllerShortcuts.cs` | A / B / Y buttons and the right thumbstick (view flick, held resize); logs finished resizes |
-| `XR/XRTableMover.cs` | Left grip grab (move + turn), left thumbstick turn, thumbstick press recall; logs moves |
+| `XR/XRControllerShortcuts.cs` | A (copy, restored 2026-10-09), B (unselect), Y (Info panel) and the right thumbstick up/down (held resize); logs finished resizes. No view flick (removed 2026-10-09) |
+| `XR/XRTableMover.cs` | Left grip grab (move + turn), left thumbstick turn, thumbstick press recall; logs moves; event `Moved` |
 | `XR/XRVirtualHands.cs` | Stylised hands on the controllers (fingers follow trigger / grip); hides the controller models |
-| `XR/XRSelectionCopies.cs` | Pop-out copies of the selection (grab box on Ignore Raycast, stem line, label); grab with grip / pinch |
-| `XR/XRTableToolbar.cs` | Table-edge toolbar (views, buildings on/off, copy, clear, remove copies, size, turn, bring here, board, menu) |
-| `XR/XRGrabbable.cs` | Marks something grabbable (copies, panels); `AddPanelHandle` adds the Move bar to a panel |
-| `XR/XRGrabber.cs` | Grip / pinch with the ray on a grab collider → carry it (panels face the user); logs `vr_grab` |
+| `XR/XRSelectionCopies.cs` | Copies (`Copy(entity)`; one per entity, pop-up animation, pulse when copied again; grab box on Ignore Raycast, stem line, label with Remove) |
+| `XR/XRClickTools.cs` | Click tools Select / Copy / Compare (acts on `InteractionManager.EntityClicked`) |
+| `XR/XRTableToolbar.cs` | Table-edge toolbar: DATA (views, Clear table), CLICK (tools, Remove copies, Buildings), TABLE (size, turn, bring here); greys out locked buttons, `Highlight` |
+| `XR/XRTablePanel.cs` | Base of the table panels (canvas, Grab bar, FarEdge / NearSide / InFront placement, keep out of the table, `vr_panel`) |
+| `XR/XRTableLegend.cs`, `XRInfoPanel.cs`, `XRComparePanel.cs`, `XRHelpPanel.cs` | The panels, see VR UI |
+| `XR/XRTutorial.cs` | Locked-in start tutorial, see VR UI |
+| `XR/XRFeatureLock.cs` | `XRFeature` + which functions the tutorial allows |
+| `XR/XRGrabbable.cs` | Marks something grabbable (copies, panels); `AddPanelHandle` adds the Grab bar to a panel |
+| `XR/XRGrabber.cs` | Grip with the ray on a grab collider → carry it (panels face the user, kept out of the table); logs `vr_grab` |
 | `XR/XRInputModeSwitch.cs` | Hands on/off, simulator mode, hand-tracking diagnostics in the log |
-| `Tools/make_vr_controls_image.ps1` | Draws the Help tab's controller diagram (`vr_controls.png`) |
+| `Tools/make_vr_help_images.ps1` | Draws the six help / tutorial pictures (`help_*.png`, 800 × 500) |
 | `XR/XRSimulatorFallback.cs` | Editor only: starts the XR Device Simulator when no headset is active, removes it when the headset starts |
-| `XR/XRHandMenu.cs` | Wrist menu (tabs Info / Views / Legend / Compare / Task / Help), see VR UI |
-| `XR/XRTableBoard.cs` | Board at the far table edge, see VR UI |
+| `XR/XRHandMenu.cs` | Wrist menu (tabs Views / Task / Panels), see VR UI |
+| `Visualization/Renderers/AreaOutlineBuilder.cs` | Bold area boundaries (layer spec `outline`) for Surface and HeightSurface marks |
 | `XR/XRHoverLabel.cs` | Floating hover label, see VR UI |
 | `XR/Editor/VRSceneBuilder.cs` | Builds the VR scene (above) |
 
@@ -376,6 +415,7 @@ Changes to existing code:
 
 ## How the table works
 
+- **Buildings are drawn 2× as tall in VR** (`UrbanContextManager.buildingHeightScale`, set to 2 by `VRSceneBuilder`; 1 on the desktop). At table scale (1:4380) true heights were too small to read. Display only: the Info panel, hover label, logs and analyses keep real metres. Columns of the visualizations are not affected (their heights come from the layer specs).
 - The city is **not** moved or scaled: 1 Unity unit = 1 km stays true. The
   **XR Origin is scaled** by S = world units per real metre. Picking,
   highlights, comparison copies and logging need no change.
@@ -418,13 +458,17 @@ Extra events (StudyLog JSON lines, only while a session runs):
 | `vr_table_resize` | `lengthMeters`, `worldUnitsPerMeter` | Thumbstick released after a resize |
 | `vr_menu` | `visible`, `pinned`, `tab` | Wrist menu opened/closed/pinned |
 | `vr_menu_tab` | `tab` | Tab shown (by the user or automatically) |
-| `vr_board` | `visible` | Board shown/hidden (Y) |
+| `vr_panel` | `panel` (Info / Legend / Compare / Help / Tutorial), `visible` | Panel shown/hidden |
+| `vr_tool` | `tool` (Select / Copy / Compare) | Click tool chosen |
+| `vr_compare` | `entity`, `slot` (A / B) | Area added to the comparison with the Compare tool |
+| `vr_clear_table` | — | Toolbar Clear table |
+| `vr_tutorial` | `step`, `id`, `event` (start / done / skip / finish), `seconds` | Tutorial progress |
 | `vr_table_move` | `how` (grab / turn / recall), `centerX`, `centerZ`, `yawDegrees` | Grab released, turn finished, table recalled |
-| `vr_copy` | `how` (create / move / remove / limit), `copy`, `entity`, `position` | Copy made, released after a grab, removed |
+| `vr_copy` | `how` (create / exists / move / remove / limit), `copy`, `entity`, `position` | Copy made, released after a grab, removed |
 | `vr_buildings_selectable` | `selectable` | Toolbar toggle |
 | `vr_grab` | `object`, `position` | A copy or panel released after a grab |
-| `vr_hands` | `enabled` | Toolbar Hands on/off |
-| `vr_reset_panels` | — | Toolbar Reset panels |
+| `vr_hands` | `enabled` | Wrist menu → Panels → hand tracking on/off |
+| `vr_reset_panels` | — | Wrist menu → Panels → Reset panels |
 
 Selections, views and comparisons are logged as on the desktop. Logged camera
 poses are in world units: divide by the current `worldUnitsPerMeter` for
@@ -432,16 +476,19 @@ metres. Not logged yet: which hand is active.
 
 ## Assumptions and limits
 
-- **Fixed build not yet run in the headset.** In particular the stereo
-  separation on a scaled rig, the scale comfort, the wrist gesture
-  thresholds and the board's readability need checking in the Quest. Tune in
-  the Inspector, then put good values back into the code defaults:
+- **The 2026-10-09 UI (tutorial, panels, click tools) was verified in the
+  simulator only.** Panel positions, text sizes at the far edge, the
+  tutorial's pace and the greyed-out look need checking in the Quest. Tune
+  in the Inspector, then put good values back into the code defaults:
   rebuilding the scene resets them.
-- **Study tasks are read only in VR.** The facilitator selects answers on the
-  PC. Only the training task (T0) has a `questionVr`; the others contain no
-  device wording.
-- The thumbstick view flick can leave a scenario's view during a study task
-  (the desktop keys 1–9 can too).
+- Only the training task (T0) has a `questionVr`; the others contain no
+  device wording. The study tasks can be answered in VR (Task tab) or on the
+  PC.
+- The desktop keys 1–9 can leave a scenario's view during a study task (the
+  VR thumbstick flick that could do the same was removed 2026-10-09).
+- **Buildings are vertically exaggerated 2× in VR** (since 2026-10-09; `UrbanContextManager.buildingHeightScale = 2`, set by `VRSceneBuilder`; desktop = 1, true height). Building heights seen in the headset are therefore not to scale relative to footprints, the table or the desktop condition; values shown and logged stay in real metres. Report this when comparing VR and desktop results. To undo: set `VrBuildingHeightScale` in `VRSceneBuilder.cs` to 1 and rebuild the VR scene.
+- Turbo colours (S1, S2, X1, S6) are not perceptually uniform in lightness;
+  see `docs/decisions/2026-10-09_vr-tutorial-tools-panels.md`.
 - XRI line visuals are off because they are sized in world units. If XRI
   visuals are wanted later, scale their widths and distances by S.
 - Columns of a signed/diverging height scale go **below** the base plane and
@@ -555,7 +602,9 @@ the Editor renders on the GTX 1080, D3D12, Single Pass Instanced):
 |---|---|
 | `TabletopRig` without XR Origin or CityRoot | Error, component disabled, rig stays unscaled |
 | City has no visible renderers | Error; the table is not placed |
-| `XRTableBoard` without a `TabletopRig` | Error, component disabled |
+| A table panel (`XRTablePanel`) or the toolbar without a `TabletopRig` | Error, component disabled |
+| Help picture missing | Build report WARNING; the card shows text only |
+| Tutorial stuck (e.g. a step cannot be done) | Facilitator presses F8 on the PC; all functions unlock |
 | `pointerSource` set to a component that is not an `IInteractionPointer` | Error, falls back to the mouse |
 | Controller not tracked | No ray, nothing hovered; the wrist gesture does not trigger |
 | Ray on UI | City not hovered, trigger does not select, thumbstick scrolls only |

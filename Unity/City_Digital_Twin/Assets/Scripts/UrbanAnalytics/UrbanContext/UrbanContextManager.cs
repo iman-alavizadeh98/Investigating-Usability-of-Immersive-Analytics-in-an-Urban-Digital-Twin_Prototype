@@ -155,6 +155,23 @@ namespace UrbanAnalytics.UrbanContext
             0.3f;
 
 
+        [Tooltip(
+            "Vertical exaggeration of the drawn buildings (1 = true " +
+            "height). Display only: heights in the info panels, logs " +
+            "and analyses stay in real metres. The VR scene uses 2 " +
+            "(buildings looked too small on the table)."
+        )]
+        [SerializeField]
+        [Range(1.0f, 5.0f)]
+        private float buildingHeightScale =
+            1.0f;
+
+
+        /// <summary>Vertical exaggeration of the drawn buildings.</summary>
+        public float BuildingHeightScale =>
+            buildingHeightScale;
+
+
         // =========================================================
         // RENDERING
         // =========================================================
@@ -1428,7 +1445,7 @@ namespace UrbanAnalytics.UrbanContext
                     Math.Max(
                         0.0,
                         heightMeters
-                    )
+                    ) * buildingHeightScale
                 );
 
 

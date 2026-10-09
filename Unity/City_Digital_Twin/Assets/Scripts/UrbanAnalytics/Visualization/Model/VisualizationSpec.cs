@@ -303,6 +303,15 @@ namespace UrbanAnalytics.Visualization
             bidirectional =
                 new BidirectionalHeightSettings();
 
+        [Tooltip(
+            "Surface and HeightSurface marks on area layers: draw " +
+            "the area boundaries as bold lines on top."
+        )]
+        [SerializeField]
+        private AreaOutlineSettings
+            outline =
+                new AreaOutlineSettings();
+
 
         public string Id =>
             id;
@@ -340,6 +349,9 @@ namespace UrbanAnalytics.Visualization
 
         public BidirectionalHeightSettings Bidirectional =>
             bidirectional ?? (bidirectional = new BidirectionalHeightSettings());
+
+        public AreaOutlineSettings Outline =>
+            outline ?? (outline = new AreaOutlineSettings());
 
 
         public bool IsConfigured =>
@@ -1197,5 +1209,39 @@ namespace UrbanAnalytics.Visualization
 
         public float InsetFactor =>
             insetFactor;
+    }
+
+
+    /// <summary>
+    /// Bold boundary lines around each area (e.g. voting districts), so
+    /// neighbouring areas with similar colours can be told apart. Drawn
+    /// flat on top of the area (Surface) or of its column top
+    /// (HeightSurface); widths are Unity units (1 = 1 km).
+    /// </summary>
+    [Serializable]
+    public sealed class AreaOutlineSettings
+    {
+        [SerializeField]
+        private bool enabled;
+
+        [Tooltip("Line width in Unity units (0.025 = 25 m, about 6 mm on the 2.6 m VR table).")]
+        [SerializeField]
+        [Min(0.0005f)]
+        private float width =
+            0.025f;
+
+        [SerializeField]
+        private Color color =
+            new Color32(0x1a, 0x1a, 0x1a, 255);
+
+
+        public bool Enabled =>
+            enabled;
+
+        public float Width =>
+            width;
+
+        public Color32 Color =>
+            color;
     }
 }

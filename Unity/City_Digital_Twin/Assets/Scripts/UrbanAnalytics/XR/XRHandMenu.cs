@@ -9,14 +9,12 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 using UrbanAnalytics.Interaction;
 using UrbanAnalytics.Interaction.UI;
 using UrbanAnalytics.Study;
-using UrbanAnalytics.Visualization;
-using UrbanAnalytics.Visualization.UI;
 
 namespace UrbanAnalytics.XR
 {
     /// <summary>
-    /// The VR panel: a wrist menu on the left wrist, operated with the
-    /// other hand's ray (trigger = click, thumbstick = scroll).
+    /// The wrist menu on the left wrist, operated with the other hand's
+    /// ray (trigger = click, thumbstick = scroll).
     ///
     /// It stands just above the left wrist, facing the eyes, and opens
     /// when the user raises the wrist and looks at it (like reading a
@@ -24,24 +22,24 @@ namespace UrbanAnalytics.XR
     /// open while a controller ray is on it. X pins it where it is
     /// (open, fixed in the room) and X again sends it back to the wrist.
     /// With <see cref="AutoShow"/> off (XR Device Simulator) it is
-    /// always shown on the wrist.
+    /// always shown on the wrist. Locked by the tutorial until it
+    /// teaches it (XRFeatureLock, <see cref="XRFeature.WristMenu"/>).
     ///
     /// Tabs:
-    ///   Info    — the selection: values of the current view (large),
-    ///             detail sections, actions (select cell, copy to A/B,
-    ///             clear). Opens automatically on a new selection.
-    ///   Views   — the visualization list (same as the desktop list).
-    ///   Legend  — one legend per encoded variable.
-    ///   Compare — slots A/B: both block views, value table A, B, B − A.
-    ///   Task    — the current study question (read only; the
-    ///             facilitator runs the session on the PC). Opens
-    ///             automatically when a scenario view is shown.
-    ///   Help    — the VR controls (no keyboard or mouse wording).
+    ///   Views  — the visualization list (same as the desktop list).
+    ///   Task   — the study session: start the training and the tasks,
+    ///            show the view, answer, confidence, submit / skip.
+    ///            Opens automatically when a scenario view is shown.
+    ///   Panels — show / hide the Info, Legend and Compare panels, Help
+    ///            (picture brochure), Reset panels, Restart tutorial,
+    ///            hand tracking on/off (experimental).
+    /// What is selected, the legend and the comparison are separate
+    /// panels at the table (XRInfoPanel, XRTableLegend, XRComparePanel);
+    /// help is the XRHelpPanel brochure.
     ///
-    /// Built from code with RuntimeUi and the desktop UI's formatting
-    /// helpers, so values read exactly as on the desktop. Sized in real
-    /// metres: the canvas sits under the controller, which is under
-    /// the scaled XR Origin, so the rig scale is inherited.
+    /// Built from code with RuntimeUi. Sized in real metres: the canvas
+    /// sits under the controller's parent, which is under the scaled XR
+    /// Origin, so the rig scale is inherited.
     ///
     /// Visibility, pin and tab changes are logged as study events
     /// (vr_menu, vr_menu_tab) while a session runs.
@@ -51,55 +49,10 @@ namespace UrbanAnalytics.XR
     {
         private enum Tab
         {
-            Info,
             Views,
-            Legend,
-            Compare,
             Task,
-            Help
+            Panels
         }
-
-
-        /// <summary>The VR controls, shown on the Help tab.</summary>
-        public const string ControlsText =
-            "<b>Right controller</b>\n" +
-            "• Point at the table: see the values\n" +
-            "• Trigger: select · on empty table: clear\n" +
-            "• Grip + trigger: select the area of a building\n" +
-            "• A: pop-out copy of the selection\n" +
-            "• Grip with the ray on a copy: grab it, move it, let go\n" +
-            "• B: clear the selection\n" +
-            "• Thumbstick left / right: previous / next view\n" +
-            "• Thumbstick up / down: bigger / smaller table\n" +
-            "\n" +
-            "<b>Left controller</b>\n" +
-            "• Look at your wrist: open this menu\n" +
-            "• X: pin the menu in place / back to the wrist\n" +
-            "• Y: show / hide the board at the table\n" +
-            "• Grip (hold): grab the table, move and turn it\n" +
-            "• Thumbstick left / right: turn the table\n" +
-            "• Thumbstick press: bring the table to you\n" +
-            "• Trigger: point with the left hand instead\n" +
-            "\n" +
-            "<b>Hands (experimental; off unless toolbar Hands is on)</b>\n" +
-            "• Point, then pinch (thumb + index): select\n" +
-            "• Pinch with the ray on a copy: grab it, move it, let go\n" +
-            "• Left fist: grab the table, move and turn it\n" +
-            "• Poke a button with your finger\n" +
-            "• Look at your left wrist: open this menu\n" +
-            "\n" +
-            "<b>Toolbar at the table edge</b>\n" +
-            "• Views, buildings on/off, copy, clear, table size,\n" +
-            "  turn, bring here, board, menu, hands on/off,\n" +
-            "  reset panels, help\n" +
-            "\n" +
-            "<b>Panels and copies</b>\n" +
-            "• Grip / pinch on a panel's Move bar: carry the panel\n" +
-            "• Remove on a copy's label: remove that copy\n" +
-            "• Task tab: start the training and the tasks, answer them\n" +
-            "\n" +
-            "<b>On a panel</b>\n" +
-            "• Point + trigger or pinch: press · thumbstick: scroll";
 
 
         private const float ButtonHeight =
@@ -210,12 +163,6 @@ namespace UrbanAnalytics.XR
             110;
 
 
-        [Tooltip("Open the Help tab in front of the user when the scene starts.")]
-        [SerializeField]
-        private bool showHelpOnStart =
-            true;
-
-
         [Header("Input")]
         [Tooltip(
             "Pins the panel where it is (stays open, world-locked) / " +
@@ -231,16 +178,7 @@ namespace UrbanAnalytics.XR
         private Camera eventCamera;
 
         [SerializeField]
-        private InteractionManager interactionManager;
-
-        [SerializeField]
-        private VisualizationManager visualizationManager;
-
-        [SerializeField]
         private VisualizationSwitcher visualizationSwitcher;
-
-        [SerializeField]
-        private ComparisonManager comparisonManager;
 
         [SerializeField]
         private StudySession studySession;
@@ -249,13 +187,26 @@ namespace UrbanAnalytics.XR
         [SerializeField]
         private XRControllerPointer pointer;
 
-        [Tooltip(
-            "Labelled controller diagram on the Help tab " +
-            "(Assets/Textures/UrbanAnalytics/VR/vr_controls.png, drawn by " +
-            "Tools/make_vr_controls_image.ps1). Text only when empty."
-        )]
         [SerializeField]
-        private Texture2D controlsImage;
+        private XRInfoPanel infoPanel;
+
+        [SerializeField]
+        private XRTableLegend legend;
+
+        [SerializeField]
+        private XRComparePanel comparePanel;
+
+        [SerializeField]
+        private XRHelpPanel helpPanel;
+
+        [SerializeField]
+        private XRTableToolbar toolbar;
+
+        [SerializeField]
+        private XRTutorial tutorial;
+
+        [SerializeField]
+        private XRInputModeSwitch inputModeSwitch;
 
 
         // =========================================================
@@ -294,22 +245,7 @@ namespace UrbanAnalytics.XR
         private bool snapNextFollow =
             true;
 
-
-        // Info
-        private TMP_Text infoTitle;
-
-        private TMP_Text infoSubtitle;
-
-        private GameObject infoActions;
-
-        private Button selectCellButton;
-
-        private RectTransform infoContent;
-
-        private ScrollRect infoScroll;
-
-        private readonly HashSet<string> closedSections =
-            new HashSet<string>();
+        private bool wasLocked;
 
 
         // Views
@@ -321,24 +257,11 @@ namespace UrbanAnalytics.XR
             new List<Button>();
 
 
-        // Legend
-        private TMP_Text legendPlaceholder;
+        // Panels
+        private readonly List<(Button Button, XRTablePanel Panel)> panelButtons =
+            new List<(Button, XRTablePanel)>();
 
-        private RectTransform legendContainer;
-
-
-        // Compare
-        private readonly RawImage[] slotImages =
-            new RawImage[2];
-
-        private readonly TMP_Text[] slotTitles =
-            new TMP_Text[2];
-
-        private TMP_Text comparePlaceholder;
-
-        private GameObject compareBody;
-
-        private RectTransform compareTable;
+        private Button handsButton;
 
 
         // Task
@@ -364,28 +287,10 @@ namespace UrbanAnalytics.XR
 
         private void Awake()
         {
-            if (interactionManager == null)
-            {
-                interactionManager =
-                    FindFirstObjectByType<InteractionManager>();
-            }
-
-            if (visualizationManager == null)
-            {
-                visualizationManager =
-                    FindFirstObjectByType<VisualizationManager>();
-            }
-
             if (visualizationSwitcher == null)
             {
                 visualizationSwitcher =
                     FindFirstObjectByType<VisualizationSwitcher>();
-            }
-
-            if (comparisonManager == null)
-            {
-                comparisonManager =
-                    FindFirstObjectByType<ComparisonManager>();
             }
 
             if (studySession == null)
@@ -404,6 +309,48 @@ namespace UrbanAnalytics.XR
             {
                 pointer =
                     FindFirstObjectByType<XRControllerPointer>();
+            }
+
+            if (infoPanel == null)
+            {
+                infoPanel =
+                    FindFirstObjectByType<XRInfoPanel>();
+            }
+
+            if (legend == null)
+            {
+                legend =
+                    FindFirstObjectByType<XRTableLegend>();
+            }
+
+            if (comparePanel == null)
+            {
+                comparePanel =
+                    FindFirstObjectByType<XRComparePanel>();
+            }
+
+            if (helpPanel == null)
+            {
+                helpPanel =
+                    FindFirstObjectByType<XRHelpPanel>();
+            }
+
+            if (toolbar == null)
+            {
+                toolbar =
+                    FindFirstObjectByType<XRTableToolbar>();
+            }
+
+            if (tutorial == null)
+            {
+                tutorial =
+                    FindFirstObjectByType<XRTutorial>();
+            }
+
+            if (inputModeSwitch == null)
+            {
+                inputModeSwitch =
+                    FindFirstObjectByType<XRInputModeSwitch>();
             }
 
 
@@ -449,35 +396,10 @@ namespace UrbanAnalytics.XR
             }
 
 
-            if (interactionManager != null)
-            {
-                interactionManager.SelectionChanged +=
-                    HandleSelectionChanged;
-
-                interactionManager.SceneRefreshed +=
-                    RefreshInfo;
-            }
-
             if (visualizationSwitcher != null)
             {
                 visualizationSwitcher.Changed +=
                     RefreshViews;
-            }
-
-            if (visualizationManager != null)
-            {
-                visualizationManager.LegendsChanged +=
-                    HandleLegendsChanged;
-
-                HandleLegendsChanged(
-                    visualizationManager.ActiveLegends
-                );
-            }
-
-            if (comparisonManager != null)
-            {
-                comparisonManager.Changed +=
-                    RefreshCompare;
             }
 
             if (studySession != null)
@@ -485,6 +407,15 @@ namespace UrbanAnalytics.XR
                 studySession.Changed +=
                     HandleStudyChanged;
             }
+
+            foreach (XRTablePanel panel in Panels())
+            {
+                panel.VisibilityChanged +=
+                    HandlePanelVisibility;
+            }
+
+            XRFeatureLock.Changed +=
+                RefreshViews;
 
 
             // Other systems finish initialising in their own Awake /
@@ -502,47 +433,6 @@ namespace UrbanAnalytics.XR
                 true;
 
             RefreshAll();
-
-            if (showHelpOnStart)
-            {
-                StartCoroutine(
-                    ShowHelpWhenReady()
-                );
-            }
-        }
-
-
-        /// <summary>
-        /// Opens the Help tab in front of the user once the table is
-        /// placed and the headset (or the simulator) tracks the head, so
-        /// the first thing people see explains the controls.
-        /// </summary>
-        private System.Collections.IEnumerator ShowHelpWhenReady()
-        {
-            TabletopRig rig =
-                FindFirstObjectByType<TabletopRig>();
-
-            float deadline =
-                Time.realtimeSinceStartup + 60.0f;
-
-            while (Time.realtimeSinceStartup < deadline &&
-                   ((rig != null && !rig.IsPlaced) ||
-                    !(UnityEngine.XR.XRSettings.isDeviceActive ||
-                      GameObject.Find("XR Device Simulator") != null)))
-            {
-                yield return null;
-            }
-
-
-            // Let the head pose settle before placing the panel.
-            yield return new WaitForSecondsRealtime(1.0f);
-
-            PinInFront("Help");
-
-            Debug.Log(
-                "XRHandMenu: Help shown at start (Close or X to dismiss).",
-                this
-            );
         }
 
 
@@ -560,31 +450,10 @@ namespace UrbanAnalytics.XR
             }
 
 
-            if (interactionManager != null)
-            {
-                interactionManager.SelectionChanged -=
-                    HandleSelectionChanged;
-
-                interactionManager.SceneRefreshed -=
-                    RefreshInfo;
-            }
-
             if (visualizationSwitcher != null)
             {
                 visualizationSwitcher.Changed -=
                     RefreshViews;
-            }
-
-            if (visualizationManager != null)
-            {
-                visualizationManager.LegendsChanged -=
-                    HandleLegendsChanged;
-            }
-
-            if (comparisonManager != null)
-            {
-                comparisonManager.Changed -=
-                    RefreshCompare;
             }
 
             if (studySession != null)
@@ -592,6 +461,24 @@ namespace UrbanAnalytics.XR
                 studySession.Changed -=
                     HandleStudyChanged;
             }
+
+            foreach (XRTablePanel panel in Panels())
+            {
+                panel.VisibilityChanged -=
+                    HandlePanelVisibility;
+            }
+
+            XRFeatureLock.Changed -=
+                RefreshViews;
+        }
+
+
+        private IEnumerable<XRTablePanel> Panels()
+        {
+            if (infoPanel != null) yield return infoPanel;
+            if (legend != null) yield return legend;
+            if (comparePanel != null) yield return comparePanel;
+            if (helpPanel != null) yield return helpPanel;
         }
 
 
@@ -765,7 +652,7 @@ namespace UrbanAnalytics.XR
         }
 
 
-        /// <summary>Opens a tab by name (Info, Views, Legend, Compare, Task).</summary>
+        /// <summary>Opens a tab by name (Views, Task, Panels).</summary>
         public void ShowTab(
             string tabName
         )
@@ -789,6 +676,11 @@ namespace UrbanAnalytics.XR
             InputAction.CallbackContext context
         )
         {
+            if (!XRFeatureLock.Allows(XRFeature.WristMenu))
+            {
+                return;
+            }
+
             SetPinned(
                 !pinned
             );
@@ -806,6 +698,37 @@ namespace UrbanAnalytics.XR
                 eventCamera == null)
             {
                 return;
+            }
+
+
+            // Locked by the tutorial: closed, also when pinned or always
+            // shown (simulator).
+            if (!XRFeatureLock.Allows(XRFeature.WristMenu))
+            {
+                if (pinned)
+                {
+                    SetPinned(false);
+                }
+
+                SetVisible(false);
+
+                wasLocked =
+                    true;
+
+                return;
+            }
+
+
+            if (wasLocked)
+            {
+                wasLocked =
+                    false;
+
+                // Always shown on the wrist (simulator) once unlocked.
+                if (!autoShow)
+                {
+                    SetVisible(true);
+                }
             }
 
 
@@ -871,7 +794,9 @@ namespace UrbanAnalytics.XR
                 false;
 
 
+            // Locked by the tutorial until it teaches the wrist menu.
             if (tracked &&
+                XRFeatureLock.Allows(XRFeature.WristMenu) &&
                 distance > 1e-4f &&
                 distance < maxWristDistanceMeters)
             {
@@ -1109,19 +1034,6 @@ namespace UrbanAnalytics.XR
         }
 
 
-        private void HandleSelectionChanged(
-            EntityReference entity
-        )
-        {
-            RefreshInfo();
-
-
-            if (entity.IsValid)
-            {
-                ShowTab(Tab.Info);
-            }
-        }
-
 
         private void HandleStudyChanged()
         {
@@ -1137,15 +1049,15 @@ namespace UrbanAnalytics.XR
         }
 
 
+
+
         private void RefreshAll()
         {
-            RefreshInfo();
-
             RefreshViews();
 
-            RefreshCompare();
-
             RefreshTask();
+
+            RefreshPanels();
 
             ShowTab(currentTab);
         }
@@ -1196,7 +1108,7 @@ namespace UrbanAnalytics.XR
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
 
 
-            // "Move" handle: grabbing it pins the menu where it is let go.
+            // Grab bar: grabbing it pins the menu where it is let go.
             XRGrabbable grabbable =
                 XRGrabbable.AddPanelHandle(
                     (RectTransform)root.transform
@@ -1270,7 +1182,6 @@ namespace UrbanAnalytics.XR
                 flexibleWidth: 1.0f
             );
 
-            // Close works without controller buttons (hand tracking).
             RuntimeUi.CreateButton(
                 headerRow,
                 "Close",
@@ -1330,23 +1241,14 @@ namespace UrbanAnalytics.XR
 
             // ----- pages -----
 
-            tabPages[Tab.Info] =
-                BuildInfoPage(panel);
-
             tabPages[Tab.Views] =
                 BuildViewsPage(panel);
-
-            tabPages[Tab.Legend] =
-                BuildLegendPage(panel);
-
-            tabPages[Tab.Compare] =
-                BuildComparePage(panel);
 
             tabPages[Tab.Task] =
                 BuildTaskPage(panel);
 
-            tabPages[Tab.Help] =
-                BuildHelpPage(panel);
+            tabPages[Tab.Panels] =
+                BuildPanelsPage(panel);
 
 
             // Opens on the look-at-wrist gesture; always on the wrist
@@ -1407,92 +1309,6 @@ namespace UrbanAnalytics.XR
         }
 
 
-        private GameObject BuildInfoPage(
-            Transform panel
-        )
-        {
-            RectTransform page =
-                CreatePage(panel, "InfoPage");
-
-
-            infoTitle =
-                RuntimeUi.CreateText(
-                    page,
-                    string.Empty,
-                    RuntimeUi.TitleSize,
-                    RuntimeUi.TextColor,
-                    TextAnchor.MiddleLeft,
-                    FontStyles.Bold
-                );
-
-            infoSubtitle =
-                RuntimeUi.CreateText(
-                    page,
-                    string.Empty,
-                    RuntimeUi.SmallSize,
-                    RuntimeUi.MutedColor
-                );
-
-
-            RectTransform actions =
-                RuntimeUi.CreateRect(
-                    "Actions",
-                    page
-                );
-
-            RuntimeUi.Horizontal(
-                actions.gameObject,
-                0,
-                6.0f
-            );
-
-            infoActions =
-                actions.gameObject;
-
-            selectCellButton =
-                RuntimeUi.CreateButton(
-                    actions,
-                    "Select cell",
-                    SelectCellOfSelection,
-                    130.0f,
-                    ButtonHeight
-                );
-
-            RuntimeUi.CreateButton(
-                actions,
-                "Copy → A",
-                () => CopySelection(0),
-                118.0f,
-                ButtonHeight
-            );
-
-            RuntimeUi.CreateButton(
-                actions,
-                "Copy → B",
-                () => CopySelection(1),
-                118.0f,
-                ButtonHeight
-            );
-
-            RuntimeUi.CreateButton(
-                actions,
-                "Clear",
-                () => interactionManager?.ClearSelection(),
-                100.0f,
-                ButtonHeight
-            );
-
-
-            infoContent =
-                CreateScroll(
-                    page,
-                    out infoScroll
-                );
-
-
-            return page.gameObject;
-        }
-
 
         private GameObject BuildViewsPage(
             Transform panel
@@ -1520,8 +1336,18 @@ namespace UrbanAnalytics.XR
 
             RuntimeUi.CreateButton(
                 page,
-                "Clear view",
-                () => visualizationSwitcher?.Clear(),
+                "Clear table",
+                () =>
+                {
+                    if (toolbar != null)
+                    {
+                        toolbar.ClearTable();
+                    }
+                    else
+                    {
+                        visualizationSwitcher?.Clear();
+                    }
+                },
                 -1.0f,
                 ButtonHeight
             );
@@ -1531,193 +1357,6 @@ namespace UrbanAnalytics.XR
         }
 
 
-        private GameObject BuildLegendPage(
-            Transform panel
-        )
-        {
-            RectTransform page =
-                CreatePage(panel, "LegendPage");
-
-
-            legendPlaceholder =
-                RuntimeUi.CreateText(
-                    page,
-                    "No visualization shown.",
-                    RuntimeUi.BodySize,
-                    RuntimeUi.MutedColor
-                );
-
-
-            RectTransform content =
-                CreateScroll(
-                    page,
-                    out _
-                );
-
-
-            legendContainer =
-                RuntimeUi.CreateRect(
-                    "Legends",
-                    content
-                );
-
-            RuntimeUi.Vertical(
-                legendContainer.gameObject,
-                4,
-                12.0f
-            );
-
-
-            // A second legend view that fills this page; it shares
-            // the visualization manager with the desktop legend.
-            var legendObject =
-                new GameObject("XRLegendView");
-
-            legendObject.SetActive(false);
-
-            legendObject.transform.SetParent(
-                transform,
-                false
-            );
-
-            LegendStackView legendView =
-                legendObject.AddComponent<LegendStackView>();
-
-            legendView.Container =
-                legendContainer;
-
-            legendObject.SetActive(true);
-
-
-            return page.gameObject;
-        }
-
-
-        private GameObject BuildComparePage(
-            Transform panel
-        )
-        {
-            RectTransform page =
-                CreatePage(panel, "ComparePage");
-
-
-            comparePlaceholder =
-                RuntimeUi.CreateText(
-                    page,
-                    "Select an area, then press A (or Info → Copy → A / B).",
-                    RuntimeUi.BodySize,
-                    RuntimeUi.MutedColor
-                );
-
-
-            RectTransform body =
-                RuntimeUi.CreateRect(
-                    "Body",
-                    page
-                );
-
-            RuntimeUi.Vertical(
-                body.gameObject,
-                0,
-                8.0f
-            );
-
-            RuntimeUi.Layout(
-                body.gameObject,
-                flexibleHeight: 1.0f
-            );
-
-            compareBody =
-                body.gameObject;
-
-
-            RectTransform views =
-                RuntimeUi.CreateRect(
-                    "Views",
-                    body
-                );
-
-            RuntimeUi.Horizontal(
-                views.gameObject,
-                0,
-                8.0f
-            ).childForceExpandWidth =
-                true;
-
-
-            for (int i = 0; i < 2; i++)
-            {
-                int slot =
-                    i;
-
-                RectTransform column =
-                    RuntimeUi.CreateRect(
-                        "Slot" + i,
-                        views
-                    );
-
-                RuntimeUi.Vertical(
-                    column.gameObject,
-                    0,
-                    4.0f
-                );
-
-                RuntimeUi.Layout(
-                    column.gameObject,
-                    flexibleWidth: 1.0f
-                );
-
-                slotTitles[i] =
-                    RuntimeUi.CreateText(
-                        column,
-                        string.Empty,
-                        RuntimeUi.SmallSize,
-                        RuntimeUi.TextColor
-                    );
-
-                RectTransform imageRect =
-                    RuntimeUi.CreateRect(
-                        "View",
-                        column
-                    );
-
-                RawImage image =
-                    imageRect.gameObject.AddComponent<RawImage>();
-
-                RuntimeUi.Layout(
-                    image.gameObject,
-                    -1.0f,
-                    190.0f
-                );
-
-                // Drag on a view rotates both copies (linked views).
-                imageRect.gameObject
-                    .AddComponent<ComparisonViewInput>()
-                    .Comparison =
-                    comparisonManager;
-
-                slotImages[i] =
-                    image;
-
-                RuntimeUi.CreateButton(
-                    column,
-                    "Clear",
-                    () => comparisonManager?.ClearSlot(slot),
-                    -1.0f,
-                    ButtonHeight
-                );
-            }
-
-
-            compareTable =
-                CreateScroll(
-                    body,
-                    out _
-                );
-
-
-            return page.gameObject;
-        }
 
 
         private GameObject BuildTaskPage(
@@ -1795,56 +1434,153 @@ namespace UrbanAnalytics.XR
         }
 
 
-        private GameObject BuildHelpPage(
+
+
+        private GameObject BuildPanelsPage(
             Transform panel
         )
         {
             RectTransform page =
-                CreatePage(panel, "HelpPage");
+                CreatePage(panel, "PanelsPage");
 
 
-            RectTransform content =
-                CreateScroll(
-                    page,
-                    out _
-                );
+            RuntimeUi.CreateText(
+                page,
+                "Show or hide a panel. Move a panel by its  Grab  bar.",
+                RuntimeUi.SmallSize,
+                RuntimeUi.MutedColor
+            );
 
 
-            if (controlsImage != null)
+            foreach (XRTablePanel target in Panels())
             {
-                RectTransform imageRect =
-                    RuntimeUi.CreateRect(
-                        "ControlsImage",
-                        content
+                XRTablePanel captured =
+                    target;
+
+                Button button =
+                    RuntimeUi.CreateButton(
+                        page,
+                        target.PanelName,
+                        () => captured.SetVisible(!captured.IsVisible),
+                        -1.0f,
+                        ButtonHeight
                     );
 
-                imageRect.gameObject
-                    .AddComponent<RawImage>()
-                    .texture =
-                    controlsImage;
-
-                // Full panel width (minus padding and the scrollbar),
-                // keeping the image's aspect ratio.
-                float width =
-                    sizeUnits.x - 50.0f;
-
-                RuntimeUi.Layout(
-                    imageRect.gameObject,
-                    width,
-                    width * controlsImage.height / controlsImage.width
+                panelButtons.Add(
+                    (button, target)
                 );
             }
 
 
-            RuntimeUi.CreateText(
-                content,
-                ControlsText,
-                RuntimeUi.BodySize,
-                RuntimeUi.TextColor
+            RuntimeUi.CreateButton(
+                page,
+                "Reset panels",
+                ResetPanels,
+                -1.0f,
+                ButtonHeight
             );
+
+            RuntimeUi.CreateButton(
+                page,
+                "Restart tutorial",
+                () =>
+                {
+                    SetPinned(false);
+
+                    SetVisible(false);
+
+                    tutorial?.Restart();
+                },
+                -1.0f,
+                ButtonHeight
+            );
+
+            handsButton =
+                RuntimeUi.CreateButton(
+                    page,
+                    string.Empty,
+                    ToggleHands,
+                    -1.0f,
+                    ButtonHeight
+                );
 
 
             return page.gameObject;
+        }
+
+
+        // =========================================================
+        // PANELS
+        // =========================================================
+
+        private void HandlePanelVisibility(
+            bool visible
+        )
+        {
+            RefreshPanels();
+        }
+
+
+        private void RefreshPanels()
+        {
+            foreach ((Button button, XRTablePanel target) in panelButtons)
+            {
+                RuntimeUi.SetButton(
+                    button,
+                    target.PanelName + (target.IsVisible ? ": shown" : ": hidden"),
+                    target.IsVisible
+                        ? RuntimeUi.ActiveButtonColor
+                        : RuntimeUi.ButtonColor
+                );
+            }
+
+
+            if (handsButton != null)
+            {
+                bool on =
+                    inputModeSwitch != null &&
+                    inputModeSwitch.HandsEnabled;
+
+                RuntimeUi.SetButton(
+                    handsButton,
+                    on ? "Hand tracking: on (experimental)" : "Hand tracking: off (experimental)",
+                    on ? RuntimeUi.ActiveButtonColor : RuntimeUi.ButtonColor
+                );
+
+                handsButton.gameObject.SetActive(
+                    inputModeSwitch != null
+                );
+            }
+        }
+
+
+        /// <summary>Toolbar, panels and this menu back to their own places.</summary>
+        private void ResetPanels()
+        {
+            toolbar?.ResetPlacement();
+
+            foreach (XRTablePanel panel in Panels())
+            {
+                panel.ResetPlacement();
+            }
+
+            SetPinned(false);
+
+            studySession?.LogEvent("vr_reset_panels");
+        }
+
+
+        private void ToggleHands()
+        {
+            if (inputModeSwitch == null)
+            {
+                return;
+            }
+
+            inputModeSwitch.HandsEnabled =
+                !inputModeSwitch.HandsEnabled;
+
+            RefreshPanels();
         }
 
 
@@ -1915,168 +1651,6 @@ namespace UrbanAnalytics.XR
             }
         }
 
-
-        // =========================================================
-        // INFO
-        // =========================================================
-
-        private void RefreshInfo()
-        {
-            if (infoContent == null ||
-                interactionManager == null)
-            {
-                return;
-            }
-
-
-            RuntimeUi.ClearChildren(
-                infoContent
-            );
-
-
-            EntityReference selected =
-                interactionManager.Selected;
-
-
-            if (!selected.IsValid)
-            {
-                infoTitle.text =
-                    "Nothing selected";
-
-                infoSubtitle.text =
-                    "Point at the table and press the trigger.\n" +
-                    "Grip + trigger selects the area under a building.";
-
-                infoActions.SetActive(
-                    false
-                );
-
-                return;
-            }
-
-
-            EntityInfo info =
-                interactionManager.BuildInfo(
-                    selected
-                );
-
-
-            infoTitle.text =
-                info.Title;
-
-            infoSubtitle.text =
-                info.Subtitle;
-
-            infoActions.SetActive(
-                true
-            );
-
-            selectCellButton.gameObject.SetActive(
-                selected.Kind == EntityKind.Building &&
-                selected.HasUnit
-            );
-
-
-            foreach (EntityInfoRow row in info.Highlights)
-            {
-                DesktopInteractionUI.CreateHighlightRow(
-                    infoContent,
-                    row
-                );
-            }
-
-
-            foreach (EntityInfoSection section in info.Sections)
-            {
-                string key =
-                    section.Title;
-
-                // VR: every section starts open (all information is
-                // available); the user can fold them.
-                bool open =
-                    !closedSections.Contains(key);
-
-                Button header =
-                    RuntimeUi.CreateButton(
-                        infoContent,
-                        (open ? "- " : "+ ") + section.Title,
-                        () =>
-                        {
-                            if (!closedSections.Remove(key))
-                            {
-                                closedSections.Add(key);
-                            }
-
-                            RefreshInfo();
-                        },
-                        -1.0f,
-                        ButtonHeight
-                    );
-
-                RuntimeUi.SetAlignment(
-                    header.GetComponentInChildren<TMP_Text>(),
-                    TextAnchor.MiddleLeft
-                );
-
-                if (!open)
-                {
-                    continue;
-                }
-
-                foreach (EntityInfoRow row in section.Rows)
-                {
-                    DesktopInteractionUI.CreateValueRow(
-                        infoContent,
-                        row
-                    );
-                }
-            }
-
-
-            if (!string.IsNullOrEmpty(info.Footer))
-            {
-                RuntimeUi.CreateText(
-                    infoContent,
-                    info.Footer,
-                    RuntimeUi.SmallSize,
-                    RuntimeUi.MutedColor
-                );
-            }
-
-
-            infoScroll.verticalNormalizedPosition =
-                1.0f;
-        }
-
-
-        private void SelectCellOfSelection()
-        {
-            if (interactionManager != null &&
-                interactionManager.Selected.TryGetUnit(
-                    out EntityReference cell
-                ))
-            {
-                interactionManager.Select(
-                    cell
-                );
-            }
-        }
-
-
-        private void CopySelection(
-            int slot
-        )
-        {
-            if (comparisonManager != null &&
-                interactionManager != null &&
-                interactionManager.HasSelection)
-            {
-                comparisonManager.CopyToSlot(
-                    slot,
-                    interactionManager.Selected
-                );
-            }
-        }
 
 
         // =========================================================
@@ -2158,6 +1732,9 @@ namespace UrbanAnalytics.XR
                         ? RuntimeUi.ActiveButtonColor
                         : RuntimeUi.ButtonColor
                 );
+
+                viewButtons[i].interactable =
+                    XRFeatureLock.Allows(XRFeature.ChangeView);
             }
 
 
@@ -2201,242 +1778,6 @@ namespace UrbanAnalytics.XR
                     : "No view shown";
         }
 
-
-        private void HandleLegendsChanged(
-            IReadOnlyList<VisualizationLegendInfo> legends
-        )
-        {
-            if (legendPlaceholder != null)
-            {
-                legendPlaceholder.gameObject.SetActive(
-                    legends == null ||
-                    legends.Count == 0
-                );
-            }
-        }
-
-
-        // =========================================================
-        // COMPARE
-        // =========================================================
-
-        private void RefreshCompare()
-        {
-            if (compareTable == null)
-            {
-                return;
-            }
-
-
-            bool any =
-                comparisonManager != null &&
-                comparisonManager.Slots != null &&
-                comparisonManager.Slots.Count >= 2 &&
-                comparisonManager.HasAnyFilled;
-
-
-            comparePlaceholder.gameObject.SetActive(
-                !any
-            );
-
-            compareBody.SetActive(
-                any
-            );
-
-
-            if (!any)
-            {
-                return;
-            }
-
-
-            IReadOnlyList<ComparisonManager.Slot> slots =
-                comparisonManager.Slots;
-
-
-            for (int i = 0; i < 2 && i < slots.Count; i++)
-            {
-                ComparisonManager.Slot slot =
-                    slots[i];
-
-                slotTitles[i].text =
-                    $"<b>{slot.Label}</b>  " +
-                    (slot.IsFilled
-                        ? slot.Info != null
-                            ? slot.Info.Title
-                            : slot.Entity.Id
-                        : RuntimeUi.Colorize(
-                            "empty",
-                            RuntimeUi.MutedColor
-                        ));
-
-                slotImages[i].texture =
-                    slot.IsFilled
-                        ? slot.Texture
-                        : null;
-
-                slotImages[i].color =
-                    slot.IsFilled
-                        ? Color.white
-                        : new Color(0.0f, 0.0f, 0.0f, 0.25f);
-            }
-
-
-            RuntimeUi.ClearChildren(
-                compareTable
-            );
-
-
-            if (slots.Count < 2)
-            {
-                return;
-            }
-
-
-            ComparisonManager.Slot a =
-                slots[0];
-
-            ComparisonManager.Slot b =
-                slots[1];
-
-
-            CreateCompareRow(
-                null,
-                "<b>A</b>",
-                "<b>B</b>",
-                "<b>B − A</b>",
-                RuntimeUi.MutedColor
-            );
-
-
-            // Rows in A's order, then any only B has.
-            var keys =
-                new List<string>();
-
-            var templates =
-                new Dictionary<string, EntityInfoRow>(
-                    System.StringComparer.Ordinal
-                );
-
-            foreach (ComparisonManager.Slot slot in new[] { a, b })
-            {
-                if (slot.Info == null)
-                {
-                    continue;
-                }
-
-                foreach (EntityInfoRow row in slot.Info.DataRows)
-                {
-                    if (templates.TryAdd(row.Key, row))
-                    {
-                        keys.Add(row.Key);
-                    }
-                }
-            }
-
-
-            foreach (string key in keys)
-            {
-                EntityInfoRow rowA =
-                    null;
-
-                EntityInfoRow rowB =
-                    null;
-
-                a.Info?.TryGetDataRow(key, out rowA);
-
-                b.Info?.TryGetDataRow(key, out rowB);
-
-                EntityInfoRow template =
-                    templates[key];
-
-                string label =
-                    (template.IsEncoded
-                        ? RuntimeUi.Colorize("● ", RuntimeUi.AccentColor)
-                        : "   ") +
-                    template.Label;
-
-                CreateCompareRow(
-                    label,
-                    DesktopInteractionUI.CompareCell(rowA, a.IsFilled),
-                    DesktopInteractionUI.CompareCell(rowB, b.IsFilled),
-                    DesktopInteractionUI.Difference(rowA, rowB),
-                    RuntimeUi.TextColor
-                );
-            }
-        }
-
-
-        /// <summary>
-        /// Narrow-panel table row: the label on its own line, then
-        /// A | B | B − A in three equal columns (the desktop row puts
-        /// all four side by side, which wraps badly at this width).
-        /// </summary>
-        private void CreateCompareRow(
-            string label,
-            string valueA,
-            string valueB,
-            string difference,
-            Color color
-        )
-        {
-            RectTransform block =
-                RuntimeUi.CreateRect(
-                    "Row",
-                    compareTable
-                );
-
-            RuntimeUi.Vertical(
-                block.gameObject,
-                0,
-                0.0f
-            );
-
-
-            if (!string.IsNullOrEmpty(label))
-            {
-                RuntimeUi.CreateText(
-                    block,
-                    label,
-                    RuntimeUi.SmallSize,
-                    RuntimeUi.MutedColor
-                );
-            }
-
-
-            RectTransform values =
-                RuntimeUi.CreateRect(
-                    "Values",
-                    block
-                );
-
-            RuntimeUi.Horizontal(
-                values.gameObject,
-                0,
-                8.0f
-            ).childForceExpandWidth =
-                true;
-
-
-            foreach (string cell in new[] { valueA, valueB, difference })
-            {
-                TMP_Text text =
-                    RuntimeUi.CreateText(
-                        values,
-                        cell,
-                        RuntimeUi.BodySize,
-                        color,
-                        TextAnchor.MiddleRight
-                    );
-
-                RuntimeUi.Layout(
-                    text.gameObject,
-                    -1.0f,
-                    -1.0f,
-                    1.0f
-                );
-            }
-        }
 
 
         // =========================================================

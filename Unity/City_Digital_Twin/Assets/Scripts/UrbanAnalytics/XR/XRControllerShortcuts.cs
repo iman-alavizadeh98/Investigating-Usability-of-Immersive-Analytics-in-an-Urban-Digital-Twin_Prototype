@@ -7,19 +7,21 @@ using UrbanAnalytics.Study;
 namespace UrbanAnalytics.XR
 {
     /// <summary>
-    /// VR equivalents of the desktop keyboard shortcuts, on the
-    /// controller buttons and the right thumbstick:
+    /// Controller-button shortcuts in VR:
     ///
-    ///   A (right primary)      pop-out copy of the selection (XRSelectionCopies;
-    ///                          without it: copy to compare, = C)
-    ///   B (right secondary)    clear the selection (= Esc)
-    ///   Y (left secondary)     show / hide the table board
-    ///   Right thumbstick ← →   previous / next view (= 1–9)
+    ///   A (right primary)      copy what the ray points at (else the
+    ///                          selection); same as the Copy tool
+    ///   B (right secondary)    unselect (= Esc)
+    ///   Y (left secondary)     show / hide the Info panel
     ///   Right thumbstick ↑ ↓   bigger / smaller table (held)
     ///
-    /// While a controller ray is on a panel, the thumbstick scrolls the
-    /// panel (XRI) and is ignored here. X (left primary) belongs to the
-    /// wrist menu (XRHandMenu).
+    /// Views are changed on the table toolbar or the wrist menu (no
+    /// thumbstick flick: it switched views by accident). Copy and
+    /// Compare are click tools on the toolbar (XRClickTools). While a
+    /// controller ray is on a panel, the thumbstick scrolls the panel
+    /// (XRI) and is ignored here. X (left primary) belongs to the wrist
+    /// menu (XRHandMenu). B and resizing are locked by the tutorial
+    /// until it teaches them (XRFeatureLock).
     ///
     /// A finished resize is logged (Debug.Log and the study event
     /// vr_table_resize with the length and the rig scale).
@@ -41,7 +43,7 @@ namespace UrbanAnalytics.XR
             "<XRController>{RightHand}/secondaryButton";
 
         [SerializeField]
-        private string boardBinding =
+        private string infoPanelBinding =
             "<XRController>{LeftHand}/secondaryButton";
 
         [SerializeField]
@@ -50,18 +52,6 @@ namespace UrbanAnalytics.XR
 
 
         [Header("Thumbstick")]
-        [Tooltip("Sideways deflection that switches the view once.")]
-        [SerializeField]
-        [Range(0.3f, 1.0f)]
-        private float viewFlickThreshold =
-            0.7f;
-
-        [Tooltip("The stick must come back below this before the next switch.")]
-        [SerializeField]
-        [Range(0.0f, 0.6f)]
-        private float viewRearmThreshold =
-            0.3f;
-
         [Tooltip("Up/down deflection below this does not resize.")]
         [SerializeField]
         [Range(0.05f, 0.6f)]
@@ -83,19 +73,13 @@ namespace UrbanAnalytics.XR
         private InteractionManager interactionManager;
 
         [SerializeField]
-        private ComparisonManager comparisonManager;
-
-        [SerializeField]
-        private VisualizationSwitcher visualizationSwitcher;
-
-        [SerializeField]
         private TabletopRig tabletopRig;
 
         [SerializeField]
         private XRControllerPointer pointer;
 
         [SerializeField]
-        private XRTableBoard tableBoard;
+        private XRInfoPanel infoPanel;
 
         [SerializeField]
         private XRSelectionCopies copies;
@@ -112,12 +96,9 @@ namespace UrbanAnalytics.XR
 
         private InputAction clearAction;
 
-        private InputAction boardAction;
+        private InputAction infoPanelAction;
 
         private InputAction thumbstickAction;
-
-        private bool viewArmed =
-            true;
 
         private bool resizing;
 
@@ -134,18 +115,6 @@ namespace UrbanAnalytics.XR
                     FindFirstObjectByType<InteractionManager>();
             }
 
-            if (comparisonManager == null)
-            {
-                comparisonManager =
-                    FindFirstObjectByType<ComparisonManager>();
-            }
-
-            if (visualizationSwitcher == null)
-            {
-                visualizationSwitcher =
-                    FindFirstObjectByType<VisualizationSwitcher>();
-            }
-
             if (tabletopRig == null)
             {
                 tabletopRig =
@@ -158,16 +127,16 @@ namespace UrbanAnalytics.XR
                     FindFirstObjectByType<XRControllerPointer>();
             }
 
-            if (tableBoard == null)
-            {
-                tableBoard =
-                    FindFirstObjectByType<XRTableBoard>();
-            }
-
             if (copies == null)
             {
                 copies =
                     FindFirstObjectByType<XRSelectionCopies>();
+            }
+
+            if (infoPanel == null)
+            {
+                infoPanel =
+                    FindFirstObjectByType<XRInfoPanel>();
             }
 
             if (studySession == null)
@@ -181,13 +150,13 @@ namespace UrbanAnalytics.XR
         private void OnEnable()
         {
             copyAction =
-                CreateButton("XR Copy To Compare", copyBinding, HandleCopy);
+                CreateButton("XR Copy", copyBinding, HandleCopy);
 
             clearAction =
-                CreateButton("XR Clear Selection", clearBinding, HandleClear);
+                CreateButton("XR Unselect", clearBinding, HandleClear);
 
-            boardAction =
-                CreateButton("XR Toggle Board", boardBinding, HandleBoard);
+            infoPanelAction =
+                CreateButton("XR Toggle Info Panel", infoPanelBinding, HandleInfoPanel);
 
 
             if (!string.IsNullOrEmpty(thumbstickBinding))
@@ -211,7 +180,7 @@ namespace UrbanAnalytics.XR
 
             DisposeButton(ref clearAction, HandleClear);
 
-            DisposeButton(ref boardAction, HandleBoard);
+            DisposeButton(ref infoPanelAction, HandleInfoPanel);
 
             thumbstickAction?.Dispose();
 
@@ -233,17 +202,13 @@ namespace UrbanAnalytics.XR
 
 
             // On a panel the thumbstick scrolls it (XRI UI input).
-            if (pointer != null &&
-                pointer.AnyHandOnUi)
+            if ((pointer != null && pointer.AnyHandOnUi) ||
+                !XRFeatureLock.Allows(XRFeature.ResizeTable))
             {
                 stick =
                     Vector2.zero;
             }
 
-
-            UpdateViewFlick(
-                stick
-            );
 
             UpdateResize(
                 stick,
@@ -260,23 +225,23 @@ namespace UrbanAnalytics.XR
             InputAction.CallbackContext context
         )
         {
-            // A = pop-out copy of the selection (grab and place it).
-            if (copies != null)
+            if (copies == null ||
+                interactionManager == null ||
+                !XRFeatureLock.Allows(XRFeature.CopyTool))
             {
-                copies.CopySelected();
-
                 return;
             }
 
 
-            if (comparisonManager != null &&
-                interactionManager != null &&
-                interactionManager.HasSelection)
-            {
-                comparisonManager.CopyToNextSlot(
-                    interactionManager.Selected
-                );
-            }
+            // What the ray points at; with nothing hovered, the selection.
+            UrbanAnalytics.Interaction.EntityReference target =
+                interactionManager.Hovered.IsValid
+                    ? interactionManager.Hovered.Entity
+                    : interactionManager.Selected;
+
+            copies.Copy(
+                target
+            );
         }
 
 
@@ -284,18 +249,21 @@ namespace UrbanAnalytics.XR
             InputAction.CallbackContext context
         )
         {
-            interactionManager?.ClearSelection();
+            if (XRFeatureLock.Allows(XRFeature.Select))
+            {
+                interactionManager?.ClearSelection();
+            }
         }
 
 
-        private void HandleBoard(
+        private void HandleInfoPanel(
             InputAction.CallbackContext context
         )
         {
-            if (tableBoard != null)
+            if (infoPanel != null)
             {
-                tableBoard.SetVisible(
-                    !tableBoard.IsVisible
+                infoPanel.SetVisible(
+                    !infoPanel.IsVisible
                 );
             }
         }
@@ -304,53 +272,6 @@ namespace UrbanAnalytics.XR
         // =========================================================
         // THUMBSTICK
         // =========================================================
-
-        private void UpdateViewFlick(
-            Vector2 stick
-        )
-        {
-            float x =
-                Mathf.Abs(stick.x) > Mathf.Abs(stick.y)
-                    ? stick.x
-                    : 0.0f;
-
-
-            if (Mathf.Abs(x) < viewRearmThreshold)
-            {
-                viewArmed =
-                    true;
-
-                return;
-            }
-
-
-            if (!viewArmed ||
-                Mathf.Abs(x) < viewFlickThreshold)
-            {
-                return;
-            }
-
-
-            viewArmed =
-                false;
-
-            StepView(
-                x > 0.0f
-                    ? 1
-                    : -1
-            );
-        }
-
-
-        private void StepView(
-            int step
-        )
-        {
-            visualizationSwitcher?.Step(
-                step
-            );
-        }
-
 
         private void UpdateResize(
             Vector2 stick,

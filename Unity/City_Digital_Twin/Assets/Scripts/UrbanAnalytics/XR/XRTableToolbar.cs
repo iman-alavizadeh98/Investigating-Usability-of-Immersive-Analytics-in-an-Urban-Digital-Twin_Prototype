@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,15 +12,20 @@ namespace UrbanAnalytics.XR
 {
     /// <summary>
     /// Controls built into the table edge (like a bezel), on the user's
-    /// side and tilted toward them, so everything works without
-    /// controller buttons (hand tracking: poke with a finger or pinch
-    /// with the ray; controllers: ray + trigger):
+    /// side and tilted toward them. Every button changes the table:
     ///
-    ///   &lt; View · current view · View &gt; · Buildings on/off · Copy ·
-    ///   Clear · Remove copies
-    ///   Smaller · Bigger · Turn left · Turn right · Bring here ·
-    ///   Board · Menu
-    ///   Hands on/off · Reset panels · Help
+    ///   DATA   &lt; View · current view · View &gt; · Clear table
+    ///   CLICK  Select · Copy · Compare · Remove copies · Buildings on/off
+    ///   TABLE  Smaller · Bigger · Turn left · Turn right · Bring here
+    ///
+    /// "Clear table" removes the data (view), the selection and the
+    /// copies: only the plain buildings stay. The CLICK row chooses what
+    /// a trigger click on the table does (XRClickTools). Panels, help
+    /// and settings are on the wrist menu, not here.
+    ///
+    /// Buttons the tutorial has not taught yet are greyed out
+    /// (XRFeatureLock); the tutorial can outline one
+    /// (<see cref="Highlight"/>).
     ///
     /// Lives in the scaled XR Origin's space (real metres). It follows
     /// the user around the table, but only once they are more than
@@ -30,6 +36,9 @@ namespace UrbanAnalytics.XR
     {
         private const float ButtonHeight =
             60.0f;
+
+        private const float RowLabelWidth =
+            82.0f;
 
 
         // =========================================================
@@ -77,10 +86,10 @@ namespace UrbanAnalytics.XR
         private float metersPerUnit =
             0.0012f;
 
-        [Tooltip("Canvas size in units (960 × 222 at 1.2 mm = 1.15 × 0.27 m).")]
+        [Tooltip("Canvas size in units (900 × 222 at 1.2 mm = 1.08 × 0.27 m).")]
         [SerializeField]
         private Vector2 sizeUnits =
-            new Vector2(960.0f, 222.0f);
+            new Vector2(900.0f, 222.0f);
 
         [SerializeField]
         private int sortingOrder =
@@ -110,13 +119,7 @@ namespace UrbanAnalytics.XR
         private XRSelectionCopies copies;
 
         [SerializeField]
-        private XRTableBoard board;
-
-        [SerializeField]
-        private XRHandMenu menu;
-
-        [SerializeField]
-        private XRInputModeSwitch inputModeSwitch;
+        private XRClickTools clickTools;
 
         [SerializeField]
         private StudySession studySession;
@@ -126,15 +129,25 @@ namespace UrbanAnalytics.XR
         // RUNTIME
         // =========================================================
 
+        private sealed class ToolbarButton
+        {
+            public Button Button;
+
+            public XRFeature Feature;
+        }
+
+
         private GameObject root;
 
         private TMP_Text viewName;
 
         private Button buildingsButton;
 
-        private Button boardButton;
+        private readonly Dictionary<XRClickTool, Button> toolButtons =
+            new Dictionary<XRClickTool, Button>();
 
-        private Button handsButton;
+        private readonly Dictionary<string, ToolbarButton> buttons =
+            new Dictionary<string, ToolbarButton>();
 
         private bool hasBearing;
 
@@ -143,6 +156,10 @@ namespace UrbanAnalytics.XR
         private float targetBearing;
 
         private XRGrabbable grabbable;
+
+
+        /// <summary>"Clear table" was pressed (tutorial).</summary>
+        public event System.Action Cleared;
 
 
         // =========================================================
@@ -181,22 +198,10 @@ namespace UrbanAnalytics.XR
                     FindFirstObjectByType<XRSelectionCopies>();
             }
 
-            if (board == null)
+            if (clickTools == null)
             {
-                board =
-                    FindFirstObjectByType<XRTableBoard>();
-            }
-
-            if (menu == null)
-            {
-                menu =
-                    FindFirstObjectByType<XRHandMenu>();
-            }
-
-            if (inputModeSwitch == null)
-            {
-                inputModeSwitch =
-                    FindFirstObjectByType<XRInputModeSwitch>();
+                clickTools =
+                    FindFirstObjectByType<XRClickTools>();
             }
 
             if (studySession == null)
@@ -238,6 +243,15 @@ namespace UrbanAnalytics.XR
                 interactionManager.BuildingsSelectableChanged +=
                     HandleBuildingsChanged;
             }
+
+            if (clickTools != null)
+            {
+                clickTools.ToolChanged +=
+                    HandleToolChanged;
+            }
+
+            XRFeatureLock.Changed +=
+                RefreshLabels;
         }
 
 
@@ -260,6 +274,15 @@ namespace UrbanAnalytics.XR
                 interactionManager.BuildingsSelectableChanged -=
                     HandleBuildingsChanged;
             }
+
+            if (clickTools != null)
+            {
+                clickTools.ToolChanged -=
+                    HandleToolChanged;
+            }
+
+            XRFeatureLock.Changed -=
+                RefreshLabels;
         }
 
 
@@ -411,11 +434,10 @@ namespace UrbanAnalytics.XR
             ((RectTransform)root.transform).sizeDelta =
                 sizeUnits;
 
-            // Ray (trigger / pinch) and poke (fingertip) both work.
             root.AddComponent<TrackedDeviceGraphicRaycaster>();
 
-            // "Move" handle: grab it to put the panel anywhere; it then
-            // stays there until ResetPlacement.
+            // Grab bar: carry the toolbar anywhere; it then stays there
+            // until Reset panels (wrist menu).
             grabbable =
                 XRGrabbable.AddPanelHandle(
                     (RectTransform)root.transform
@@ -450,16 +472,16 @@ namespace UrbanAnalytics.XR
             );
 
 
-            // ----- row 1: views and selection -----
+            // ----- DATA: what is shown on the table -----
 
-            Transform row1 =
-                CreateRow(background.transform, "ViewsAndSelection");
+            Transform data =
+                CreateRow(background.transform, "Data", "DATA");
 
-            Button(row1, "< View", 100.0f, () => visualizationSwitcher?.Step(-1));
+            AddButton(data, "< View", 100.0f, XRFeature.ChangeView, () => visualizationSwitcher?.Step(-1));
 
             viewName =
                 RuntimeUi.CreateText(
-                    row1,
+                    data,
                     string.Empty,
                     RuntimeUi.BodySize,
                     RuntimeUi.TextColor,
@@ -469,60 +491,56 @@ namespace UrbanAnalytics.XR
 
             RuntimeUi.Layout(
                 viewName.gameObject,
-                200.0f,
+                260.0f,
                 ButtonHeight
             );
 
-            Button(row1, "View >", 100.0f, () => visualizationSwitcher?.Step(1));
+            AddButton(data, "View >", 100.0f, XRFeature.ChangeView, () => visualizationSwitcher?.Step(1));
+
+            AddButton(data, "Clear table", 150.0f, XRFeature.ClearTable, ClearTable);
+
+
+            // ----- CLICK: what the trigger does on the table -----
+
+            Transform click =
+                CreateRow(background.transform, "Click", "CLICK");
+
+            toolButtons[XRClickTool.Select] =
+                AddButton(click, "Select", 100.0f, XRFeature.Select, () => clickTools?.SetTool(XRClickTool.Select));
+
+            toolButtons[XRClickTool.Copy] =
+                AddButton(click, "Copy", 100.0f, XRFeature.CopyTool, () => clickTools?.SetTool(XRClickTool.Copy));
+
+            toolButtons[XRClickTool.Compare] =
+                AddButton(click, "Compare", 120.0f, XRFeature.CompareTool, () => clickTools?.SetTool(XRClickTool.Compare));
+
+            AddButton(click, "Remove copies", 160.0f, XRFeature.CopyTool, () => copies?.RemoveAll());
 
             buildingsButton =
-                Button(row1, string.Empty, 150.0f, ToggleBuildings);
-
-            Button(row1, "Copy", 90.0f, () => copies?.CopySelected());
-
-            Button(row1, "Clear", 90.0f, () => interactionManager?.ClearSelection());
-
-            Button(row1, "Remove copies", 125.0f, () => copies?.RemoveAll());
+                AddButton(click, "Buildings", 170.0f, XRFeature.ClearTable, ToggleBuildings);
 
 
-            // ----- row 2: the table -----
+            // ----- TABLE: size and position -----
 
-            Transform row2 =
-                CreateRow(background.transform, "Table");
+            Transform table =
+                CreateRow(background.transform, "Table", "TABLE");
 
-            Button(row2, "Smaller", 110.0f, () => Resize(1.0f / resizeStep));
+            AddButton(table, "Smaller", 110.0f, XRFeature.ResizeTable, () => Resize(1.0f / resizeStep));
 
-            Button(row2, "Bigger", 110.0f, () => Resize(resizeStep));
+            AddButton(table, "Bigger", 110.0f, XRFeature.ResizeTable, () => Resize(resizeStep));
 
-            Button(row2, "Turn left", 120.0f, () => Turn(turnStepDegrees));
+            AddButton(table, "Turn left", 120.0f, XRFeature.ResizeTable, () => Turn(turnStepDegrees));
 
-            Button(row2, "Turn right", 120.0f, () => Turn(-turnStepDegrees));
+            AddButton(table, "Turn right", 120.0f, XRFeature.ResizeTable, () => Turn(-turnStepDegrees));
 
-            Button(row2, "Bring here", 130.0f, BringHere);
-
-            boardButton =
-                Button(row2, "Board", 110.0f, ToggleBoard);
-
-            Button(row2, "Menu", 110.0f, ToggleMenu);
-
-
-            // ----- row 3: input and layout -----
-
-            Transform row3 =
-                CreateRow(background.transform, "InputAndLayout");
-
-            handsButton =
-                Button(row3, string.Empty, 160.0f, ToggleHands);
-
-            Button(row3, "Reset panels", 150.0f, ResetPanels);
-
-            Button(row3, "Help", 110.0f, () => menu?.PinInFront("Help"));
+            AddButton(table, "Bring here", 130.0f, XRFeature.ResizeTable, BringHere);
         }
 
 
         private static Transform CreateRow(
             Transform parent,
-            string name
+            string name,
+            string label
         )
         {
             RectTransform row =
@@ -536,7 +554,7 @@ namespace UrbanAnalytics.XR
                 0,
                 8.0f
             ).childAlignment =
-                TextAnchor.MiddleCenter;
+                TextAnchor.MiddleLeft;
 
             RuntimeUi.Layout(
                 row.gameObject,
@@ -544,14 +562,31 @@ namespace UrbanAnalytics.XR
                 ButtonHeight
             );
 
+            TMP_Text text =
+                RuntimeUi.CreateText(
+                    row,
+                    label,
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.AccentColor,
+                    TextAnchor.MiddleLeft,
+                    FontStyles.Bold
+                );
+
+            RuntimeUi.Layout(
+                text.gameObject,
+                RowLabelWidth,
+                ButtonHeight
+            );
+
             return row;
         }
 
 
-        private static Button Button(
+        private Button AddButton(
             Transform row,
             string label,
             float width,
+            XRFeature feature,
             UnityEngine.Events.UnityAction onClick
         )
         {
@@ -571,12 +606,42 @@ namespace UrbanAnalytics.XR
                 ButtonHeight
             );
 
+            // Locked by the tutorial: clearly dimmed (the default disabled
+            // tint is barely visible on the dark buttons).
+            ColorBlock colors =
+                button.colors;
+
+            colors.disabledColor =
+                new Color(0.35f, 0.35f, 0.35f, 0.45f);
+
+            button.colors =
+                colors;
+
+            Outline outline =
+                button.gameObject.AddComponent<Outline>();
+
+            outline.effectColor =
+                RuntimeUi.AccentColor;
+
+            outline.effectDistance =
+                new Vector2(5.0f, -5.0f);
+
+            outline.enabled =
+                false;
+
+            buttons[label] =
+                new ToolbarButton
+                {
+                    Button = button,
+                    Feature = feature
+                };
+
             return button;
         }
 
 
         // =========================================================
-        // ACTIONS
+        // PUBLIC
         // =========================================================
 
         /// <summary>Back to automatic placement after the user moved it.</summary>
@@ -588,6 +653,54 @@ namespace UrbanAnalytics.XR
                 false;
         }
 
+
+        /// <summary>
+        /// Outlines the buttons with these labels (e.g. "View &gt;") to
+        /// point the user at them; none removes the outlines.
+        /// </summary>
+        public void Highlight(
+            params string[] labels
+        )
+        {
+            var set =
+                new HashSet<string>(labels ?? System.Array.Empty<string>());
+
+            foreach (KeyValuePair<string, ToolbarButton> entry in buttons)
+            {
+                entry.Value.Button.GetComponent<Outline>().enabled =
+                    set.Contains(entry.Key);
+            }
+        }
+
+
+        /// <summary>
+        /// Removes everything shown on the table: the view (data), the
+        /// selection and the copies. Only the plain buildings stay.
+        /// </summary>
+        public void ClearTable()
+        {
+            visualizationSwitcher?.Clear();
+
+            interactionManager?.ClearSelection();
+
+            copies?.RemoveAll();
+
+            Debug.Log(
+                "XRTableToolbar: table cleared (no view, no selection, no copies).",
+                this
+            );
+
+            studySession?.LogEvent(
+                "vr_clear_table"
+            );
+
+            Cleared?.Invoke();
+        }
+
+
+        // =========================================================
+        // ACTIONS
+        // =========================================================
 
         private void ToggleBuildings()
         {
@@ -655,67 +768,6 @@ namespace UrbanAnalytics.XR
         }
 
 
-        private void ToggleBoard()
-        {
-            if (board == null)
-            {
-                return;
-            }
-
-            board.SetVisible(!board.IsVisible);
-
-            RefreshLabels();
-        }
-
-
-        private void ToggleHands()
-        {
-            if (inputModeSwitch == null)
-            {
-                return;
-            }
-
-            inputModeSwitch.HandsEnabled =
-                !inputModeSwitch.HandsEnabled;
-
-            RefreshLabels();
-        }
-
-
-        /// <summary>Board, toolbar and wrist menu back to automatic placement.</summary>
-        private void ResetPanels()
-        {
-            ResetPlacement();
-
-            board?.ResetPlacement();
-
-            if (menu != null && menu.IsPinned)
-            {
-                menu.SetPinned(false);
-            }
-
-            studySession?.LogEvent("vr_reset_panels");
-        }
-
-
-        private void ToggleMenu()
-        {
-            if (menu == null)
-            {
-                return;
-            }
-
-            if (menu.IsPinned)
-            {
-                menu.SetPinned(false);
-            }
-            else
-            {
-                menu.PinInFront("Info");
-            }
-        }
-
-
         private void LogMove(
             string how
         )
@@ -745,6 +797,14 @@ namespace UrbanAnalytics.XR
         }
 
 
+        private void HandleToolChanged(
+            XRClickTool tool
+        )
+        {
+            RefreshLabels();
+        }
+
+
         private void RefreshLabels()
         {
             if (viewName != null)
@@ -754,7 +814,7 @@ namespace UrbanAnalytics.XR
                     visualizationSwitcher.ActiveIndex >= 0 &&
                     visualizationSwitcher.ActiveIndex < visualizationSwitcher.Options.Count
                         ? visualizationSwitcher.Options[visualizationSwitcher.ActiveIndex].DisplayName
-                        : "No view";
+                        : "No data shown";
             }
 
 
@@ -772,28 +832,35 @@ namespace UrbanAnalytics.XR
             }
 
 
-            if (handsButton != null &&
-                inputModeSwitch != null)
+            if (clickTools != null)
             {
-                bool on =
-                    inputModeSwitch.HandsEnabled;
-
-                RuntimeUi.SetButton(
-                    handsButton,
-                    on ? "Hands: on" : "Hands: off",
-                    on ? RuntimeUi.ActiveButtonColor : RuntimeUi.ButtonColor
-                );
+                foreach (KeyValuePair<XRClickTool, Button> entry in toolButtons)
+                {
+                    entry.Value.GetComponent<Image>().color =
+                        entry.Key == clickTools.Tool
+                            ? RuntimeUi.ActiveButtonColor
+                            : RuntimeUi.ButtonColor;
+                }
             }
 
 
-            if (boardButton != null &&
-                board != null)
+            // Not taught yet by the tutorial: greyed out.
+            foreach (ToolbarButton entry in buttons.Values)
             {
-                RuntimeUi.SetButton(
-                    boardButton,
-                    "Board",
-                    board.IsVisible ? RuntimeUi.ActiveButtonColor : RuntimeUi.ButtonColor
-                );
+                bool allowed =
+                    XRFeatureLock.Allows(entry.Feature);
+
+                entry.Button.interactable =
+                    allowed;
+
+                TMP_Text label =
+                    entry.Button.GetComponentInChildren<TMP_Text>();
+
+                if (label != null)
+                {
+                    label.alpha =
+                        allowed ? 1.0f : 0.3f;
+                }
             }
         }
     }

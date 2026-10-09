@@ -223,6 +223,9 @@ namespace UrbanAnalytics.Visualization
     ///   licence: blues, ylorrd, ylgnbu, rdbu, brbg, puor, set2.
     /// - matplotlib (van der Walt &amp; Smith), CC0: viridis, magma,
     ///   sampled at 9 evenly spaced points.
+    /// - Turbo (Mikhailov, Google 2019), Apache 2.0: turbo, as sampled by
+    ///   d3-scale-chromatic's interpolateTurbo at 0.1, 0.2, …, 1.0 (the
+    ///   near-black low end left out).
     /// - Tableau 10 (Tableau Software): tableau10.
     /// - Okabe &amp; Ito (2008) colour-blind-safe set: okabe_ito.
     /// </summary>
@@ -291,6 +294,22 @@ namespace UrbanAnalytics.Visualization
                     "ColorBrewer",
                     "#ffffd9", "#edf8b1", "#c7e9b4", "#7fcdbb", "#41b6c4",
                     "#1d91c0", "#225ea8", "#253494", "#081d58"
+                )
+            );
+
+            // Many hues from blue over green and yellow to red: close
+            // values look clearly different (VR feedback 2026-10-09:
+            // 70 / 74 / 75 % were indistinguishable in ylgnbu). Not
+            // perceptually uniform in lightness, see
+            // docs/decisions/2026-10-09_vr-tutorial-tools-panels.md.
+            Add(
+                new ColorPalette(
+                    "turbo",
+                    "Turbo (blue to red)",
+                    ColorPaletteKind.Sequential,
+                    "Google Turbo",
+                    "#4a58dd", "#2f9df5", "#27d7c4", "#4df884", "#95fb51",
+                    "#dedd32", "#ffa423", "#f65f18", "#ba2208", "#900c00"
                 )
             );
 

@@ -28,8 +28,9 @@ namespace UrbanAnalytics.XR.Editor
     /// Steps: copy the desktop scene; remove the desktop camera; add
     /// the XRI rig (locomotion and teleport off, XRI ray visuals off);
     /// add TabletopRig, XRControllerPointer and XRSimulatorFallback;
-    /// add the VR UI (XRHandMenu on the left wrist, XRHoverLabel,
-    /// XRTableBoard, XRControllerShortcuts); floor tracking; the PC
+    /// add the VR UI (XRHandMenu on the left wrist; Legend, Info,
+    /// Compare, Help and Tutorial panels; table toolbar, click tools,
+    /// copies, grabber, hover label, shortcuts); floor tracking; the PC
     /// help line lists the facilitator's keys only;
     /// wire InteractionManager and StudySession to the XR camera;
     /// swap the UI input module for the XR one. The desktop scene is
@@ -57,10 +58,16 @@ namespace UrbanAnalytics.XR.Editor
         private const string FacilitatorHelpText =
             "VR mode · PC keys for the facilitator: 1–9 views   0: clear view   " +
             "Esc: deselect   C: copy to compare   F2: study panel   " +
-            "[ ]: panel size   H: hide this line   (the mouse works on these panels only)";
+            "[ ]: panel size   H: hide this line   F8: skip the VR tutorial   " +
+            "(the mouse works on these panels only)";
 
-        private const string ControlsImagePath =
-            "Assets/Textures/UrbanAnalytics/VR/vr_controls.png";
+        /// <summary>UrbanContextManager.buildingHeightScale in the VR scene.</summary>
+        private const float VrBuildingHeightScale =
+            2.0f;
+
+        // help_*.png drawn by Tools/make_vr_help_images.ps1.
+        private const string HelpImageFolder =
+            "Assets/Textures/UrbanAnalytics/VR";
 
         private const string SimulatorPrefabPath =
             XriSampleRoot + "/XR Device Simulator/XR Device Simulator.prefab";
@@ -394,8 +401,9 @@ namespace UrbanAnalytics.XR.Editor
             }
 
 
-            // ----- VR UI: wrist menu (left wrist), hover label, table
-            //       board and the controller shortcuts -----
+            // ----- VR UI: wrist menu (left wrist), panels at the table
+            //       (Legend, Info, Compare, Help, Tutorial), toolbar,
+            //       hover label, click tools, copies, grabbing -----
 
             Transform leftController =
                 FindControllerRoot(left, "Left Controller");
@@ -403,44 +411,119 @@ namespace UrbanAnalytics.XR.Editor
             var vrUi =
                 new GameObject("VRUI");
 
-            Texture2D controlsImage =
-                AssetDatabase.LoadAssetAtPath<Texture2D>(ControlsImagePath);
 
-            if (controlsImage == null)
+            // Help pictures (Tools/make_vr_help_images.ps1).
+            var helpImages =
+                new List<Texture2D>();
+
+            foreach (var card in XRHelpPanel.DefaultCards)
             {
-                report.AppendLine(
-                    $"WARNING: {ControlsImagePath} missing (run " +
-                    "Tools/make_vr_controls_image.ps1); Help tab shows text only."
-                );
+                string path =
+                    HelpImageFolder + "/" + card.ImageName + ".png";
+
+                Texture2D image =
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+
+                if (image == null)
+                {
+                    report.AppendLine(
+                        $"WARNING: {path} missing (run Tools/make_vr_help_images.ps1); " +
+                        "that Help card shows text only."
+                    );
+                }
+
+                helpImages.Add(image);
             }
 
+
+            // Panels first: the menu, toolbar and tutorial refer to them.
+            XRTableLegend legend =
+                vrUi.AddComponent<XRTableLegend>();
+
             SetFields(
-                vrUi.AddComponent<XRHandMenu>(),
-                ("anchor", leftController),
-                ("eventCamera", xrCamera),
-                ("pointer", pointer),
-                ("controlsImage", controlsImage)
+                legend,
+                ("tabletopRig", tabletopRig),
+                ("viewCamera", xrCamera)
             );
+
+            XRInfoPanel infoPanel =
+                vrUi.AddComponent<XRInfoPanel>();
+
+            SetFields(
+                infoPanel,
+                ("tabletopRig", tabletopRig),
+                ("viewCamera", xrCamera)
+            );
+
+            XRComparePanel comparePanel =
+                vrUi.AddComponent<XRComparePanel>();
+
+            SetFields(
+                comparePanel,
+                ("tabletopRig", tabletopRig),
+                ("viewCamera", xrCamera)
+            );
+
+            XRHelpPanel helpPanel =
+                vrUi.AddComponent<XRHelpPanel>();
+
+            SetFields(
+                helpPanel,
+                ("tabletopRig", tabletopRig),
+                ("viewCamera", xrCamera)
+            );
+
+            SetHelpCards(
+                helpPanel,
+                helpImages
+            );
+
+
+            // Copies (Copy tool) and the click tools (Select / Copy / Compare).
+            XRSelectionCopies selectionCopies =
+                vrUi.AddComponent<XRSelectionCopies>();
+
+            SetFields(
+                selectionCopies,
+                ("pointer", pointer),
+                ("viewCamera", xrCamera),
+                ("lineMaterial", rayMaterial)
+            );
+
+            XRClickTools clickTools =
+                vrUi.AddComponent<XRClickTools>();
+
+            SetFields(
+                clickTools,
+                ("copies", selectionCopies),
+                ("comparePanel", comparePanel)
+            );
+
+
+            // Table-edge toolbar: everything that changes the table.
+            XRTableToolbar toolbar =
+                vrUi.AddComponent<XRTableToolbar>();
+
+            SetFields(
+                toolbar,
+                ("tabletopRig", tabletopRig),
+                ("viewCamera", xrCamera),
+                ("copies", selectionCopies),
+                ("clickTools", clickTools)
+            );
+
 
             SetFields(
                 vrUi.AddComponent<XRHoverLabel>(),
-                ("viewCamera", xrCamera)
-            );
-
-            XRTableBoard tableBoard =
-                vrUi.AddComponent<XRTableBoard>();
-
-            SetFields(
-                tableBoard,
-                ("tabletopRig", tabletopRig),
-                ("viewCamera", xrCamera)
+                ("viewCamera", xrCamera),
+                ("clickTools", clickTools)
             );
 
             SetFields(
                 vrUi.AddComponent<XRControllerShortcuts>(),
                 ("tabletopRig", tabletopRig),
                 ("pointer", pointer),
-                ("tableBoard", tableBoard)
+                ("infoPanel", infoPanel)
             );
 
             // With hand tracking the left hand's pinch-grab pose drives
@@ -453,8 +536,11 @@ namespace UrbanAnalytics.XR.Editor
                              t.parent.name == "Left Hand"
                     );
 
+            XRTableMover tableMover =
+                vrUi.AddComponent<XRTableMover>();
+
             SetFields(
-                vrUi.AddComponent<XRTableMover>(),
+                tableMover,
                 ("controller", leftController),
                 ("trackedHand", leftHandGrabPose),
                 ("viewCamera", xrCamera),
@@ -463,27 +549,16 @@ namespace UrbanAnalytics.XR.Editor
             );
 
 
-            // Pop-out copies of the selection (A / toolbar "Copy").
-            XRSelectionCopies selectionCopies =
-                vrUi.AddComponent<XRSelectionCopies>();
-
-            SetFields(
-                selectionCopies,
-                ("pointer", pointer),
-                ("viewCamera", xrCamera),
-                ("lineMaterial", rayMaterial)
-            );
-
-
-            // Picks up copies and panel "Move" handles: controller grip,
-            // or pinch / fist with hand tracking (XRI "Select").
+            // Picks up copies and panel Grab bars: controller grip
+            // (XRI "Select"); keeps panels out of the table.
             XRGrabber grabber =
                 vrUi.AddComponent<XRGrabber>();
 
             SetFields(
                 grabber,
                 ("pointer", pointer),
-                ("viewCamera", xrCamera)
+                ("viewCamera", xrCamera),
+                ("tabletopRig", tabletopRig)
             );
 
             var grabberSerialized =
@@ -504,22 +579,66 @@ namespace UrbanAnalytics.XR.Editor
 
             // Controllers only / controllers + hands, and hand-tracking
             // diagnostics in the log.
-            vrUi.AddComponent<XRInputModeSwitch>();
+            XRInputModeSwitch inputModeSwitch =
+                vrUi.AddComponent<XRInputModeSwitch>();
 
 
-            // Table-edge toolbar: every function without controller
-            // buttons (hand tracking).
+            XRTutorial tutorial =
+                vrUi.AddComponent<XRTutorial>();
+
+
             SetFields(
-                vrUi.AddComponent<XRTableToolbar>(),
+                vrUi.AddComponent<XRHandMenu>(),
+                ("anchor", leftController),
+                ("eventCamera", xrCamera),
+                ("pointer", pointer),
+                ("infoPanel", infoPanel),
+                ("legend", legend),
+                ("comparePanel", comparePanel),
+                ("helpPanel", helpPanel),
+                ("toolbar", toolbar),
+                ("tutorial", tutorial),
+                ("inputModeSwitch", inputModeSwitch)
+            );
+
+
+            // The guided tour at the start (locks what it has not taught).
+            SetFields(
+                tutorial,
                 ("tabletopRig", tabletopRig),
                 ("viewCamera", xrCamera),
                 ("copies", selectionCopies),
-                ("board", tableBoard)
+                ("clickTools", clickTools),
+                ("grabber", grabber),
+                ("tableMover", tableMover),
+                ("toolbar", toolbar),
+                ("wristMenu", vrUi.GetComponent<XRHandMenu>()),
+                ("helpPanel", helpPanel),
+                ("comparePanel", comparePanel)
             );
 
+            var tutorialSerialized =
+                new SerializedObject(tutorial);
+
+            SerializedProperty tutorialImages =
+                tutorialSerialized.FindProperty("images");
+
+            tutorialImages.arraySize =
+                helpImages.Count;
+
+            for (int i = 0; i < helpImages.Count; i++)
+            {
+                tutorialImages.GetArrayElementAtIndex(i).objectReferenceValue =
+                    helpImages[i];
+            }
+
+            tutorialSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+
             report.AppendLine(
-                $"Wrist menu anchored to '{leftController?.name}'; " +
-                "table board, controller shortcuts and table mover added."
+                $"Wrist menu anchored to '{leftController?.name}'; legend, info, " +
+                "compare, help and tutorial panels, toolbar, click tools, " +
+                "controller shortcuts and table mover added."
             );
 
 
@@ -598,6 +717,27 @@ namespace UrbanAnalytics.XR.Editor
 
 
             // ----- wire the existing systems -----
+
+            // Buildings drawn twice as tall on the table (display only;
+            // VR feedback 2026-10-09: too small at table scale).
+            UrbanAnalytics.UrbanContext.UrbanContextManager urbanContext =
+                Object.FindFirstObjectByType<UrbanAnalytics.UrbanContext.UrbanContextManager>();
+
+            if (urbanContext != null)
+            {
+                var urbanSerialized =
+                    new SerializedObject(urbanContext);
+
+                urbanSerialized.FindProperty("buildingHeightScale").floatValue =
+                    VrBuildingHeightScale;
+
+                urbanSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+                report.AppendLine(
+                    $"Buildings drawn {VrBuildingHeightScale:0.#}× as tall (display only)."
+                );
+            }
+
 
             InteractionManager interaction =
                 Object.FindFirstObjectByType<InteractionManager>();
@@ -794,6 +934,40 @@ namespace UrbanAnalytics.XR.Editor
 
             property.FindPropertyRelative("m_Reference").objectReferenceValue =
                 reference;
+        }
+
+
+        /// <summary>Help brochure cards: default titles/captions plus the pictures.</summary>
+        private static void SetHelpCards(
+            XRHelpPanel helpPanel,
+            IReadOnlyList<Texture2D> images
+        )
+        {
+            var serialized =
+                new SerializedObject(helpPanel);
+
+            SerializedProperty cards =
+                serialized.FindProperty("cards");
+
+            cards.arraySize =
+                XRHelpPanel.DefaultCards.Length;
+
+            for (int i = 0; i < XRHelpPanel.DefaultCards.Length; i++)
+            {
+                SerializedProperty card =
+                    cards.GetArrayElementAtIndex(i);
+
+                card.FindPropertyRelative("Title").stringValue =
+                    XRHelpPanel.DefaultCards[i].Title;
+
+                card.FindPropertyRelative("Caption").stringValue =
+                    XRHelpPanel.DefaultCards[i].Caption;
+
+                card.FindPropertyRelative("Image").objectReferenceValue =
+                    i < images.Count ? images[i] : null;
+            }
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
 

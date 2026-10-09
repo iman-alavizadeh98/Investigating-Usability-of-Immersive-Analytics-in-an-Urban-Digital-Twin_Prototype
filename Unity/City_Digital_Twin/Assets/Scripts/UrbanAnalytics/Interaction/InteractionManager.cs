@@ -223,6 +223,18 @@ namespace UrbanAnalytics.Interaction
 
 
         /// <summary>
+        /// Off: pointer clicks on the city are ignored (hover still
+        /// works). Used by the VR tutorial to lock selection until the
+        /// step that teaches it.
+        /// </summary>
+        public bool CityClicksEnabled
+        {
+            get;
+            set;
+        } = true;
+
+
+        /// <summary>
         /// Off: buildings are not hovered or selected; picking rays
         /// pass through them to the area below (VR toolbar toggle).
         /// </summary>
@@ -260,6 +272,13 @@ namespace UrbanAnalytics.Interaction
         public event Action<PickResult> HoverChanged;
 
         public event Action<EntityReference> SelectionChanged;
+
+        /// <summary>
+        /// A pointer click on the city resolved to this entity, after
+        /// the selection was updated (default = click on the empty
+        /// table). The VR click tools (copy, compare) act on it.
+        /// </summary>
+        public event Action<EntityReference> EntityClicked;
 
         /// <summary>
         /// Raised when shown geometry changed (visualization
@@ -812,6 +831,16 @@ namespace UrbanAnalytics.Interaction
                 return;
             }
 
+            if (!CityClicksEnabled)
+            {
+                Debug.Log(
+                    "InteractionManager: click ignored, city clicks are locked (tutorial).",
+                    this
+                );
+
+                return;
+            }
+
             if (!IsPickingReady)
             {
                 Debug.Log(
@@ -840,6 +869,10 @@ namespace UrbanAnalytics.Interaction
 
                 ClearSelection();
 
+                EntityClicked?.Invoke(
+                    default
+                );
+
                 return;
             }
 
@@ -852,21 +885,21 @@ namespace UrbanAnalytics.Interaction
             );
 
 
-            if (frame.SelectBlock &&
+            EntityReference clicked =
+                frame.SelectBlock &&
                 pick.Entity.TryGetUnit(
                     out EntityReference block
-                ))
-            {
-                Select(
-                    block
-                );
-            }
-            else
-            {
-                Select(
-                    pick.Entity
-                );
-            }
+                )
+                    ? block
+                    : pick.Entity;
+
+            Select(
+                clicked
+            );
+
+            EntityClicked?.Invoke(
+                clicked
+            );
         }
 
 

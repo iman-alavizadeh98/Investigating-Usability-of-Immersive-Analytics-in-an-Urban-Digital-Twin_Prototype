@@ -101,11 +101,21 @@ This has never been seen in a headset. Check, note the results, and fix:
     `maxWristDistanceMeters` 0.75, `wristFaceNormal` (−1, 0.5, 0),
     `facingThreshold` 0.25, `hideDelaySeconds` 0.6. **Write the final values
     back into the code defaults:** rebuilding the scene resets them.
-- [ ] **Table board** (far table edge; Y hides it): readable from the user's
-      side, moves sensibly when walking around, does not block the view.
-      Tune `XRTableBoard.metersPerUnit` (0.002), `repositionDegrees` (50).
-- [ ] **Shortcuts.** A copies to compare, B clears, thumbstick left/right
-      switches views; with the ray on a panel the thumbstick only scrolls.
+- [ ] **Tutorial (2026-10-09).** Starts by itself at the far edge, left of
+      the legend; every step can be done; locked toolbar buttons look
+      greyed out; the outlined button is noticed; F8 on the PC skips. Check
+      the `vr_tutorial` seconds in the log.
+- [ ] **Panels (2026-10-09).** Legend (far edge) readable; Info (right) and
+      Compare (left) in reach and not in the way of the toolbar; Help cards
+      readable; a panel carried into the table is pushed out. Tune the
+      panels' `metersPerUnit`, `sideOffsetMeters`, `centerAboveTableMeters`.
+- [ ] **Click tools.** Copy: one click copies and the copy pops up; the same
+      area again only pulses. Compare: two clicks fill A and B. Clear table
+      leaves plain buildings.
+- [ ] **Data.** District outlines visible (25 m); turbo colours and the
+      taller columns make 70 / 74 / 75 % distinguishable enough.
+- [ ] **Shortcuts.** B unselects, Y shows/hides Info, right stick up/down
+      resizes; with the ray on a panel the thumbstick only scrolls.
 - [ ] **Hands.** The glove hands sit on your real hands (tune
       `XRVirtualHands.offsetMeters` / `offsetEuler` / `handScale`), fingers
       follow trigger and grip.

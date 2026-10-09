@@ -8,14 +8,16 @@ using UrbanAnalytics.Interaction.UI;
 namespace UrbanAnalytics.XR
 {
     /// <summary>
-    /// Something the user can pick up with a controller ray + grip or a
-    /// hand ray + pinch and put somewhere else (XRGrabber does the
-    /// grabbing): pop-out copies and the VR panels (via their "Move"
-    /// handle).
+    /// Something the user can pick up with a controller ray + grip and
+    /// put somewhere else (XRGrabber does the grabbing): copies and the
+    /// VR panels (by their "Grab" bar).
     ///
     /// Only the grab collider is needed, on the "Ignore Raycast" layer
     /// (<see cref="Layer"/>): city picking never hits it, and
     /// XRControllerPointer treats a ray on it like a ray on a panel.
+    ///
+    /// Panels (<see cref="KeepOutOfTable"/>) cannot be put into the
+    /// table: XRGrabber pushes them out (TabletopRig.KeepOutOfTable).
     /// </summary>
     public sealed class XRGrabbable :
         MonoBehaviour
@@ -24,10 +26,22 @@ namespace UrbanAnalytics.XR
         public const int Layer =
             2;
 
+        /// <summary>Label of a panel's grab bar.</summary>
+        public const string HandleLabel =
+            "Grab";
+
+        /// <summary>Canvas units the grab bar adds below a panel (gap + bar).</summary>
+        private const float HandleExtraUnits =
+            44.0f;
+
 
         [Tooltip("While dragged, turn about the vertical axis to face the user (panels).")]
         [SerializeField]
         private bool faceUser;
+
+        [Tooltip("Pushed out of the table when let go there (panels).")]
+        [SerializeField]
+        private bool keepOutOfTable;
 
 
         /// <summary>
@@ -45,6 +59,13 @@ namespace UrbanAnalytics.XR
         {
             get => faceUser;
             set => faceUser = value;
+        }
+
+
+        public bool KeepOutOfTable
+        {
+            get => keepOutOfTable;
+            set => keepOutOfTable = value;
         }
 
 
@@ -77,9 +98,43 @@ namespace UrbanAnalytics.XR
 
 
         /// <summary>
-        /// Adds a "Move" handle (a bar with a grab collider) below a
-        /// world-space panel canvas and makes the canvas grabbable by it.
-        /// Sizes are canvas units.
+        /// Half width and half height in world units of the panel this
+        /// sits on (its RectTransform, plus the grab bar below). False
+        /// for objects without a RectTransform.
+        /// </summary>
+        public bool TryGetPanelExtents(
+            out float halfWidth,
+            out float halfHeight
+        )
+        {
+            halfWidth =
+                0.0f;
+
+            halfHeight =
+                0.0f;
+
+            if (!(transform is RectTransform rect))
+            {
+                return false;
+            }
+
+            Vector3 scale =
+                rect.lossyScale;
+
+            halfWidth =
+                0.5f * rect.rect.width * Mathf.Abs(scale.x);
+
+            halfHeight =
+                0.5f * (rect.rect.height + 2.0f * HandleExtraUnits) * Mathf.Abs(scale.y);
+
+            return true;
+        }
+
+
+        /// <summary>
+        /// Adds a "Grab" bar (with a grab collider) below a world-space
+        /// panel canvas and makes the canvas grabbable by it; the panel
+        /// is kept out of the table. Sizes are canvas units.
         /// </summary>
         public static XRGrabbable AddPanelHandle(
             RectTransform canvasRoot,
@@ -90,7 +145,7 @@ namespace UrbanAnalytics.XR
         {
             RectTransform handle =
                 RuntimeUi.CreateRect(
-                    "MoveHandle",
+                    "GrabHandle",
                     canvasRoot
                 );
 
@@ -123,7 +178,7 @@ namespace UrbanAnalytics.XR
             TMP_Text label =
                 RuntimeUi.CreateText(
                     handle,
-                    "Move  (grip / pinch)",
+                    HandleLabel,
                     RuntimeUi.SmallSize,
                     RuntimeUi.MutedColor,
                     TextAnchor.MiddleCenter
@@ -162,6 +217,9 @@ namespace UrbanAnalytics.XR
             }
 
             grabbable.faceUser =
+                true;
+
+            grabbable.keepOutOfTable =
                 true;
 
             return grabbable;

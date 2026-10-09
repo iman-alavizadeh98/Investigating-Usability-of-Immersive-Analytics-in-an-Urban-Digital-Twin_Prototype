@@ -13,15 +13,20 @@ using UrbanAnalytics.Study;
 namespace UrbanAnalytics.XR
 {
     /// <summary>
-    /// Pop-out copies of the selection (VR): "Copy" makes a complete 3D
-    /// copy of everything drawn for the selected entity (building, or
-    /// area with its columns/surface), lifted above the original with a
-    /// thin line back to where it came from and a label with its name
-    /// and values. The copy can be grabbed (controller grip or hand
-    /// pinch with the ray on it) and put anywhere, e.g. next to another
-    /// area to compare them. Copies are snapshots: they keep the view
-    /// they were made in (named on the label). The label's "Remove"
-    /// button removes one copy; <see cref="RemoveAll"/> removes all.
+    /// Copies of things on the table (VR): with the toolbar's Copy tool
+    /// on, clicking a building or area (XRClickTools) makes a complete 3D
+    /// copy of everything drawn for it (building, or area with its
+    /// columns/surface). The copy pops up above the original (a short
+    /// rise with a slight overshoot) with a thin line back to where it
+    /// came from and a label with its name and values. It can be grabbed
+    /// (controller grip with the ray on it) and put anywhere, e.g. next
+    /// to another area. Copies are snapshots: they keep the view they
+    /// were made in (named on the label).
+    ///
+    /// Copies of different things can exist side by side, but only one
+    /// copy per thing: copying it again makes the existing copy pulse
+    /// instead (logged as "exists"). The label's "Remove" button removes
+    /// one copy; <see cref="RemoveAll"/> removes all.
     ///
     /// The copy lives in world space next to the city (1 unit = 1 km), so
     /// it scales with the table. Its only collider is a grab box on the
@@ -35,7 +40,7 @@ namespace UrbanAnalytics.XR
         MonoBehaviour
     {
 
-        private sealed class Copy
+        private sealed class CopyItem
         {
             public int Number;
 
@@ -53,6 +58,15 @@ namespace UrbanAnalytics.XR
                 new List<Mesh>();
 
             public string EntityId;
+
+            public XRGrabbable Grabbable;
+
+            /// <summary>Real seconds when the pop-up started.</summary>
+            public float PopStart;
+
+            /// <summary>Real seconds when the last pulse started (-1 = none).</summary>
+            public float PulseStart =
+                -1.0f;
         }
 
 
@@ -83,6 +97,18 @@ namespace UrbanAnalytics.XR
         [Range(0.02f, 0.5f)]
         private float liftMeters =
             0.12f;
+
+        [Tooltip("Duration of the pop-up (rise with a slight overshoot).")]
+        [SerializeField]
+        [Range(0.0f, 1.5f)]
+        private float popSeconds =
+            0.45f;
+
+        [Tooltip("Duration of the pulse shown when the thing is already copied.")]
+        [SerializeField]
+        [Range(0.1f, 1.5f)]
+        private float pulseSeconds =
+            0.6f;
 
         [Tooltip("Grab box is at least this big, so small copies are easy to grab.")]
         [SerializeField]
@@ -123,8 +149,8 @@ namespace UrbanAnalytics.XR
         // RUNTIME
         // =========================================================
 
-        private readonly List<Copy> copies =
-            new List<Copy>();
+        private readonly List<CopyItem> copies =
+            new List<CopyItem>();
 
         private Transform copiesRoot;
 
@@ -137,6 +163,9 @@ namespace UrbanAnalytics.XR
 
 
         public event Action Changed;
+
+        /// <summary>A new copy was made (tutorial).</summary>
+        public event Action Created;
 
 
         // =========================================================
@@ -211,9 +240,19 @@ namespace UrbanAnalytics.XR
             Vector3 eye =
                 viewCamera.transform.position;
 
+            float now =
+                Time.realtimeSinceStartup;
 
-            foreach (Copy copy in copies)
+
+            foreach (CopyItem copy in copies)
             {
+                Animate(
+                    copy,
+                    now,
+                    worldScale
+                );
+
+
                 Vector3 bottom =
                     copy.Root.transform.position;
 
@@ -252,26 +291,50 @@ namespace UrbanAnalytics.XR
         // PUBLIC
         // =========================================================
 
+        /// <summary>True when this thing already has a copy.</summary>
+        public bool HasCopyOf(
+            EntityReference entity
+        )
+        {
+            return Find(entity) != null;
+        }
+
+
         /// <summary>
-        /// Copies the current selection. Returns false when nothing is
-        /// selected or nothing is drawn for it.
+        /// Copies a building or area (pops up above it). When it already
+        /// has a copy, that copy pulses instead and false is returned;
+        /// also false when nothing is drawn for it.
         /// </summary>
-        public bool CopySelected()
+        public bool Copy(
+            EntityReference entity
+        )
         {
             if (interactionManager == null ||
-                !interactionManager.HasSelection)
+                !entity.IsValid)
             {
-                Debug.Log(
-                    "XRSelectionCopies: nothing selected to copy.",
-                    this
-                );
-
                 return false;
             }
 
 
-            EntityReference entity =
-                interactionManager.Selected;
+            CopyItem existing =
+                Find(entity);
+
+            if (existing != null)
+            {
+                existing.PulseStart =
+                    Time.realtimeSinceStartup;
+
+                Debug.Log(
+                    $"XRSelectionCopies: '{entity}' already has copy {existing.Number}; " +
+                    "showing it instead of making another.",
+                    this
+                );
+
+                Log("exists", existing);
+
+                return false;
+            }
+
 
             EntityGeometry geometry =
                 interactionManager.CollectGeometry(
@@ -328,7 +391,7 @@ namespace UrbanAnalytics.XR
 
 
             var copy =
-                new Copy
+                new CopyItem
                 {
                     Number = nextNumber++,
                     Anchor = anchor,
@@ -350,9 +413,12 @@ namespace UrbanAnalytics.XR
                 false
             );
 
+            // Starts on the original; Animate() pops it up.
             copy.Root.transform.position =
-                anchor +
-                Vector3.up * (liftMeters * worldScale);
+                anchor;
+
+            copy.PopStart =
+                Time.realtimeSinceStartup;
 
 
             // ----- the geometry, relative to the copy's base -----
@@ -408,11 +474,14 @@ namespace UrbanAnalytics.XR
                     layer = XRGrabbable.Layer
                 };
 
-            // XRGrabber moves the copy (grip / pinch with the ray on it).
+            // XRGrabber moves the copy (grip with the ray on it).
             XRGrabbable grabbable =
                 copy.Root.AddComponent<XRGrabbable>();
 
-            Copy moved =
+            copy.Grabbable =
+                grabbable;
+
+            CopyItem moved =
                 copy;
 
             grabbable.Released +=
@@ -488,6 +557,8 @@ namespace UrbanAnalytics.XR
 
             Changed?.Invoke();
 
+            Created?.Invoke();
+
             return true;
         }
 
@@ -508,8 +579,95 @@ namespace UrbanAnalytics.XR
         // HELPERS
         // =========================================================
 
+        private CopyItem Find(
+            EntityReference entity
+        )
+        {
+            string id =
+                entity.ToString();
+
+            foreach (CopyItem copy in copies)
+            {
+                if (copy.EntityId == id)
+                {
+                    return copy;
+                }
+            }
+
+            return null;
+        }
+
+
+        /// <summary>
+        /// Pop-up after creation (rise from the original to the lift
+        /// height with a slight overshoot, unless grabbed meanwhile) and
+        /// the "already copied" pulse (a short swell of the copy).
+        /// </summary>
+        private void Animate(
+            CopyItem copy,
+            float now,
+            float worldScale
+        )
+        {
+            bool held =
+                copy.Grabbable != null &&
+                copy.Grabbable.IsUserPlaced;
+
+            float pop =
+                popSeconds > 0.0f
+                    ? (now - copy.PopStart) / popSeconds
+                    : 1.0f;
+
+            if (!held &&
+                pop <= 1.05f)
+            {
+                copy.Root.transform.position =
+                    copy.Anchor +
+                    Vector3.up * (liftMeters * worldScale * EaseOutBack(Mathf.Clamp01(pop)));
+            }
+
+
+            float scale =
+                1.0f;
+
+            if (copy.PulseStart >= 0.0f)
+            {
+                float pulse =
+                    (now - copy.PulseStart) / pulseSeconds;
+
+                if (pulse >= 1.0f)
+                {
+                    copy.PulseStart =
+                        -1.0f;
+                }
+                else
+                {
+                    scale =
+                        1.0f + 0.35f * Mathf.Sin(pulse * Mathf.PI);
+                }
+            }
+
+            copy.Root.transform.localScale =
+                Vector3.one * scale;
+        }
+
+
+        private static float EaseOutBack(
+            float t
+        )
+        {
+            const float overshoot =
+                1.70158f;
+
+            float u =
+                t - 1.0f;
+
+            return 1.0f + (overshoot + 1.0f) * u * u * u + overshoot * u * u;
+        }
+
+
         private RectTransform BuildLabel(
-            Copy copy,
+            CopyItem copy,
             EntityReference entity,
             Color color
         )
@@ -647,7 +805,7 @@ namespace UrbanAnalytics.XR
             // Remove just this copy (ray + trigger / pinch, or poke).
             labelObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster>();
 
-            Copy target =
+            CopyItem target =
                 copy;
 
             RuntimeUi.CreateButton(
@@ -669,7 +827,7 @@ namespace UrbanAnalytics.XR
 
 
         private void Remove(
-            Copy copy,
+            CopyItem copy,
             string how
         )
         {
@@ -691,7 +849,7 @@ namespace UrbanAnalytics.XR
 
         private void Log(
             string how,
-            Copy copy
+            CopyItem copy
         )
         {
             Vector3 position =

@@ -12,13 +12,13 @@
           "channel": 1, "role": 0,
           "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_population", "variableId": "population_density" } ] },
           "scale": { "type": 4 },
-          "height": { "maximumVisualHeight": 0.2, "minimumVisualHeight": 0.012 }
+          "height": { "maximumVisualHeight": 0.4, "minimumVisualHeight": 0.006 }
         },
         {
           "channel": 0, "role": 0,
           "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_population", "variableId": "population_density" } ] },
           "scale": { "type": 4 },
-          "color": { "paletteId": "ylgnbu" }
+          "color": { "paletteId": "turbo" }
         }
       ],
       "heightSurface": { "method": 1, "insetFactor": 1.0 }

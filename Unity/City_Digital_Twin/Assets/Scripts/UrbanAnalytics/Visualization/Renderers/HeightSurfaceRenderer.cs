@@ -472,6 +472,27 @@ namespace UrbanAnalytics.Visualization
                     );
 
 
+                    // Bold area boundaries on the column tops (spec
+                    // "outline"); not with InsetExtrusion, whose tops are
+                    // shrunk away from the source polygon.
+                    if (horizontalScale >= 1.0f)
+                    {
+                        AreaOutlineBuilder.Create(
+                            chunkTransform,
+                            sourceChunk,
+                            spec.Outline,
+                            context.VertexColorMaterial,
+                            unitId =>
+                                surfaceTopOffsets.TryGetValue(
+                                    unitId,
+                                    out float top
+                                )
+                                    ? top
+                                    : 0.0f
+                        );
+                    }
+
+
                     if (horizontalScale < 1.0f)
                     {
                         CollectHorizontalAnchors(

@@ -34,6 +34,7 @@ Shader "UrbanAnalytics/VertexColorUnlit"
             #pragma multi_compile_instancing
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
 
 
             struct Attributes
@@ -73,8 +74,20 @@ Shader "UrbanAnalytics/VertexColorUnlit"
                         input.positionOS.xyz
                     );
 
+                // Vertex colours are palette colours in sRGB (Color32
+                // from hex). The project renders in linear space, where
+                // they were shown too light (map paler than its legend);
+                // convert them like Unity converts Color properties.
+                half4 color =
+                    input.color;
+
+                #if !defined(UNITY_COLORSPACE_GAMMA)
+                color.rgb =
+                    SRGBToLinear(color.rgb);
+                #endif
+
                 output.color =
-                    input.color * _Tint;
+                    color * _Tint;
 
                 return output;
             }

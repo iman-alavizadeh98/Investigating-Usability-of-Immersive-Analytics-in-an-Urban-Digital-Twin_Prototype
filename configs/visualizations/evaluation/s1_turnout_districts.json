@@ -5,6 +5,7 @@
     {
       "id": "district_turnout",
       "enabled": true,
+      "outline": { "enabled": true, "width": 0.025, "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1.0 } },
       "mark": 0,
       "target": { "kind": 0, "layerId": "valdistrikt", "mapping": { "mode": 0, "associationId": "" } },
       "encodings": [
@@ -12,7 +13,7 @@
           "channel": 0, "role": 0,
           "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "turnout" } ] },
           "scale": { "type": 4 },
-          "color": { "paletteId": "ylgnbu" }
+          "color": { "paletteId": "turbo" }
         }
       ]
     },
@@ -26,7 +27,7 @@
           "channel": 0, "role": 0,
           "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "turnout" } ] },
           "scale": { "type": 4 },
-          "color": { "paletteId": "ylgnbu" }
+          "color": { "paletteId": "turbo" }
         }
       ]
     }

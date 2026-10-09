@@ -22,6 +22,8 @@ namespace UrbanAnalytics.Visualization
             public Color32[] Colors;
 
             public Material Material;
+
+            public GameObject Outline;
         }
 
 
@@ -254,6 +256,17 @@ namespace UrbanAnalytics.Visualization
                     );
 
 
+                    // Bold area boundaries (spec "outline"), removed on cleanup.
+                    originalStates[originalStates.Count - 1].Outline =
+                        AreaOutlineBuilder.Create(
+                            chunk.transform,
+                            chunk,
+                            spec.Outline,
+                            context.VertexColorMaterial,
+                            null
+                        );
+
+
                     await Task.Yield();
                 }
             }
@@ -305,6 +318,17 @@ namespace UrbanAnalytics.Visualization
                 in originalStates
             )
             {
+                if (state.Outline != null)
+                {
+                    UnityEngine.Object.Destroy(
+                        state.Outline
+                    );
+
+                    state.Outline =
+                        null;
+                }
+
+
                 if (state.Chunk == null ||
                     state.Chunk.Mesh == null)
                 {

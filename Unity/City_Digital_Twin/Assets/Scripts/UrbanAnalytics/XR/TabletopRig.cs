@@ -528,6 +528,93 @@ namespace UrbanAnalytics.XR
         }
 
 
+        /// <summary>
+        /// Keeps a panel out of the table: returns the world position
+        /// moved the shortest way (up, or sideways past the nearest
+        /// edge) so that a panel of this horizontal radius and half
+        /// height (real metres) no longer overlaps the space from the
+        /// floor up to <paramref name="clearanceMeters"/> above the table
+        /// top (where the city model stands). Unchanged when it does not
+        /// overlap or the table is not placed. Users may step into the
+        /// table; panels may not.
+        /// </summary>
+        public Vector3 KeepOutOfTable(
+            Vector3 worldPosition,
+            float radiusMeters,
+            float halfHeightMeters,
+            float clearanceMeters
+        )
+        {
+            if (!IsPlaced ||
+                xrOrigin == null)
+            {
+                return worldPosition;
+            }
+
+
+            Quaternion toTable =
+                Quaternion.Euler(0.0f, -tableYawRig, 0.0f);
+
+            Vector3 local =
+                toTable *
+                (xrOrigin.InverseTransformPoint(worldPosition) - tableCenterRig);
+
+            Vector2 size =
+                TableSizeMeters;
+
+            float reachX =
+                0.5f * size.x + radiusMeters;
+
+            float reachZ =
+                0.5f * size.y + radiusMeters;
+
+            float top =
+                clearanceMeters + halfHeightMeters;
+
+
+            if (Mathf.Abs(local.x) >= reachX ||
+                Mathf.Abs(local.z) >= reachZ ||
+                local.y >= top)
+            {
+                return worldPosition;
+            }
+
+
+            float raise =
+                top - local.y;
+
+            float pushX =
+                reachX - Mathf.Abs(local.x);
+
+            float pushZ =
+                reachZ - Mathf.Abs(local.z);
+
+
+            if (raise <= pushX &&
+                raise <= pushZ)
+            {
+                local.y =
+                    top;
+            }
+            else if (pushX <= pushZ)
+            {
+                local.x =
+                    local.x >= 0.0f ? reachX : -reachX;
+            }
+            else
+            {
+                local.z =
+                    local.z >= 0.0f ? reachZ : -reachZ;
+            }
+
+
+            return xrOrigin.TransformPoint(
+                tableCenterRig +
+                Quaternion.Inverse(toTable) * local
+            );
+        }
+
+
         private float ScaleForLength(
             float lengthMeters
         )

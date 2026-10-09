@@ -12,19 +12,19 @@
           "channel": 1, "role": 1,
           "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_population", "variableId": "share_children_0_15" } ] },
           "scale": { "type": 4 },
-          "height": { "maximumVisualHeight": 0.2, "minimumVisualHeight": 0.012 }
+          "height": { "maximumVisualHeight": 0.4, "minimumVisualHeight": 0.006 }
         },
         {
           "channel": 1, "role": 2,
           "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_population", "variableId": "share_65_plus" } ] },
           "scale": { "type": 4 },
-          "height": { "maximumVisualHeight": 0.12, "minimumVisualHeight": 0.008 }
+          "height": { "maximumVisualHeight": 0.24, "minimumVisualHeight": 0.004 }
         },
         {
           "channel": 0, "role": 0,
           "data": { "mode": 0, "variables": [ { "dataLayerId": "ruta_population", "variableId": "share_children_0_15" } ] },
           "scale": { "type": 4 },
-          "color": { "paletteId": "blues" }
+          "color": { "paletteId": "turbo" }
         }
       ],
       "heightSurface": { "method": 1, "insetFactor": 1.0 },

@@ -221,11 +221,24 @@ namespace UrbanAnalytics.XR
         }
 
 
+        /// <summary>A finished move, turn or recall (tutorial).</summary>
+        public event System.Action Moved;
+
+
         private void Update()
         {
             if (tabletopRig == null ||
                 !tabletopRig.IsPlaced ||
                 Source == null)
+            {
+                return;
+            }
+
+
+            // Locked by the tutorial until it teaches moving the table.
+            if (!XRFeatureLock.Allows(XRFeature.MoveTable) &&
+                !grabbing &&
+                !turning)
             {
                 return;
             }
@@ -254,7 +267,7 @@ namespace UrbanAnalytics.XR
                 grabAction.IsPressed();
 
 
-            // The same press grabs a pop-out copy when the left ray is on
+            // The same press grabs a copy or panel when the left ray is on
             // one; then the table stays put.
             if (held &&
                 !grabbing &&
@@ -423,7 +436,8 @@ namespace UrbanAnalytics.XR
         {
             if (tabletopRig == null ||
                 !tabletopRig.IsPlaced ||
-                viewCamera == null)
+                viewCamera == null ||
+                !XRFeatureLock.Allows(XRFeature.MoveTable))
             {
                 return;
             }
@@ -467,6 +481,8 @@ namespace UrbanAnalytics.XR
                 ("centerZ", center.z),
                 ("yawDegrees", tabletopRig.TableYawRig)
             );
+
+            Moved?.Invoke();
         }
 
 

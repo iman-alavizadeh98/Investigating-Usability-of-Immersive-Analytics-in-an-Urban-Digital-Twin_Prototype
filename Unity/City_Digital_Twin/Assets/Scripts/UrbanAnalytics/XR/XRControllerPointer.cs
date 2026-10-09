@@ -89,7 +89,7 @@ namespace UrbanAnalytics.XR
 
         [Tooltip(
             "Objects on these layers block the city like a panel does " +
-            "(the pop-out copies' grab boxes are on Ignore Raycast)."
+            "(the copies' grab boxes are on Ignore Raycast)."
         )]
         [SerializeField]
         private LayerMask blockingLayers =
