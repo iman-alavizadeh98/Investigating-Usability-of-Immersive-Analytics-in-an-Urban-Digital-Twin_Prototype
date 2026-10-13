@@ -77,7 +77,7 @@ namespace UrbanAnalytics.XR
             if (comparisonManager != null)
             {
                 comparisonManager.Changed +=
-                    Refresh;
+                    HandleComparisonChanged;
             }
         }
 
@@ -93,7 +93,7 @@ namespace UrbanAnalytics.XR
             if (comparisonManager != null)
             {
                 comparisonManager.Changed -=
-                    Refresh;
+                    HandleComparisonChanged;
             }
         }
 
@@ -221,6 +221,19 @@ namespace UrbanAnalytics.XR
                     bodyRect,
                     out _
                 );
+        }
+
+
+        /// <summary>Areas were put into A/B (Compare tool or a study scenario): show them.</summary>
+        private void HandleComparisonChanged()
+        {
+            Refresh();
+
+            if (comparisonManager != null &&
+                comparisonManager.HasAnyFilled)
+            {
+                SetVisible(true);
+            }
         }
 
 

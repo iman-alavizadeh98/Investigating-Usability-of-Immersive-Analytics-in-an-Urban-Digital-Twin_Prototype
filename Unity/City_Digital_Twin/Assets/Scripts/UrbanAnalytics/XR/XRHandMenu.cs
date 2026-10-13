@@ -1886,33 +1886,111 @@ namespace UrbanAnalytics.XR
                     studySession.Condition
                 );
 
+            string instruction =
+                scenario.InstructionFor(
+                    studySession.Condition
+                );
 
-            bool hasOptions =
-                scenario.options != null &&
-                scenario.options.Length > 0;
-
-            if (hasOptions)
+            if (!string.IsNullOrEmpty(instruction))
             {
-                foreach (string option in scenario.options)
+                RuntimeUi.CreateText(
+                    taskBody,
+                    instruction,
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.AccentColor
+                );
+            }
+
+
+            // What is shown: variable, unit, spatial unit, year.
+            string dataBlock =
+                studySession.DataBlock(scenario);
+
+            if (!string.IsNullOrEmpty(dataBlock))
+            {
+                RuntimeUi.CreateText(
+                    taskBody,
+                    dataBlock,
+                    RuntimeUi.SmallSize,
+                    RuntimeUi.MutedColor
+                );
+            }
+
+
+            int number =
+                1;
+
+            foreach (StudyPart part in studySession.VisibleParts)
+            {
+                RuntimeUi.CreateText(
+                    taskBody,
+                    $"<b>{number++}.</b> {part.question}" +
+                    (part.IsOpen
+                        ? RuntimeUi.Colorize("  Answer aloud.", RuntimeUi.AccentColor)
+                        : string.Empty),
+                    RuntimeUi.BodySize,
+                    RuntimeUi.TextColor
+                );
+
+                // Open questions are answered aloud; the facilitator codes them on the PC.
+                if (part.IsOpen)
+                {
+                    continue;
+                }
+
+
+                string[] options =
+                    StudyAnswerKey.OptionsOf(part);
+
+                RectTransform row =
+                    RuntimeUi.CreateRect(
+                        "Options",
+                        taskBody
+                    );
+
+                if (StudyAnswerKey.FitsOneRow(options))
+                {
+                    RuntimeUi.Horizontal(
+                        row.gameObject,
+                        0,
+                        6.0f
+                    ).childForceExpandWidth =
+                        true;
+                }
+                else
+                {
+                    RuntimeUi.Vertical(
+                        row.gameObject,
+                        0,
+                        4.0f
+                    );
+                }
+
+                foreach (string option in options)
                 {
                     string captured =
                         option;
 
+                    string partId =
+                        part.id;
+
                     Button button =
                         RuntimeUi.CreateButton(
-                            taskBody,
+                            row,
                             option,
-                            () => studySession.SelectOption(captured),
+                            () => studySession.SelectPartOption(partId, captured),
                             -1.0f,
                             ButtonHeight
                         );
 
-                    RuntimeUi.SetAlignment(
-                        button.GetComponentInChildren<TMP_Text>(),
-                        TextAnchor.MiddleLeft
+                    RuntimeUi.Layout(
+                        button.gameObject,
+                        -1.0f,
+                        ButtonHeight,
+                        1.0f
                     );
 
-                    if (option == studySession.SelectedOption)
+                    if (option == studySession.AnswerOf(part.id))
                     {
                         RuntimeUi.SetButton(
                             button,
@@ -1921,8 +1999,15 @@ namespace UrbanAnalytics.XR
                         );
                     }
                 }
+            }
 
 
+            bool hasParts =
+                scenario.parts != null &&
+                scenario.parts.Length > 0;
+
+            if (!scenario.training)
+            {
                 RuntimeUi.CreateText(
                     taskBody,
                     "How sure are you? (1 = not at all, 5 = very)",
@@ -1974,7 +2059,7 @@ namespace UrbanAnalytics.XR
                     }
                 }
             }
-            else
+            else if (!hasParts)
             {
                 RuntimeUi.CreateText(
                     taskBody,
@@ -1985,7 +2070,16 @@ namespace UrbanAnalytics.XR
             }
 
 
-            TaskButton(hasOptions ? "Submit" : "Done", studySession.Submit);
+            // Matched views (e.g. V and S): same location, same areas A/B.
+            if (scenario.HasAlternateView)
+            {
+                TaskButton(
+                    "Show " + (studySession.ShowingAlternate ? scenario.presetLabel : scenario.alternateLabel),
+                    studySession.SwitchView
+                );
+            }
+
+            TaskButton(hasParts ? "Submit" : "Done", studySession.Submit);
 
             TaskButton("Skip", studySession.Skip);
         }

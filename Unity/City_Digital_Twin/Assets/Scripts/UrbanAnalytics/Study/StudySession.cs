@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
@@ -8,65 +9,36 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 using UrbanAnalytics.Core;
+using UrbanAnalytics.Data;
 using UrbanAnalytics.Interaction;
 using UrbanAnalytics.Interaction.UI;
 using UrbanAnalytics.Visualization;
 
 namespace UrbanAnalytics.Study
 {
-    /// <summary>One guided scenario (scenarios.json in the city package).</summary>
-    [Serializable]
-    public sealed class StudyScenario
-    {
-        public string id;
-        public string title;
-        /// <summary>Visualization preset id (catalog entry) shown for this scenario.</summary>
-        public string presetId;
-        public string question;
-        /// <summary>
-        /// Optional wording for the VR condition (controllers instead of
-        /// mouse/keys). Empty = <see cref="question"/> is used.
-        /// </summary>
-        public string questionVr;
-        /// <summary>Answer options; empty = no answer (training / free exploration).</summary>
-        public string[] options;
-        /// <summary>The correct option (logged for scoring, never shown).</summary>
-        public string expected;
-        public bool training;
-
-        /// <summary>The question for a condition ("vr" uses <see cref="questionVr"/> when set).</summary>
-        public string QuestionFor(string condition) =>
-            condition == "vr" && !string.IsNullOrEmpty(questionVr) ? questionVr : question;
-    }
-
-
-    [Serializable]
-    public sealed class StudyScenarioFile
-    {
-        public string studyId;
-        public StudyScenario[] scenarios;
-    }
-
-
     /// <summary>
     /// Runs a guided evaluation session and logs it.
     ///
-    /// Flow (facilitator-driven, in the scenario panel, bottom left):
+    /// Flow (facilitator panel bottom left on the PC, or the VR Task tab):
     ///   Start session → per scenario: Show view (applies the preset,
-    ///   starts the timer) → participant answers aloud, facilitator
-    ///   clicks the option and a confidence 1-5 → Submit → next.
+    ///   starts the timer, puts the auto-picked areas into comparison
+    ///   slots A/B) → the participant explores, compares and answers the
+    ///   sub-questions (choices; open questions aloud, optionally coded by
+    ///   the facilitator) and a confidence 1–5 → Submit → next. Scenarios
+    ///   with two matched views have a switch button.
+    ///
+    /// Expected answers are computed from the packaged data at Submit for
+    /// the areas actually in slots A/B (StudyAnswerKey); the scenario file
+    /// holds no answers and no locations.
     ///
     /// Logged (StudyLog, JSON Lines + answers CSV in
-    /// persistentDataPath/study_logs/): session start/end with build
-    /// and dataset versions, scenario start/answer/skip with time and
-    /// interaction count, every applied visualization, hover changes,
-    /// selections, comparison changes and the camera pose at
-    /// `poseHz`.
-    ///
-    /// The flow methods (StartSession, ShowCurrentView, SelectOption,
-    /// SetConfidence, Submit, Skip) are public so the later VR mode can
-    /// drive the same session from a world-space panel.
-    /// F2 hides/shows the panel.
+    /// persistentDataPath/study_logs/): session start/end with build and
+    /// dataset versions; scenario start; pair_assigned (rule, A/B ids,
+    /// counterbalancing); view_switch; per sub-question scenario_part
+    /// (answer, expected, correct, basis); scenario_answer (confidence,
+    /// seconds, interactions, view switches, final A/B ids); every applied
+    /// visualization, hover change, selection and comparison change; the
+    /// camera pose at `poseHz`. F2 hides/shows the panel.
     /// </summary>
     public sealed class StudySession : MonoBehaviour
     {
@@ -86,12 +58,18 @@ namespace UrbanAnalytics.Study
         [Range(0.0f, 30.0f)]
         private float poseHz = 2.0f;
 
+        [Tooltip("Wait at most this long for the view before placing the comparison areas.")]
+        [SerializeField]
+        [Range(5.0f, 120.0f)]
+        private float pairTimeoutSeconds = 45.0f;
+
         [Header("References (found automatically when empty)")]
         [SerializeField] private ProjectManager projectManager;
         [SerializeField] private VisualizationManager visualizationManager;
         [SerializeField] private VisualizationSwitcher visualizationSwitcher;
         [SerializeField] private InteractionManager interactionManager;
         [SerializeField] private ComparisonManager comparisonManager;
+        [SerializeField] private DataLayerManager dataLayerManager;
         [SerializeField] private Camera viewCamera;
 
 
@@ -100,13 +78,20 @@ namespace UrbanAnalytics.Study
         private string studyId;
         private int index = -1;
         private bool viewShown;
+        private bool showingAlternate;
+        private int viewSwitches;
         private double scenarioStart;
         private int interactions;
-        private string selectedOption;
         private int confidence;
+        private string pairA;
+        private string pairB;
+        private string pairBasis;
         private string lastHoverId;
         private float nextPoseTime;
         private string status = string.Empty;
+        private StudyAnswerKey.Evaluator evaluator;
+        private Coroutine pairRoutine;
+        private readonly Dictionary<string, string> answers = new Dictionary<string, string>(StringComparer.Ordinal);
 
         // UI
         private Canvas canvas;
@@ -115,14 +100,15 @@ namespace UrbanAnalytics.Study
         private RectTransform panel;
         private TMP_Text header;
         private TMP_Text question;
-        private RectTransform optionList;
+        private TMP_Text dataText;
+        private RectTransform partList;
         private RectTransform confidenceRow;
         private Button startButton;
         private Button showButton;
+        private Button switchButton;
         private Button submitButton;
         private Button skipButton;
         private TMP_Text statusText;
-        private readonly List<Button> optionButtons = new List<Button>();
         private readonly List<Button> confidenceButtons = new List<Button>();
 
 
@@ -156,13 +142,35 @@ namespace UrbanAnalytics.Study
         /// <summary>True once "Show view" was pressed for the current scenario.</summary>
         public bool ViewShown => viewShown;
 
-        /// <summary>The answer option chosen for the current scenario (null = none yet).</summary>
-        public string SelectedOption => selectedOption;
-
         /// <summary>Confidence 1–5 for the current scenario (0 = not set).</summary>
         public int Confidence => confidence;
 
-        /// <summary>Raised whenever the session state shown in the panel changes (also used by the VR task card).</summary>
+        /// <summary>How the comparison areas were picked (rule, counts), null before.</summary>
+        public string PairBasis => pairBasis;
+
+        /// <summary>True while the second matched view of the scenario is shown.</summary>
+        public bool ShowingAlternate => showingAlternate;
+
+        /// <summary>The sub-questions shown to the participant (not the hidden checks).</summary>
+        public IEnumerable<StudyPart> VisibleParts
+        {
+            get
+            {
+                foreach (StudyPart part in Current?.parts ?? Array.Empty<StudyPart>())
+                {
+                    if (!part.IsHidden)
+                    {
+                        yield return part;
+                    }
+                }
+            }
+        }
+
+        /// <summary>The answer chosen for a sub-question (null = none yet).</summary>
+        public string AnswerOf(string partId) =>
+            partId != null && answers.TryGetValue(partId, out string value) ? value : null;
+
+        /// <summary>Raised whenever the session state changes (also used by the VR Task tab).</summary>
         public event Action Changed;
 
 
@@ -178,6 +186,7 @@ namespace UrbanAnalytics.Study
             if (visualizationSwitcher == null) visualizationSwitcher = FindFirstObjectByType<VisualizationSwitcher>();
             if (interactionManager == null) interactionManager = FindFirstObjectByType<InteractionManager>();
             if (comparisonManager == null) comparisonManager = FindFirstObjectByType<ComparisonManager>();
+            if (dataLayerManager == null) dataLayerManager = FindFirstObjectByType<DataLayerManager>();
 
             BuildUi();
             Refresh();
@@ -311,6 +320,11 @@ namespace UrbanAnalytics.Study
                 StudyScenarioFile file = await LoadScenariosAsync();
                 scenarios = file?.scenarios ?? Array.Empty<StudyScenario>();
                 studyId = file?.studyId;
+
+                foreach (StudyScenario scenario in scenarios)
+                {
+                    NormalizeLegacy(scenario);
+                }
             }
             catch (Exception exception)
             {
@@ -318,6 +332,8 @@ namespace UrbanAnalytics.Study
                 Refresh();
                 return;
             }
+
+            evaluator = dataLayerManager != null ? new StudyAnswerKey.Evaluator(dataLayerManager) : null;
 
             log = new StudyLog(
                 Path.Combine(Application.persistentDataPath, "study_logs"),
@@ -344,6 +360,29 @@ namespace UrbanAnalytics.Study
         }
 
 
+        /// <summary>A scenario with only top-level options becomes one "choice" part.</summary>
+        private static void NormalizeLegacy(StudyScenario scenario)
+        {
+            if ((scenario.parts == null || scenario.parts.Length == 0) &&
+                scenario.options != null && scenario.options.Length > 0)
+            {
+                scenario.parts = new[]
+                {
+                    new StudyPart
+                    {
+                        id = "answer",
+                        kind = "choice",
+                        question = string.Empty,
+                        options = scenario.options,
+                        expected = scenario.expected
+                    }
+                };
+            }
+
+            scenario.parts ??= Array.Empty<StudyPart>();
+        }
+
+
         public void ShowCurrentView()
         {
             StudyScenario scenario = Current;
@@ -355,23 +394,73 @@ namespace UrbanAnalytics.Study
 
             ApplyPreset(scenario.presetId);
             viewShown = true;
+            showingAlternate = false;
             scenarioStart = log.Elapsed;
             interactions = 0;
+            viewSwitches = 0;
 
             log.Write(
                 "scenario_start",
                 ("scenario", scenario.id),
                 ("preset", scenario.presetId),
+                ("alternatePreset", scenario.alternatePresetId),
                 ("training", scenario.training)
+            );
+
+            if (pairRoutine != null)
+            {
+                StopCoroutine(pairRoutine);
+                pairRoutine = null;
+            }
+
+            if (scenario.HasPair)
+            {
+                pairRoutine = StartCoroutine(AssignPairWhenReady(scenario));
+            }
+
+            Refresh();
+        }
+
+
+        /// <summary>Switches between the scenario's two matched views (same location, same slots).</summary>
+        public void SwitchView()
+        {
+            StudyScenario scenario = Current;
+
+            if (log == null || scenario == null || !viewShown || !scenario.HasAlternateView)
+            {
+                return;
+            }
+
+            showingAlternate = !showingAlternate;
+            viewSwitches++;
+            interactions++;
+
+            string to = showingAlternate ? scenario.alternatePresetId : scenario.presetId;
+            ApplyPreset(to);
+
+            log.Write(
+                "view_switch",
+                ("scenario", scenario.id),
+                ("to", to),
+                ("label", showingAlternate ? scenario.alternateLabel : scenario.presetLabel),
+                ("switches", viewSwitches),
+                ("slotA", SlotUnit(0)),
+                ("slotB", SlotUnit(1))
             );
 
             Refresh();
         }
 
 
-        public void SelectOption(string option)
+        public void SelectPartOption(string partId, string option)
         {
-            selectedOption = option;
+            if (string.IsNullOrEmpty(partId))
+            {
+                return;
+            }
+
+            answers[partId] = option;
             Refresh();
         }
 
@@ -392,36 +481,95 @@ namespace UrbanAnalytics.Study
                 return;
             }
 
-            bool hasOptions = scenario.options != null && scenario.options.Length > 0;
-
-            if (hasOptions && string.IsNullOrEmpty(selectedOption))
+            foreach (StudyPart part in scenario.parts)
             {
-                status = "Select the participant's answer first.";
-                Refresh();
-                return;
+                if (part.NeedsAnswer && string.IsNullOrEmpty(AnswerOf(part.id)))
+                {
+                    status = $"Answer \"{part.question}\" first.";
+                    Refresh();
+                    return;
+                }
             }
 
             double seconds = log.Elapsed - scenarioStart;
-            bool? correct = hasOptions && !string.IsNullOrEmpty(scenario.expected)
-                ? string.Equals(selectedOption, scenario.expected, StringComparison.Ordinal)
-                : (bool?)null;
+            string slotA = SlotUnit(0);
+            string slotB = SlotUnit(1);
+            int correctCount = 0;
+            int scoredCount = 0;
+
+            foreach (StudyPart part in scenario.parts)
+            {
+                string answer = AnswerOf(part.id);
+                StudyAnswerKey.Result result = evaluator != null
+                    ? evaluator.Expect(scenario, part, slotA, slotB)
+                    : new StudyAnswerKey.Result { Expected = part.expected, Basis = "no data access" };
+
+                bool? correct;
+
+                if (part.IsHidden)
+                {
+                    correct = evaluator?.SlotCheck(scenario, part, slotA, slotB);
+                    answer = part.slot == "B" ? slotB : slotA;
+                }
+                else if (part.IsOpen)
+                {
+                    // Open questions are answered aloud; the answer is the facilitator's code.
+                    correct = null;
+                }
+                else
+                {
+                    correct = !string.IsNullOrEmpty(result.Expected)
+                        ? string.Equals(answer, result.Expected, StringComparison.Ordinal)
+                        : (bool?)null;
+                }
+
+                if (correct.HasValue && !part.IsHidden)
+                {
+                    scoredCount++;
+                    correctCount += correct.Value ? 1 : 0;
+                }
+
+                log.Write(
+                    "scenario_part",
+                    ("scenario", scenario.id),
+                    ("part", part.id),
+                    ("kind", part.kind),
+                    ("answer", answer),
+                    ("expected", part.IsOpen ? null : result.Expected),
+                    ("correct", correct),
+                    ("basis", result.Basis),
+                    ("slotA", slotA),
+                    ("slotB", slotB)
+                );
+
+                log.WriteAnswer($"{scenario.id}.{part.id}", scenario.presetId, answer,
+                    part.IsOpen ? null : result.Expected, correct, confidence, seconds, interactions);
+            }
+
+            bool hasParts = scenario.parts.Length > 0;
 
             log.Write(
-                hasOptions ? "scenario_answer" : "scenario_done",
+                hasParts ? "scenario_answer" : "scenario_done",
                 ("scenario", scenario.id),
                 ("preset", scenario.presetId),
-                ("answer", selectedOption),
-                ("expected", scenario.expected),
-                ("correct", correct),
+                ("correctParts", correctCount),
+                ("scoredParts", scoredCount),
                 ("confidence", confidence),
                 ("seconds", seconds),
-                ("interactions", interactions)
+                ("interactions", interactions),
+                ("viewSwitches", viewSwitches),
+                ("pairA", pairA),
+                ("pairB", pairB),
+                ("slotA", slotA),
+                ("slotB", slotB)
             );
 
-            log.WriteAnswer(scenario.id, scenario.presetId, selectedOption, scenario.expected,
-                correct, confidence, seconds, interactions);
+            if (!hasParts)
+            {
+                log.WriteAnswer(scenario.id, scenario.presetId, null, null, null, confidence, seconds, interactions);
+            }
 
-            status = $"{scenario.id} logged ({seconds:0.0} s).";
+            status = $"{scenario.id} logged ({seconds:0.0} s, {correctCount}/{scoredCount} scored parts correct).";
             Next();
         }
 
@@ -448,6 +596,12 @@ namespace UrbanAnalytics.Study
 
         private void Next()
         {
+            if (pairRoutine != null)
+            {
+                StopCoroutine(pairRoutine);
+                pairRoutine = null;
+            }
+
             index++;
             ResetScenarioState();
 
@@ -477,8 +631,105 @@ namespace UrbanAnalytics.Study
         private void ResetScenarioState()
         {
             viewShown = false;
-            selectedOption = null;
+            showingAlternate = false;
             confidence = 0;
+            viewSwitches = 0;
+            pairA = null;
+            pairB = null;
+            pairBasis = null;
+            answers.Clear();
+        }
+
+
+        private string SlotUnit(int slot)
+        {
+            if (comparisonManager == null ||
+                comparisonManager.Slots == null ||
+                slot >= comparisonManager.Slots.Count)
+            {
+                return null;
+            }
+
+            ComparisonManager.Slot s = comparisonManager.Slots[slot];
+            return s.IsFilled ? s.Entity.UnitId : null;
+        }
+
+
+        /// <summary>
+        /// Once the view is drawn and pickable, picks A/B by the scenario's
+        /// rule and puts them into the comparison slots (a participant slot
+        /// stays empty; their Compare click fills it).
+        /// </summary>
+        private IEnumerator AssignPairWhenReady(StudyScenario scenario)
+        {
+            float deadline = Time.realtimeSinceStartup + pairTimeoutSeconds;
+
+            // Let the switcher start applying the preset first.
+            yield return null;
+            yield return null;
+
+            while (Time.realtimeSinceStartup < deadline &&
+                   ((visualizationSwitcher != null && visualizationSwitcher.IsApplying) ||
+                    (interactionManager != null && !interactionManager.IsPickingReady)))
+            {
+                yield return null;
+            }
+
+            if (evaluator == null || comparisonManager == null || Current != scenario)
+            {
+                yield break;
+            }
+
+            Task prepare = evaluator.PrepareAsync(scenario);
+
+            while (!prepare.IsCompleted)
+            {
+                yield return null;
+            }
+
+            if (prepare.IsFaulted)
+            {
+                status = $"Could not load the data for the comparison areas: {prepare.Exception?.GetBaseException().Message}";
+                log?.Write("error", ("message", status));
+                Refresh();
+                yield break;
+            }
+
+            (string a, string b, bool swapped, string basis) =
+                evaluator.PickPair(scenario.pair, participantId, scenario.id);
+
+            pairA = a;
+            pairB = b;
+            pairBasis = basis;
+
+            comparisonManager.ClearAll();
+
+            if (b != null)
+            {
+                comparisonManager.CopyToSlot(1, EntityReference.ForUnit(scenario.pair.spatialLayerId, b));
+            }
+
+            if (a != null)
+            {
+                comparisonManager.CopyToSlot(0, EntityReference.ForUnit(scenario.pair.spatialLayerId, a));
+            }
+
+            log?.Write(
+                "pair_assigned",
+                ("scenario", scenario.id),
+                ("layer", scenario.pair.spatialLayerId),
+                ("pairA", a ?? "(participant)"),
+                ("pairB", b ?? "(participant)"),
+                ("swapped", swapped),
+                ("rule", basis)
+            );
+
+            status = a == null || b == null
+                ? "Comparison area " + (a == null ? "B" : "A") + " is set; the participant picks the other one."
+                : "Comparison areas A and B are set.";
+
+            pairRoutine = null;
+            Refresh();
         }
 
 
@@ -608,6 +859,53 @@ namespace UrbanAnalytics.Study
             }
 
             log.Write("comparison", ("slots", slots), ("scenario", Current?.id));
+            CheckAreasHaveData();
+            Refresh();
+        }
+
+
+        /// <summary>
+        /// An area put into A/B by the participant that lacks a value the
+        /// task needs (e.g. a district outside the statistics area has no
+        /// born-abroad estimate) cannot be scored: say so, so another one is
+        /// chosen, and log it.
+        /// </summary>
+        private void CheckAreasHaveData()
+        {
+            StudyScenario scenario = Current;
+
+            if (scenario == null || !scenario.HasPair || !viewShown || evaluator == null || pairBasis == null)
+            {
+                return;
+            }
+
+            var eligible = new HashSet<string>(evaluator.Eligible(scenario.pair), StringComparer.Ordinal);
+            string prefix = scenario.pair.spatialLayerId + ":";
+
+            // Clear an earlier warning once the areas are usable again.
+            if (status.StartsWith("Area ", StringComparison.Ordinal))
+            {
+                bool bothFilled = SlotUnit(0) != null && SlotUnit(1) != null;
+                status = bothFilled ? "Comparison areas A and B are set." : string.Empty;
+            }
+
+            for (int slot = 0; slot < 2; slot++)
+            {
+                string unit = SlotUnit(slot);
+
+                if (unit == null || eligible.Contains(unit))
+                {
+                    continue;
+                }
+
+                string label = slot == 0 ? "A" : "B";
+
+                status = unit.StartsWith(prefix, StringComparison.Ordinal)
+                    ? $"Area {label} has no data for every variable of this task (e.g. outside the statistics area). Please choose another area."
+                    : $"Area {label} is not a {scenario.pair.spatialLayerId} area of this task. Please choose an area of the view.";
+
+                log?.Write("pick_not_usable", ("scenario", scenario.id), ("slot", label), ("unit", unit));
+            }
         }
 
 
@@ -631,15 +929,16 @@ namespace UrbanAnalytics.Study
             panel = background.rectTransform;
             panel.anchorMin = panel.anchorMax = panel.pivot = new Vector2(0.0f, 0.0f);
             panel.anchoredPosition = new Vector2(12.0f, 12.0f);
-            panel.sizeDelta = new Vector2(430.0f, 0.0f);
-            RuntimeUi.Vertical(panel.gameObject, 12, 8.0f);
+            panel.sizeDelta = new Vector2(480.0f, 0.0f);
+            RuntimeUi.Vertical(panel.gameObject, 12, 6.0f);
             panel.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             header = RuntimeUi.CreateText(panel, "", RuntimeUi.HeadingSize, RuntimeUi.AccentColor, TextAnchor.MiddleLeft, FontStyles.Bold);
-            question = RuntimeUi.CreateText(panel, "", RuntimeUi.BodySize, RuntimeUi.TextColor);
+            question = RuntimeUi.CreateText(panel, "", RuntimeUi.SmallSize, RuntimeUi.TextColor);
+            dataText = RuntimeUi.CreateText(panel, "", RuntimeUi.SmallSize, RuntimeUi.MutedColor);
 
-            optionList = RuntimeUi.CreateRect("Options", panel);
-            RuntimeUi.Vertical(optionList.gameObject, 0, 4.0f);
+            partList = RuntimeUi.CreateRect("Parts", panel);
+            RuntimeUi.Vertical(partList.gameObject, 0, 3.0f);
 
             confidenceRow = RuntimeUi.CreateRect("Confidence", panel);
             RuntimeUi.Horizontal(confidenceRow.gameObject, 0, 4.0f);
@@ -649,15 +948,16 @@ namespace UrbanAnalytics.Study
             for (int i = 1; i <= 5; i++)
             {
                 int value = i;
-                confidenceButtons.Add(RuntimeUi.CreateButton(confidenceRow, value.ToString(), () => SetConfidence(value), 44.0f, 28.0f));
+                confidenceButtons.Add(RuntimeUi.CreateButton(confidenceRow, value.ToString(), () => SetConfidence(value), 44.0f, 26.0f));
             }
 
             RectTransform actions = RuntimeUi.CreateRect("Actions", panel);
             RuntimeUi.Horizontal(actions.gameObject, 0, 6.0f);
             startButton = RuntimeUi.CreateButton(actions, "Start session", StartSession, 140.0f);
-            showButton = RuntimeUi.CreateButton(actions, "Show view", ShowCurrentView, 120.0f);
-            submitButton = RuntimeUi.CreateButton(actions, "Submit", Submit, 100.0f);
-            skipButton = RuntimeUi.CreateButton(actions, "Skip", Skip, 70.0f);
+            showButton = RuntimeUi.CreateButton(actions, "Show view", ShowCurrentView, 110.0f);
+            switchButton = RuntimeUi.CreateButton(actions, "Switch view", SwitchView, 120.0f);
+            submitButton = RuntimeUi.CreateButton(actions, "Submit", Submit, 90.0f);
+            skipButton = RuntimeUi.CreateButton(actions, "Skip", Skip, 60.0f);
 
             statusText = RuntimeUi.CreateText(panel, "", RuntimeUi.SmallSize, RuntimeUi.MutedColor);
         }
@@ -675,8 +975,11 @@ namespace UrbanAnalytics.Study
 
             startButton.gameObject.SetActive(!running && index < 0);
             showButton.gameObject.SetActive(running && scenario != null);
+            switchButton.gameObject.SetActive(running && scenario != null && viewShown && scenario.HasAlternateView);
             submitButton.gameObject.SetActive(running && scenario != null && viewShown);
             skipButton.gameObject.SetActive(running && scenario != null);
+
+            dataText.text = string.Empty;
 
             if (!running)
             {
@@ -689,13 +992,25 @@ namespace UrbanAnalytics.Study
             {
                 header.text = $"{index + 1} / {scenarios.Length} · {scenario.id} {scenario.title}";
                 question.text = viewShown
-                    ? scenario.QuestionFor(condition)
+                    ? scenario.QuestionFor(condition) + Instruction(scenario)
                     : $"<color=#{ColorUtility.ToHtmlStringRGB(RuntimeUi.MutedColor)}>Press \"Show view\" to load the view and start the timer.</color>";
+
+                if (viewShown)
+                {
+                    dataText.text = DataBlock(scenario);
+                }
+
+                if (switchButton.gameObject.activeSelf)
+                {
+                    RuntimeUi.SetButton(switchButton,
+                        "Show " + (showingAlternate ? scenario.presetLabel : scenario.alternateLabel),
+                        RuntimeUi.ButtonColor);
+                }
             }
 
-            RebuildOptions(scenario, running && viewShown);
+            RebuildParts(scenario, running && viewShown);
 
-            bool showConfidence = running && viewShown && scenario?.options != null && scenario.options.Length > 0;
+            bool showConfidence = running && viewShown && scenario != null && !scenario.training;
             confidenceRow.gameObject.SetActive(showConfidence);
 
             for (int i = 0; i < confidenceButtons.Count; i++)
@@ -706,8 +1021,7 @@ namespace UrbanAnalytics.Study
 
             if (submitButton.gameObject.activeSelf)
             {
-                bool hasOptions = scenario.options != null && scenario.options.Length > 0;
-                RuntimeUi.SetButton(submitButton, hasOptions ? "Submit" : "Done", RuntimeUi.ButtonColor);
+                RuntimeUi.SetButton(submitButton, scenario.parts.Length > 0 ? "Submit" : "Done", RuntimeUi.ButtonColor);
             }
 
             statusText.text = status;
@@ -716,24 +1030,76 @@ namespace UrbanAnalytics.Study
         }
 
 
-        private void RebuildOptions(StudyScenario scenario, bool visible)
+        private string Instruction(StudyScenario scenario)
         {
-            RuntimeUi.ClearChildren(optionList);
-            optionButtons.Clear();
-            optionList.gameObject.SetActive(visible && scenario?.options != null && scenario.options.Length > 0);
+            string text = scenario.InstructionFor(condition);
+            return string.IsNullOrEmpty(text) ? string.Empty : "\n" + RuntimeUi.Colorize(text, RuntimeUi.AccentColor);
+        }
 
-            if (!optionList.gameObject.activeSelf)
+
+        /// <summary>Data shown (variable · unit · spatial unit · year) and the comparison areas.</summary>
+        public string DataBlock(StudyScenario scenario)
+        {
+            var lines = new List<string>();
+
+            foreach (string line in scenario?.data ?? Array.Empty<string>())
+            {
+                lines.Add("• " + line);
+            }
+
+            if (scenario != null && scenario.HasAlternateView)
+            {
+                lines.Add("• Shown now: " + (showingAlternate ? scenario.alternateLabel : scenario.presetLabel));
+            }
+
+            return string.Join("\n", lines);
+        }
+
+
+        private void RebuildParts(StudyScenario scenario, bool visible)
+        {
+            RuntimeUi.ClearChildren(partList);
+            partList.gameObject.SetActive(visible && scenario?.parts != null && scenario.parts.Length > 0);
+
+            if (!partList.gameObject.activeSelf)
             {
                 return;
             }
 
-            foreach (string option in scenario.options)
+            int number = 1;
+
+            foreach (StudyPart part in scenario.parts)
             {
-                string value = option;
-                Button button = RuntimeUi.CreateButton(optionList, value, () => SelectOption(value), -1.0f, 30.0f);
-                RuntimeUi.SetButton(button, value,
-                    string.Equals(selectedOption, value, StringComparison.Ordinal) ? RuntimeUi.ActiveButtonColor : RuntimeUi.ButtonColor);
-                optionButtons.Add(button);
+                if (part.IsHidden)
+                {
+                    continue;
+                }
+
+                RuntimeUi.CreateText(partList,
+                    $"{number++}. {part.question}" + (part.IsOpen ? RuntimeUi.Colorize("  (aloud; code it)", RuntimeUi.MutedColor) : string.Empty),
+                    RuntimeUi.SmallSize, RuntimeUi.TextColor);
+
+                string[] options = StudyAnswerKey.OptionsOf(part);
+                RectTransform row = RuntimeUi.CreateRect("Options", partList);
+
+                if (StudyAnswerKey.FitsOneRow(options))
+                {
+                    RuntimeUi.Horizontal(row.gameObject, 0, 4.0f);
+                }
+                else
+                {
+                    RuntimeUi.Vertical(row.gameObject, 0, 3.0f);
+                }
+
+                foreach (string option in options)
+                {
+                    string value = option;
+                    string partId = part.id;
+                    Button button = RuntimeUi.CreateButton(row, value, () => SelectPartOption(partId, value), -1.0f, 26.0f, RuntimeUi.SmallSize);
+                    RuntimeUi.Layout(button.gameObject, -1.0f, 26.0f, 1.0f);
+                    RuntimeUi.SetButton(button, value,
+                        string.Equals(AnswerOf(part.id), value, StringComparison.Ordinal) ? RuntimeUi.ActiveButtonColor : RuntimeUi.ButtonColor);
+                }
             }
         }
     }

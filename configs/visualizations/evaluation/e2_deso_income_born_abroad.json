@@ -1,25 +1,25 @@
 {
-  "id": "s3_sd_income",
-  "displayName": "S3 Income (height) vs SD share (colour)",
+  "id": "e2_deso_income_born_abroad",
+  "displayName": "E2 DeSO: median income (height) and born abroad (colour)",
   "layers": [
     {
-      "id": "district_income_sd",
+      "id": "deso_income_origin",
       "enabled": true,
       "outline": { "enabled": true, "width": 0.025, "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1.0 } },
       "mark": 1,
-      "target": { "kind": 0, "layerId": "valdistrikt", "mapping": { "mode": 0, "associationId": "" } },
+      "target": { "kind": 0, "layerId": "deso", "mapping": { "mode": 0, "associationId": "" } },
       "encodings": [
         {
           "channel": 1, "role": 0,
-          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_estimates", "variableId": "mean_economic_standard_est" } ] },
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "deso_income", "variableId": "median_income" } ] },
           "scale": { "type": 4 },
           "height": { "maximumVisualHeight": 0.6, "minimumVisualHeight": 0.01 }
         },
         {
           "channel": 0, "role": 0,
-          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "share_sd" } ] },
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "deso_population", "variableId": "share_born_abroad" } ] },
           "scale": { "type": 4 },
-          "color": { "paletteId": "ylorrd" }
+          "color": { "paletteId": "magma" }
         }
       ],
       "heightSurface": { "method": 1, "insetFactor": 1.0 }

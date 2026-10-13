@@ -1,9 +1,9 @@
 {
-  "id": "s2_income_turnout",
-  "displayName": "S2 Income (height) vs turnout (colour)",
+  "id": "e5b_s_born_abroad",
+  "displayName": "E5 view S: Social Democrats share (colour, 0-50 %) and born abroad (height)",
   "layers": [
     {
-      "id": "district_income_turnout",
+      "id": "district_share_s",
       "enabled": true,
       "outline": { "enabled": true, "width": 0.025, "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1.0 } },
       "mark": 1,
@@ -11,14 +11,14 @@
       "encodings": [
         {
           "channel": 1, "role": 0,
-          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_estimates", "variableId": "mean_economic_standard_est" } ] },
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_estimates", "variableId": "share_born_abroad_est" } ] },
           "scale": { "type": 4 },
           "height": { "maximumVisualHeight": 0.6, "minimumVisualHeight": 0.01 }
         },
         {
           "channel": 0, "role": 0,
-          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "turnout" } ] },
-          "scale": { "type": 4 },
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "share_s" } ] },
+          "scale": { "type": 0, "domainMode": 1, "manualMinimum": 0.0, "manualMaximum": 50.0 },
           "color": { "paletteId": "turbo" }
         }
       ],

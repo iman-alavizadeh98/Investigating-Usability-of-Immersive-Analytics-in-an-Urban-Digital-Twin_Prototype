@@ -74,6 +74,57 @@ def check_spec(spec: Dict, inv: Dict) -> List[str]:
     return problems
 
 
+PART_KINDS = {"compare", "compareCombined", "relativeParty", "pattern", "slotCheck", "open", "choice"}
+
+
+def check_scenario(s: Dict, preset_ids: Set[str], inv: Dict) -> List[str]:
+    """
+    A scenario names presets of the catalog and (pair rule, sub-questions)
+    variables of the package. Expected answers and comparison areas are NOT
+    in the file: the Unity runtime derives them from the data
+    (StudyAnswerKey), so they cannot drift from the package.
+    """
+    problems = []
+    for key in ("presetId", "alternatePresetId"):
+        if s.get(key) and s[key] not in preset_ids:
+            problems.append(f"{key} '{s[key]}' not in catalog")
+    if s.get("options") and s.get("expected") not in s["options"]:
+        problems.append("expected answer is not one of the options")
+
+    def var(layer, variable, where):
+        if not variable:
+            return
+        if layer not in inv["variables"]:
+            problems.append(f"{where}: data layer '{layer}' not in package")
+        elif variable not in inv["variables"][layer]:
+            problems.append(f"{where}: variable '{layer}.{variable}' not in package")
+
+    pair = s.get("pair") or {}
+    if pair:
+        if pair.get("spatialLayerId") not in inv["spatial"]:
+            problems.append(f"pair: spatial layer '{pair.get('spatialLayerId')}' not in package")
+        for prefix in ("", "2"):
+            layer = pair.get(f"dataLayerId{prefix}")
+            var(layer, pair.get(f"variableId{prefix}"), "pair")
+            if layer and inv["targets"].get(layer) != pair.get("spatialLayerId"):
+                problems.append(f"pair: '{layer}' targets '{inv['targets'].get(layer)}', not '{pair.get('spatialLayerId')}'")
+        var(pair.get("requireDataLayerId"), pair.get("requireVariableId"), "pair require")
+        var(pair.get("filterDataLayerId"), pair.get("filterVariableId"), "pair filter")
+
+    for part in s.get("parts") or []:
+        where = f"part {part.get('id')}"
+        if part.get("kind") not in PART_KINDS:
+            problems.append(f"{where}: unknown kind '{part.get('kind')}'")
+        var(part.get("dataLayerId"), part.get("variableId"), where)
+        var(part.get("dataLayerId2") or part.get("dataLayerId"), part.get("variableId2"), where)
+        if part.get("kind") == "relativeParty":
+            for v in (part.get("variableId"), part.get("variableId2")):
+                var(part.get("dataLayerId"), f"{v}_diff", where)
+        if part.get("kind") in ("compare", "compareCombined", "relativeParty", "pattern", "slotCheck") and not pair:
+            problems.append(f"{where}: needs a pair rule (comparison areas)")
+    return problems
+
+
 def export_visualizations(package_dir: Path, source_dir: Path) -> Dict:
     catalog_path = source_dir / "catalog.json"
     if not catalog_path.exists():
@@ -98,10 +149,8 @@ def export_visualizations(package_dir: Path, source_dir: Path) -> Dict:
         scenarios = json.loads(scenarios_path.read_text(encoding="utf-8")).get("scenarios", [])
         scenario_count = len(scenarios)
         for s in scenarios:
-            if s.get("presetId") not in preset_ids:
-                problems.setdefault("scenarios.json", []).append(f"{s.get('id')}: preset '{s.get('presetId')}' not in catalog")
-            if s.get("options") and s.get("expected") not in s["options"]:
-                problems.setdefault("scenarios.json", []).append(f"{s.get('id')}: expected answer is not one of the options")
+            for issue in check_scenario(s, preset_ids, inv):
+                problems.setdefault("scenarios.json", []).append(f"{s.get('id')}: {issue}")
 
     if problems:
         raise ValueError("Visualization presets reference things missing from the package:\n" +

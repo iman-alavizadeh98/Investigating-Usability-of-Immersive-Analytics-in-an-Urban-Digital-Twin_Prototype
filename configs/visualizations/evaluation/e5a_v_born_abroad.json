@@ -1,0 +1,28 @@
+{
+  "id": "e5a_v_born_abroad",
+  "displayName": "E5 view V: Left Party share (colour, 0-50 %) and born abroad (height)",
+  "layers": [
+    {
+      "id": "district_share_v",
+      "enabled": true,
+      "outline": { "enabled": true, "width": 0.025, "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1.0 } },
+      "mark": 1,
+      "target": { "kind": 0, "layerId": "valdistrikt", "mapping": { "mode": 0, "associationId": "" } },
+      "encodings": [
+        {
+          "channel": 1, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_estimates", "variableId": "share_born_abroad_est" } ] },
+          "scale": { "type": 4 },
+          "height": { "maximumVisualHeight": 0.6, "minimumVisualHeight": 0.01 }
+        },
+        {
+          "channel": 0, "role": 0,
+          "data": { "mode": 0, "variables": [ { "dataLayerId": "valdistrikt_election", "variableId": "share_v" } ] },
+          "scale": { "type": 0, "domainMode": 1, "manualMinimum": 0.0, "manualMaximum": 50.0 },
+          "color": { "paletteId": "turbo" }
+        }
+      ],
+      "heightSurface": { "method": 1, "insetFactor": 1.0 }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
-  "id": "s5_four_variables",
-  "displayName": "S5 Four variables at once (grid + buildings)",
+  "id": "e3_grid_profile",
+  "displayName": "E3 Planning profile: density up, 65+ down, income colour, turnout buildings",
   "layers": [
     {
       "id": "grid_two_sided",
