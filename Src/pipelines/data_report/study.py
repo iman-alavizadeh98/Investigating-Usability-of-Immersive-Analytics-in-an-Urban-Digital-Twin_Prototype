@@ -10,9 +10,11 @@ Two PDFs from one scenario config (configs/study/pattern_scenarios.json):
                                         exceptions, scoring rubric, interview guide, survey,
                                         answer sheet.
 
-Values come from the city's Unity package (the same numbers the 3D table shows),
-except the DeSO employment rate, which is computed from the SCB employment
-delivery (Tab9_DeSO) because it is not in the package yet.
+Values come from the city's Unity package (the same numbers the 3D table shows;
+since 2026-10-14 also the DeSO employment rate, data layer deso_employment). The
+source "employment_rate_deso" (raw SCB Tab9_DeSO) is still supported. A scenario's
+optional "unitFilter" (id prefix, minimum of a package variable) turns the other
+units into no data, exactly as the 3D view's unitFilter does.
 """
 
 from __future__ import annotations
@@ -83,7 +85,29 @@ def _names(cfg: CityConfig, layer: str, units: gpd.GeoDataFrame) -> pd.Series:
     if layer == "deso":
         names = read_data_layer(cfg.package_dir, "deso_places")["area_name"].reindex(units.index)
         return names.fillna("") + " (" + units.index.str.replace("deso:", "", regex=False) + ")"
+    if layer == "ruta":
+        # "250 m grid cell in Eneborg V (3572506212750)": the district name is for orientation only.
+        places = read_data_layer(cfg.package_dir, "ruta_places")["area_name"].reindex(units.index)
+        code = units.index.str.split("_", n=1).str[1]
+        return units["display_name"] + " in " + places.fillna("?") + " (" + code + ")"
     return units["display_name"].fillna(pd.Series(units.index, index=units.index))
+
+
+def unit_filter_mask(cfg: CityConfig, units: gpd.GeoDataFrame, unit_filter: Dict) -> pd.Series:
+    """
+    True for the units a scenario keeps (same rule as the 3D view's
+    `unitFilter`): unit-id prefix (e.g. 250 m cells only) and a minimum of
+    a package variable (e.g. at least 50 residents). Others become no data.
+    """
+    keep = pd.Series(True, index=units.index)
+    if not unit_filter:
+        return keep
+    if unit_filter.get("unitPrefix"):
+        keep &= units.index.str.startswith(unit_filter["unitPrefix"])
+    if unit_filter.get("variableId"):
+        v = read_data_layer(cfg.package_dir, unit_filter["dataLayerId"])[unit_filter["variableId"]].reindex(units.index)
+        keep &= v.astype(float).ge(float(unit_filter.get("minimum", 0)))
+    return keep
 
 
 def load_scenarios(config_path: Path, scenarios_path: Path, repo_root: Path):
@@ -96,6 +120,8 @@ def load_scenarios(config_path: Path, scenarios_path: Path, repo_root: Path):
         units["a"] = _variable(s["a"], cfg, rc, repo_root, units.index)
         units["b"] = _variable(s["b"], cfg, rc, repo_root, units.index)
         units["name"] = _names(cfg, s["unitLayer"], units)
+        keep = unit_filter_mask(cfg, units, s.get("unitFilter"))
+        units.loc[~keep, ["a", "b"]] = np.nan          # outside the filter: no data (hatched)
         both = units.dropna(subset=["a", "b"])
         rho = float(both["a"].rank().corr(both["b"].rank()))
         out.append(ScenarioData(s, units, rho, len(both)))

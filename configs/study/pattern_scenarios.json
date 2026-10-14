@@ -19,7 +19,9 @@
         "sourceText": "SCB Inkomster (Tab11, DeSO): median economic standard per household"
       },
       "b": {
-        "source": "employment_rate_deso",
+        "source": "package",
+        "dataLayerId": "deso_employment",
+        "variableId": "employment_rate_20_64",
         "label": "Employment rate, ages 20–64",
         "unit": "%",
         "year": "2023",
@@ -64,36 +66,54 @@
     },
     {
       "id": "P3",
-      "title": "Citizen dialogue",
-      "expected": "strong, opposite directions",
-      "question": "The municipality is planning citizen dialogues for a new comprehensive plan and wants to reach the residents it usually doesn't hear from. Is there a pattern between voter turnout and the share of residents born abroad?",
-      "unitLayer": "valdistrikt",
-      "unitLabel": "voting districts",
+      "title": "Adult education and SFI",
+      "expected": "clear, opposite directions",
+      "question": "The municipality is planning adult education and Swedish for immigrants (SFI) and wants to offer courses close to where people live. Is there a pattern between the share of residents born abroad and the share of residents with a higher education?",
+      "unitLayer": "ruta",
+      "unitLabel": "250 m grid cells with at least 50 residents",
+      "unitFilter": {
+        "unitPrefix": "ruta:250_",
+        "dataLayerId": "ruta_population",
+        "variableId": "population",
+        "minimum": 50
+      },
       "a": {
         "source": "package",
-        "dataLayerId": "valdistrikt_election",
-        "variableId": "turnout",
-        "label": "Voter turnout",
+        "dataLayerId": "ruta_population",
+        "variableId": "share_born_abroad",
+        "label": "Share of residents born abroad",
         "unit": "%",
-        "year": "2026",
-        "sourceText": "Valmyndigheten: votes cast / eligible voters, municipal election 2026"
+        "year": "2024",
+        "sourceText": "SCB Befolkning (Tab4, 250 m grid): residents born abroad / all residents by birth region"
       },
       "b": {
         "source": "package",
-        "dataLayerId": "valdistrikt_estimates",
-        "variableId": "share_born_abroad_est",
-        "label": "Share of residents born abroad (estimate)",
+        "dataLayerId": "ruta_population",
+        "variableId": "share_post_secondary_3y",
+        "label": "Share with higher education (3+ years), ages 25–64",
         "unit": "%",
         "year": "2024",
-        "sourceText": "SCB Befolkning (Tab4, grid) spread over residential buildings and summed per district"
+        "sourceText": "SCB Befolkning (Tab10, 250 m grid): post-secondary education of 3 years or more / all education levels, ages 25–64"
       },
-      "answer": "Districts with a higher share of residents born abroad have lower turnout.",
-      "planning": "Low-turnout areas with many residents born abroad call for other dialogue methods: other languages, and meeting people where they are.",
-      "tests": "A relationship in opposite directions, on a different kind of area (voting districts) and in a different domain (democracy and participation).",
+      "answer": "Areas with a higher share of residents born abroad tend to have a lower share of residents with a higher education. The pattern is clear but not perfect: there are exceptions.",
+      "planning": "Adult education and SFI can be offered close to the areas where many residents are born abroad and few have a higher education. The pattern describes areas, not people.",
+      "tests": "A clear but imperfect relationship in opposite directions, on a third kind of area (250 m grid cells) and a new topic (education). Small cells are hidden.",
       "notes": [
-        "Only districts inside the statistics area have the born-abroad estimate. The outer districts show turnout but 'no data' for the second variable: tell participants to focus on the city.",
-        "The born-abroad value is an estimate (dasymetric), not an SCB count per district."
+        "Area pattern only: it says nothing about the education of residents born abroad themselves. Education completed abroad may be missing from SCB's education register, which would make the share look lower (not checked for this delivery).",
+        "Only 250 m cells with at least 50 residents are shown; smaller cells and the 1 km cells are 'no data', because shares of a few residents are extreme."
       ]
     }
-  ]
+  ],
+  "showcase": {
+    "id": "S",
+    "title": "Explore (optional)",
+    "presetId": "e3_grid_profile",
+    "question": "If there is time: explore freely. Two things the table can do that a map cannot. Copy: press Copy on the table toolbar (or A on the right controller) and click an area; a 3D copy pops up. Hold the grip with the ray on it to carry it and put it next to another area. Compare: press Compare and click two areas; the Compare panel shows A and B side by side with their differences.",
+    "data": [
+      "Height up · Population density · persons/km² · 250 m grid (SCB) · 2024",
+      "Height down · Residents aged 65+ · % · 250 m grid (SCB) · 2024",
+      "Colour · Mean income (economic standard) · SEK · 250 m grid (SCB) · 2023",
+      "Buildings · Turnout of the building's voting district · % · municipal election 2026"
+    ]
+  }
 }

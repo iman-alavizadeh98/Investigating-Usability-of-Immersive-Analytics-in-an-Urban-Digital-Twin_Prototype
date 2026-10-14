@@ -11,8 +11,12 @@ package, so it never needs hand editing.
     --only buildings   export the buildings, then rewrite the manifest
     --only analytics   export SCB grid/DeSO, voting districts, building links and
                        district estimates (config sections statistics/election/estimates)
-    --only visualizations   check the presets of config "visualizations" against the
-                       package and copy them to <package>/visualizations/
+    --only employment  add/replace only the DeSO employment layer (config
+                       statistics.employment) in an existing package; needs the
+                       package's DeSO layer, not the other raw deliveries
+    --only visualizations   check the presets of config "visualizations" (and each
+                       "visualizationSets" folder) against the package and copy them
+                       to <package>/visualizations/ (sets: visualizations/<name>/)
     --only manifest    only rewrite the manifest
 
 In the scene, point VisualizationSwitcher's catalog path at
@@ -35,12 +39,25 @@ from pipelines.unity_package.analytics import export_analytics  # noqa: E402
 from pipelines.unity_package.buildings import export_buildings  # noqa: E402
 from pipelines.unity_package.config import load_city_config  # noqa: E402
 from pipelines.unity_package.manifest import write_manifest  # noqa: E402
-from pipelines.unity_package.visualizations import export_visualizations  # noqa: E402
+from pipelines.unity_package.visualizations import export_visualization_sets  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("build_unity_package")
 
-STEPS = ("buildings", "analytics", "visualizations", "manifest")
+STEPS = ("buildings", "analytics", "employment", "visualizations", "manifest")
+
+
+def add_employment_only(city) -> dict:
+    """The DeSO employment layer for an existing package (its DeSO unit ids are read from the package)."""
+    import pandas as pd
+    from pipelines.scb.loader import load_scb_tables
+    from pipelines.unity_package.statistics import export_deso_employment
+
+    geometry = city.package_dir / "spatial_layers" / "deso" / "geometry.json"
+    if not geometry.exists():
+        raise FileNotFoundError(f"{geometry} not found: build the package (step analytics) first")
+    deso_ids = pd.Index([u["id"] for u in json.loads(geometry.read_text(encoding="utf-8"))["units"]])
+    return export_deso_employment(city.package_dir, load_scb_tables(city.statistics.employment), deso_ids)
 
 
 def main() -> int:
@@ -71,12 +88,18 @@ def main() -> int:
             analytics = export_analytics(city)
             reports["analytics"] = {k: v for k, v in analytics.items() if k in ("dasymetric", "valdistrikt_estimates", "associations")}
 
+    if args.only == "employment":
+        if city.statistics is None or city.statistics.employment is None:
+            parser.error("the city config has no 'statistics.employment' folder")
+        reports["deso_employment"] = add_employment_only(city)
+
     if args.only in (None, "visualizations"):
-        if city.visualizations is None:
+        if city.visualizations is None and not city.visualization_sets:
             if args.only == "visualizations":
                 parser.error("the city config has no 'visualizations' folder")
         else:
-            reports["visualizations"] = export_visualizations(city.package_dir, city.visualizations)
+            reports["visualizations"] = export_visualization_sets(
+                city.package_dir, city.visualizations, city.visualization_sets)
 
     manifest_path = write_manifest(city)
     logger.info(json.dumps(reports, indent=2, ensure_ascii=False))

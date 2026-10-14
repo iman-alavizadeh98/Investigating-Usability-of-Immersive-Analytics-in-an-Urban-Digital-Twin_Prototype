@@ -726,13 +726,26 @@ namespace UrbanAnalytics.Visualization
                         );
 
 
-                    VisualizationLayerInstance
+                    // The layer's unit filter applies to the data it reads.
+                    renderContext.BeginLayer(
+                        layer
+                    );
+
+                    VisualizationLayerInstance instance;
+
+                    try
+                    {
                         instance =
                             await renderer.RenderAsync(
                                 renderContext,
                                 layer,
                                 cancellationToken
                             );
+                    }
+                    finally
+                    {
+                        renderContext.EndLayer();
+                    }
 
 
                     activeInstances.Add(

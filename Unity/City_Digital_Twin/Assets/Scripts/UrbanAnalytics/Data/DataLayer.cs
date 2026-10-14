@@ -82,6 +82,37 @@ namespace UrbanAnalytics.Data
         }
 
 
+        /// <summary>
+        /// A copy in which the units <paramref name="keep"/> rejects have
+        /// no value for any variable (a view's unit filter, e.g. "250 m
+        /// cells with at least 50 residents"). Same id and target layer;
+        /// scales, legends and renderers then treat them as no data.
+        /// </summary>
+        public DataLayer WithUnitFilter(Predicate<string> keep)
+        {
+            if (keep == null)
+            {
+                throw new ArgumentNullException(nameof(keep));
+            }
+
+            var rows = new bool[unitIds.Length];
+
+            for (int i = 0; i < unitIds.Length; i++)
+            {
+                rows[i] = keep(unitIds[i]);
+            }
+
+            var filtered = new Dictionary<string, DataColumn>(columns.Count, StringComparer.Ordinal);
+
+            foreach (KeyValuePair<string, DataColumn> column in columns)
+            {
+                filtered[column.Key] = column.Value.WithRows(rows);
+            }
+
+            return new DataLayer(Definition, unitIds, filtered);
+        }
+
+
         // ---------------------------------------------------------
         // Unit lookup
         // ---------------------------------------------------------
@@ -463,6 +494,24 @@ namespace UrbanAnalytics.Data
         }
 
 
+        /// <summary>Valid flags with the rows where <paramref name="keep"/> is false turned off.</summary>
+        protected bool[] MaskWith(bool[] keep)
+        {
+            var mask = new bool[keep.Length];
+
+            for (int i = 0; i < keep.Length; i++)
+            {
+                mask[i] = keep[i] && IsUsable(i);
+            }
+
+            return mask;
+        }
+
+
+        /// <summary>The same column with the rows outside <paramref name="keep"/> invalid (no value).</summary>
+        public abstract DataColumn WithRows(bool[] keep);
+
+
         protected bool IsUsable(int rowIndex)
         {
             return validMask == null ||
@@ -475,6 +524,9 @@ namespace UrbanAnalytics.Data
     internal sealed class FloatDataColumn : DataColumn
     {
         public double[] Values { get; }
+
+        public override DataColumn WithRows(bool[] keep) =>
+            new FloatDataColumn(Values, MaskWith(keep));
 
         private readonly bool hasRange;
         private readonly double minimum;
@@ -586,6 +638,9 @@ namespace UrbanAnalytics.Data
     {
         public long[] Values { get; }
 
+        public override DataColumn WithRows(bool[] keep) =>
+            new IntegerDataColumn(Values, MaskWith(keep));
+
         private readonly bool hasRange;
         private readonly double minimum;
         private readonly double maximum;
@@ -684,6 +739,9 @@ namespace UrbanAnalytics.Data
     {
         public bool[] Values { get; }
 
+        public override DataColumn WithRows(bool[] keep) =>
+            new BooleanDataColumn(Values, MaskWith(keep));
+
 
         public BooleanDataColumn(
             bool[] values,
@@ -699,6 +757,9 @@ namespace UrbanAnalytics.Data
     internal sealed class StringDataColumn : DataColumn
     {
         public string[] Values { get; }
+
+        public override DataColumn WithRows(bool[] keep) =>
+            new StringDataColumn(Values, MaskWith(keep));
 
 
         public StringDataColumn(

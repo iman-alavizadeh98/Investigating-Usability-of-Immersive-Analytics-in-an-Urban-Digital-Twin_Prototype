@@ -312,6 +312,16 @@ namespace UrbanAnalytics.Visualization
             outline =
                 new AreaOutlineSettings();
 
+        [Tooltip(
+            "Only these units carry values in this layer (others are " +
+            "drawn as no data and left out of scales and legends), e.g. " +
+            "250 m cells with at least 50 residents."
+        )]
+        [SerializeField]
+        private UnitFilterSettings
+            unitFilter =
+                new UnitFilterSettings();
+
 
         public string Id =>
             id;
@@ -352,6 +362,9 @@ namespace UrbanAnalytics.Visualization
 
         public AreaOutlineSettings Outline =>
             outline ?? (outline = new AreaOutlineSettings());
+
+        public UnitFilterSettings UnitFilter =>
+            unitFilter ?? (unitFilter = new UnitFilterSettings());
 
 
         public bool IsConfigured =>
@@ -1209,6 +1222,48 @@ namespace UrbanAnalytics.Visualization
 
         public float InsetFactor =>
             insetFactor;
+    }
+
+
+    /// <summary>
+    /// Which units of the target layer carry values in a layer: an id
+    /// prefix (e.g. "ruta:250_" = 250 m cells only) and/or a minimum of a
+    /// variable (e.g. ruta_population.population ≥ 50, because shares of a
+    /// handful of residents are extreme). Units outside are no data: drawn
+    /// in the no-data colour, left out of scales (quantile classes, ranks)
+    /// and counted in the legend's "No data". Empty = all units.
+    /// </summary>
+    [Serializable]
+    public sealed class UnitFilterSettings
+    {
+        [SerializeField]
+        private string unitPrefix;
+
+        [SerializeField]
+        private string dataLayerId;
+
+        [SerializeField]
+        private string variableId;
+
+        [SerializeField]
+        private double minimum;
+
+
+        public string UnitPrefix => unitPrefix;
+
+        public string DataLayerId => dataLayerId;
+
+        public string VariableId => variableId;
+
+        public double Minimum => minimum;
+
+        public bool IsActive =>
+            !string.IsNullOrEmpty(unitPrefix) ||
+            !string.IsNullOrEmpty(variableId);
+
+        /// <summary>Stable text of the filter (cache key, logs).</summary>
+        public string Describe() =>
+            $"{unitPrefix}*|{dataLayerId}.{variableId}>={minimum}";
     }
 
 

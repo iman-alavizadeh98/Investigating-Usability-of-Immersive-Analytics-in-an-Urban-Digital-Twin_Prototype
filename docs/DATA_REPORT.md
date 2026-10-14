@@ -116,5 +116,5 @@ python Src/Scripts/build_study_materials.py --config configs/cities/helsingborg.
 - **Output** (`Processed_data/Helsingborg_Final/study/`, git-ignored):
   - `study_2d_maps.pdf`: participant material, one landscape page per scenario (question, map A in blue, map B in orange, 5 equal-count classes). No answers.
   - `study_facilitator_handbook.pdf`: session plan, script, scoring, answers with Spearman ρ, example areas, exceptions, scatter plots, interview guide, survey outline, answer sheet. Facilitator only.
-- **Checked 2026-10-14:** P1 ρ = +0.92 (68 DeSO), P2 ρ = −0.08 (68 DeSO; median split 17/17/17/17), P3 ρ = −0.94 (60 districts).
-- The DeSO employment rate comes from the SCB employment delivery (Tab9_DeSO), because it isn't in the Unity package yet.
+- **Checked 2026-10-14:** P1 ρ = +0.92 (68 DeSO), P2 ρ = −0.08 (68 DeSO; median split 17/17/17/17), P3 ρ = −0.94 (60 districts). **P3 replaced the same day:** share born abroad × share with ≥ 3 years post-secondary education on 250 m grid cells with at least 50 residents, ρ = −0.71 (n 357); the scenario's `unitFilter` hides the other cells in both the 2D maps and the 3D view.
+- The DeSO employment rate comes from the SCB employment delivery (Tab9_DeSO). Since 2026-10-14 the same rate is also in the Unity package (`deso_employment.employment_rate_20_64`, config `statistics.employment`); the 3D views of P1–P3 read it from there and give the same ρ and n (`docs/data-analysis/2026-10-14_helsingborg_deso-employment_integration.md`). The 3D side of the study: `docs/EVALUATION_SESSION.md` → Pattern study.

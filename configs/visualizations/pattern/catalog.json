@@ -1,0 +1,29 @@
+{
+  "visualizations": [
+    {
+      "id": "t0_practice",
+      "displayName": "T0 Practice",
+      "file": "t0_practice.json"
+    },
+    {
+      "id": "p1",
+      "displayName": "P1 Neighbourhood development",
+      "file": "p1.json"
+    },
+    {
+      "id": "p2",
+      "displayName": "P2 Preschool and school planning",
+      "file": "p2.json"
+    },
+    {
+      "id": "p3",
+      "displayName": "P3 Adult education and SFI",
+      "file": "p3.json"
+    },
+    {
+      "id": "e3_grid_profile",
+      "displayName": "S Explore (optional)",
+      "file": "e3_grid_profile.json"
+    }
+  ]
+}

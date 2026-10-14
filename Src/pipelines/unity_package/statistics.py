@@ -313,7 +313,69 @@ def export_deso(package_dir: Path, population: Dict[str, SourceTable], income: D
     return units, report
 
 
-def load_statistics(population_dir: Path, income_dir: Optional[Path]) -> Tuple[Dict[str, SourceTable], Dict[str, SourceTable]]:
+def export_deso_employment(package_dir: Path, employment: Dict[str, SourceTable], deso_ids: pd.Index) -> Dict:
+    """
+    Employment rate per DeSO, ages 20-64, from SCB Arbetsmarknad table 9
+    (*Befolkning 20-64 år efter sysselsättning*), as data layer
+    `deso_employment` on the existing `deso` spatial layer.
+
+        employment_rate_20_64 = 100 x Sysselsatt / Totalt
+
+    The rate uses the published total (`Totalt`), as the study design
+    specifies, not the sum of the sub-groups (Sysselsatt + EjSsyssels) used for
+    the other shares (D3); the report counts the areas where the two differ. A
+    DeSO area missing from the table has no value, never 0 (D4); table rows for
+    areas outside the package's DeSO layer are reported and not written.
+    Found by table number and unit, not by file name.
+    """
+    t = find_table(employment, "9", "DeSO")
+    if t is None:
+        raise ValueError("Employment table 9 on DeSO (Tab9_DeSO_<year>) not found in the employment delivery")
+
+    def deso_key(table: SourceTable) -> pd.Series:
+        return f"{DESO_LAYER}:" + table.data[table.id_column].astype("string").str.strip()
+
+    tab = keyed(t, deso_key)
+    employed = col(tab, "Sysselsatt", deso_ids)
+    not_employed = col(tab, "EjSsyssels", deso_ids)
+    total = col(tab, "Totalt", deso_ids)
+    rate = share(employed, total)
+    year = year_of(t)
+
+    variables = [
+        Variable("employment_rate_20_64", f"Employment rate 20-64 {year}", rate, "Float", "%",
+                 "100 x Sysselsatt / Totalt (SCB Arbetsmarknad Tab9: residents aged 20-64; age range inferred from "
+                 "the delivery PDF's A7). Published total, not the sub-group sum.", "derived"),
+        Variable("employed_20_64", "Employed, ages 20-64", employed, "Integer", "persons", "Tab9 Sysselsatt"),
+        Variable("not_employed_20_64", "Not employed, ages 20-64", not_employed, "Integer", "persons", "Tab9 EjSsyssels"),
+        Variable("population_20_64", "Residents 20-64", total, "Integer", "persons", "Tab9 Totalt"),
+    ]
+
+    in_table = set(tab.index)
+    report = write_data_layer(
+        package_dir, "deso_employment", f"Employment {year} (DeSO)",
+        f"SCB Arbetsmarknad table 9 per DeSO area, {year}: residents aged 20-64 by employment status. "
+        "Values describe the whole DeSO even where its polygon is cut.",
+        DESO_LAYER, deso_ids, variables, {"sources": [str(t.path)]},
+    )
+    report.update({
+        "table": t.key,
+        "deso_units": len(deso_ids),
+        "with_rate": int(rate.notna().sum()),
+        "missing_from_table": sorted(set(deso_ids) - in_table),
+        "table_rows_not_in_layer": sorted(in_table - set(deso_ids)),
+        "subgroups_differ_from_total": int((((employed + not_employed) - total).abs() > 0.5).sum()),
+        "rate_range": [float(rate.min()), float(rate.max())] if rate.notna().any() else None,
+    })
+    logger.info(f"  deso_employment: {report['with_rate']} of {len(deso_ids)} DeSO areas with a rate "
+                f"({len(report['missing_from_table'])} missing, {len(report['table_rows_not_in_layer'])} rows outside the layer)")
+    return report
+
+
+def load_statistics(
+    population_dir: Path, income_dir: Optional[Path], employment_dir: Optional[Path] = None,
+) -> Tuple[Dict[str, SourceTable], Dict[str, SourceTable], Dict[str, SourceTable]]:
     population = load_scb_tables(population_dir)
     income = load_scb_tables(income_dir) if income_dir else {}
-    return population, income
+    employment = load_scb_tables(employment_dir) if employment_dir else {}
+    return population, income, employment

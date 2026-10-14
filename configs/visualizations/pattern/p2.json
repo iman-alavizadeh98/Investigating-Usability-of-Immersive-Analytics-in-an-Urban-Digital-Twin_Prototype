@@ -1,0 +1,81 @@
+{
+  "id": "p2",
+  "displayName": "P2 Preschool and school planning: Median income (height) and Share of residents aged 0–15 (colour)",
+  "layers": [
+    {
+      "id": "p2_columns",
+      "enabled": true,
+      "outline": {
+        "enabled": true,
+        "width": 0.025,
+        "color": {
+          "r": 0.1,
+          "g": 0.1,
+          "b": 0.1,
+          "a": 1.0
+        }
+      },
+      "mark": 1,
+      "target": {
+        "kind": 0,
+        "layerId": "deso",
+        "mapping": {
+          "mode": 0,
+          "associationId": ""
+        }
+      },
+      "encodings": [
+        {
+          "channel": 1,
+          "role": 0,
+          "data": {
+            "mode": 0,
+            "variables": [
+              {
+                "dataLayerId": "deso_income",
+                "variableId": "median_income"
+              }
+            ]
+          },
+          "scale": {
+            "type": 4
+          },
+          "height": {
+            "maximumVisualHeight": 0.6,
+            "minimumVisualHeight": 0.01
+          }
+        },
+        {
+          "channel": 0,
+          "role": 0,
+          "data": {
+            "mode": 0,
+            "variables": [
+              {
+                "dataLayerId": "deso_population",
+                "variableId": "share_children_0_15"
+              }
+            ]
+          },
+          "scale": {
+            "type": 3,
+            "quantileClasses": 5
+          },
+          "color": {
+            "paletteId": "study_oranges5",
+            "noDataColor": {
+              "r": 0.62,
+              "g": 0.62,
+              "b": 0.62,
+              "a": 1.0
+            }
+          }
+        }
+      ],
+      "heightSurface": {
+        "method": 1,
+        "insetFactor": 1.0
+      }
+    }
+  ]
+}

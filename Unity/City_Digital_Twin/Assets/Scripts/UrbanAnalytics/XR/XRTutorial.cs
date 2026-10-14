@@ -12,11 +12,12 @@ using UrbanAnalytics.Interaction.UI;
 namespace UrbanAnalytics.XR
 {
     /// <summary>
-    /// A short guided tour at the start of the VR session: one step per
-    /// control or UI object (select, show data, the panels, move and
-    /// size the table, copy, grab, compare, move a panel, wrist menu,
-    /// clear). Each step asks the user to do the thing and moves on by
-    /// itself once they did it; reading steps have a Next button.
+    /// A very short guided start (five steps, under 3 minutes, since
+    /// 2026-10-14): welcome, point and select, read the view (legend and
+    /// info), move the table, ready. Just enough to get to finding patterns;
+    /// copy, compare, grabbing, the wrist menu and clearing are not taught
+    /// (still available afterwards). Each action step moves on by itself
+    /// once the user did it; reading steps have a Next button.
     ///
     /// The user is locked in: only the functions taught so far work
     /// (XRFeatureLock; toolbar buttons are greyed out, city clicks,
@@ -577,6 +578,12 @@ namespace UrbanAnalytics.XR
         }
 
 
+        /// <summary>
+        /// Five quick steps (target: under 3 minutes): just enough to read a
+        /// view and talk about patterns. Copy, compare, grabbing, the wrist
+        /// menu and clearing are not taught here (they stay available after
+        /// the tutorial; the Help panel shows them).
+        /// </summary>
         private void DefineSteps()
         {
             steps.Clear();
@@ -585,15 +592,15 @@ namespace UrbanAnalytics.XR
             {
                 Id = "welcome",
                 Title = "Welcome",
-                Text = "A short tour of the controls. Point the right controller at  Next  and pull the trigger.",
+                Text = "A quick start. Point the right controller at  Next  and pull the trigger.",
                 Image = "help_controllers"
             });
 
             steps.Add(new Step
             {
                 Id = "select",
-                Title = "Select",
-                Text = "Point at a building on the table and pull the trigger.",
+                Title = "Point and select",
+                Text = "Point at an area on the table to see its values. Pull the trigger to select it.",
                 Image = "help_tools",
                 Unlocks = XRFeature.Select,
                 Count = () => selections
@@ -601,20 +608,9 @@ namespace UrbanAnalytics.XR
 
             steps.Add(new Step
             {
-                Id = "view",
-                Title = "Show data",
-                Text = "Press  View >  on the toolbar at the table edge in front of you.",
-                Image = "help_toolbar",
-                Unlocks = XRFeature.ChangeView,
-                Highlight = new[] { "View >" },
-                Count = () => views
-            });
-
-            steps.Add(new Step
-            {
                 Id = "panels",
-                Title = "Panels",
-                Text = "Info (on your right) shows what you select. The Legend (far side) explains colours and heights.",
+                Title = "Read the view",
+                Text = "Column height and colour show two variables. The Legend (far side) explains both; Info (right) shows exact values.",
                 Image = "help_panels"
             });
 
@@ -622,7 +618,7 @@ namespace UrbanAnalytics.XR
             {
                 Id = "move_table",
                 Title = "Move the table",
-                Text = "Hold the left grip and move your hand: the table follows. Let go to drop it.",
+                Text = "Hold the left grip and move your hand to move and turn the table. Let go to drop it.",
                 Image = "help_table",
                 Unlocks = XRFeature.MoveTable,
                 Count = () => tableMoves
@@ -630,90 +626,9 @@ namespace UrbanAnalytics.XR
 
             steps.Add(new Step
             {
-                Id = "resize",
-                Title = "Table size",
-                Text = "Push the right thumbstick up or down, or press  Bigger / Smaller  on the toolbar.",
-                Image = "help_table",
-                Unlocks = XRFeature.ResizeTable,
-                Highlight = new[] { "Bigger", "Smaller" },
-                Count = () => resizes
-            });
-
-            steps.Add(new Step
-            {
-                Id = "copy",
-                Title = "Copy",
-                Text = "Press  Copy  on the toolbar and click a building or area (or point at it and press A). A copy pops up.",
-                Image = "help_tools",
-                Unlocks = XRFeature.CopyTool,
-                Highlight = new[] { "Copy" },
-                Count = () => copiesMade
-            });
-
-            steps.Add(new Step
-            {
-                Id = "grab_copy",
-                Title = "Grab",
-                Text = "Point at the copy, hold the right grip, move it and let go.",
-                Image = "help_controllers",
-                Unlocks = XRFeature.Grab,
-                Count = () => copyGrabs
-            });
-
-            steps.Add(new Step
-            {
-                Id = "compare",
-                Title = "Compare",
-                Text = "Press  Compare, then click two different areas. The Compare panel (left) shows them side by side.",
-                Image = "help_tools",
-                Unlocks = XRFeature.CompareTool,
-                Highlight = new[] { "Compare" },
-                Count = () => compares,
-                Condition = BothCompared,
-                OnStart = () =>
-                {
-                    if (comparisonManager != null)
-                    {
-                        comparisonManager.ClearAll();
-                    }
-                }
-            });
-
-            steps.Add(new Step
-            {
-                Id = "move_panel",
-                Title = "Move a panel",
-                Text = "Point at the  Grab  bar under a panel, hold the grip and move it.",
-                Image = "help_panels",
-                Count = () => panelGrabs
-            });
-
-            steps.Add(new Step
-            {
-                Id = "wrist",
-                Title = "Wrist menu",
-                Text = "Raise your left wrist and look at it, like a watch: views, tasks and panels.",
-                Image = "help_wrist",
-                Unlocks = XRFeature.WristMenu,
-                Condition = () => wristMenu == null || wristMenu.IsVisible
-            });
-
-            steps.Add(new Step
-            {
-                Id = "clear",
-                Title = "Clear the table",
-                Text = "Press  Clear table: the data and copies go, only the buildings stay.",
-                Image = "help_toolbar",
-                Unlocks = XRFeature.ClearTable,
-                Highlight = new[] { "Clear table" },
-                Count = () => clears
-            });
-
-            steps.Add(new Step
-            {
                 Id = "ready",
                 Title = "Ready",
-                Text = "That's it. Help is on the wrist menu:  Panels > Help.",
+                Text = "That's all. Your questions will appear on this board. Say aloud what you see.",
                 Image = "help_wrist"
             });
         }

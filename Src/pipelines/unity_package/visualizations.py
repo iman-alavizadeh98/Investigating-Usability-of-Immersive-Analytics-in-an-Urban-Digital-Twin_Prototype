@@ -18,7 +18,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,11 @@ def check_spec(spec: Dict, inv: Dict) -> List[str]:
                     problems.append(f"{lid}: variable '{dl}.{vid}' not in package")
                 elif kind != 1 and inv["targets"].get(dl) != tlayer:
                     problems.append(f"{lid}: '{dl}' targets '{inv['targets'].get(dl)}', not '{tlayer}'")
+        unit_filter = layer.get("unitFilter") or {}
+        if unit_filter.get("variableId"):
+            dl, vid = unit_filter.get("dataLayerId"), unit_filter["variableId"]
+            if dl not in inv["variables"] or vid not in inv["variables"][dl]:
+                problems.append(f"{lid}: unit filter variable '{dl}.{vid}' not in package")
         follow = layer.get("urbanContextPlacement", {})
         if follow.get("mode") == 1 and follow.get("sourceVisualizationLayerId") not in layer_ids:
             problems.append(f"{lid}: follows unknown layer '{follow.get('sourceVisualizationLayerId')}'")
@@ -125,7 +130,22 @@ def check_scenario(s: Dict, preset_ids: Set[str], inv: Dict) -> List[str]:
     return problems
 
 
-def export_visualizations(package_dir: Path, source_dir: Path) -> Dict:
+def export_visualization_sets(package_dir: Path, main_dir: Optional[Path], sets: Dict[str, Path]) -> Dict:
+    """
+    The main preset folder to <package>/visualizations/ and each further set
+    (e.g. a second study with its own catalog and scenarios) to
+    <package>/visualizations/<name>/. The main folder is written first because
+    it replaces the whole visualizations/ folder.
+    """
+    report = {}
+    if main_dir is not None:
+        report["main"] = export_visualizations(package_dir, main_dir)
+    for name, folder in sets.items():
+        report[name] = export_visualizations(package_dir, folder, subdir=name)
+    return report
+
+
+def export_visualizations(package_dir: Path, source_dir: Path, subdir: Optional[str] = None) -> Dict:
     catalog_path = source_dir / "catalog.json"
     if not catalog_path.exists():
         raise FileNotFoundError(f"No catalog.json in {source_dir}")
@@ -156,7 +176,7 @@ def export_visualizations(package_dir: Path, source_dir: Path) -> Dict:
         raise ValueError("Visualization presets reference things missing from the package:\n" +
                          "\n".join(f"  {f}: {p}" for f, ps in problems.items() for p in ps))
 
-    out = package_dir / OUTPUT_SUBDIR
+    out = package_dir / OUTPUT_SUBDIR / subdir if subdir else package_dir / OUTPUT_SUBDIR
     if out.exists():
         shutil.rmtree(out)  # the package copy is generated; the repo copy is the source
     out.mkdir(parents=True)

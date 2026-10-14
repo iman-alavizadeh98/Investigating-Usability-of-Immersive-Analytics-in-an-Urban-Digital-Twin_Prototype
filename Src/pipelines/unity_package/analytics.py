@@ -33,7 +33,7 @@ def export_analytics(city: CityConfig) -> Dict:
         dasymetric, export_area_names, export_associations, export_district_estimates, grid_counts,
         load_building_points, statistics_extent, validate_100m,
     )
-    from .statistics import export_deso, export_ruta, find_table, load_statistics
+    from .statistics import export_deso, export_deso_employment, export_ruta, find_table, load_statistics
 
     package_dir = city.package_dir
     report: Dict = {"city": city.city_id, "exportedAt": datetime.now(timezone.utc).isoformat()}
@@ -42,9 +42,12 @@ def export_analytics(city: CityConfig) -> Dict:
     population = income = None
     if city.statistics:
         logger.info("Statistics (SCB grid + DeSO)")
-        population, income = load_statistics(city.statistics.population, city.statistics.income)
+        population, income, employment = load_statistics(
+            city.statistics.population, city.statistics.income, city.statistics.employment)
         ruta_units, report["ruta"] = export_ruta(package_dir, population, income)
         deso_units, report["deso"] = export_deso(package_dir, population, income)
+        if employment:
+            report["deso_employment"] = export_deso_employment(package_dir, employment, pd.Index(deso_units["unit_id"]))
         layers["ruta"], layers["deso"] = ruta_units, deso_units
 
     districts = None

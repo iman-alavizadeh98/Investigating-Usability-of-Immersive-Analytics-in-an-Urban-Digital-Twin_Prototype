@@ -120,6 +120,23 @@ namespace UrbanAnalytics.Visualization
 
 
         /// <summary>
+        /// Shown units that have no value for this variable (drawn in
+        /// <see cref="NoDataColor"/>); the legend then lists "No data".
+        /// </summary>
+        public int NoDataUnits { get; private set; }
+
+
+        public VisualizationLegendInfo WithNoDataUnits(
+            int count
+        )
+        {
+            NoDataUnits = Mathf.Max(0, count);
+
+            return this;
+        }
+
+
+        /// <summary>
         /// Legend for a height encoding: the variable, its unit and
         /// the value range mapped from zero to the maximum height
         /// (drawn as a light-to-dark grey bar).

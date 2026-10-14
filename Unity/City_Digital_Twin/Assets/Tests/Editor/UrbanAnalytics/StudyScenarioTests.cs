@@ -16,8 +16,14 @@ namespace UrbanAnalytics.Tests
     /// </summary>
     public sealed class StudyScenarioTests
     {
+        private static string RepoRoot =>
+            Path.GetFullPath(Path.Combine(Application.dataPath, "../../.."));
+
         private static string RepoConfigs =>
-            Path.GetFullPath(Path.Combine(Application.dataPath, "../../../configs/visualizations/evaluation"));
+            Path.Combine(RepoRoot, "configs/visualizations/evaluation");
+
+        private static string PatternConfigs =>
+            Path.Combine(RepoRoot, "configs/visualizations/pattern");
 
         private static string PackageDir =>
             Path.Combine(Application.streamingAssetsPath, "cities/helsingborg");
@@ -107,11 +113,24 @@ namespace UrbanAnalytics.Tests
         [Test]
         public void ScenarioFile_ReferencesExistingPresetsAndVariables()
         {
-            string scenariosPath = Path.Combine(RepoConfigs, "scenarios.json");
-            Assume.That(File.Exists(scenariosPath), "configs/visualizations/evaluation/scenarios.json not found");
+            CheckScenarioFolder(RepoConfigs);
+        }
+
+
+        [Test]
+        public void PatternStudy_ReferencesExistingPresetsAndVariables()
+        {
+            CheckScenarioFolder(PatternConfigs);
+        }
+
+
+        private static void CheckScenarioFolder(string folder)
+        {
+            string scenariosPath = Path.Combine(folder, "scenarios.json");
+            Assume.That(File.Exists(scenariosPath), scenariosPath + " not found");
 
             StudyScenarioFile file = JsonUtility.FromJson<StudyScenarioFile>(File.ReadAllText(scenariosPath));
-            string catalog = File.ReadAllText(Path.Combine(RepoConfigs, "catalog.json"));
+            string catalog = File.ReadAllText(Path.Combine(folder, "catalog.json"));
 
             var kinds = new HashSet<string> { "compare", "compareCombined", "relativeParty", "pattern", "slotCheck", "open", "choice" };
             var problems = new List<string>();
@@ -190,6 +209,89 @@ namespace UrbanAnalytics.Tests
             }
 
             Assert.IsEmpty(problems, string.Join("\n", problems));
+        }
+
+
+        [System.Serializable]
+        private sealed class StudyDesign
+        {
+            public StudyDesignScenario[] scenarios;
+        }
+
+
+        [System.Serializable]
+        private sealed class StudyDesignScenario
+        {
+            public string id;
+            public string question;
+        }
+
+
+        [Test]
+        public void PatternStudy_QuestionsAreWordForWordFromTheStudyDesign()
+        {
+            string designPath = Path.Combine(RepoRoot, "configs/study/pattern_scenarios.json");
+            string unityPath = Path.Combine(PatternConfigs, "scenarios.json");
+            Assume.That(File.Exists(designPath) && File.Exists(unityPath), "pattern study files not found");
+
+            StudyDesign design = JsonUtility.FromJson<StudyDesign>(File.ReadAllText(designPath));
+            StudyScenarioFile unity = JsonUtility.FromJson<StudyScenarioFile>(File.ReadAllText(unityPath));
+
+            foreach (StudyDesignScenario expected in design.scenarios)
+            {
+                StudyScenario actual = unity.scenarios.FirstOrDefault(s => s.id == expected.id);
+                Assert.IsNotNull(actual, expected.id + " missing in configs/visualizations/pattern/scenarios.json");
+                Assert.AreEqual(expected.question, actual.question, expected.id + ": question must be word for word");
+                Assert.IsTrue(actual.parts == null || actual.parts.Length == 0, expected.id + ": no multiple-choice parts");
+            }
+
+            Assert.AreEqual(design.scenarios.Length + 1, unity.scenarios.Count(s => !s.optional), "the study scenarios plus the practice T0");
+            Assert.IsTrue(unity.scenarios[0].training, "T0 practice comes first");
+            Assert.IsTrue(unity.scenarios.Where(s => s.optional).All(s => System.Array.IndexOf(unity.scenarios, s) > design.scenarios.Length),
+                "the optional showcase comes after the study scenarios");
+        }
+
+
+        [Test]
+        public void UnitFilter_RejectedUnitsHaveNoValueAndLeaveTheScale()
+        {
+            var definition = JsonUtility.FromJson<UrbanAnalytics.Data.DataLayerDefinition>(
+                "{\"id\":\"test_layer\",\"targetSpatialLayerId\":\"ruta\"}");
+
+            var layer = new UrbanAnalytics.Data.DataLayer(
+                definition,
+                new[] { "ruta:250_a", "ruta:250_b", "ruta:1000_c" },
+                new Dictionary<string, UrbanAnalytics.Data.DataColumn>
+                {
+                    ["share"] = new UrbanAnalytics.Data.FloatDataColumn(new[] { 10.0, 20.0, 30.0 }, new[] { true, true, true })
+                });
+
+            // 250 m cells only, and not "b" (as if it had fewer than 50 residents).
+            var filtered = layer.WithUnitFilter(u => u.StartsWith("ruta:250_") && u != "ruta:250_b");
+
+            Assert.IsTrue(filtered.TryGetDouble("ruta:250_a", "share", out double a));
+            Assert.AreEqual(10.0, a);
+            Assert.IsFalse(filtered.TryGetDouble("ruta:250_b", "share", out _));
+            Assert.IsFalse(filtered.TryGetDouble("ruta:1000_c", "share", out _));
+            Assert.IsTrue(filtered.TryGetNumericValues("share", out double[] values));
+            CollectionAssert.AreEqual(new[] { 10.0 }, values, "scales see only the kept units");
+            Assert.IsTrue(layer.TryGetDouble("ruta:250_b", "share", out _), "the original layer is unchanged");
+        }
+
+
+        [Test]
+        public void StudyOranges_FiveClassesGiveTheStudyMapColours()
+        {
+            Assert.IsTrue(UrbanAnalytics.Visualization.ColorPaletteLibrary.TryGet("study_oranges5", out var palette));
+
+            string[] expected = { "FBCAA9", "F6A77A", "EB6834", "C4521F", "9A3E15" };
+
+            for (int i = 0; i < 5; i++)
+            {
+                // A 5-class quantile scale maps class i to i / 4.
+                Color32 c = palette.Evaluate(i / 4.0f);
+                Assert.AreEqual(expected[i], ColorUtility.ToHtmlStringRGB(c), "class " + (i + 1));
+            }
         }
     }
 }

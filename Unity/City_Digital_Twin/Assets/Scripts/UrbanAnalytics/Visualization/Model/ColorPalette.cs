@@ -313,6 +313,20 @@ namespace UrbanAnalytics.Visualization
                 )
             );
 
+            // The five orange classes of the 2D study maps
+            // (Src/pipelines/data_report/study.py: ORANGE sampled with
+            // _ramp(ORANGE, 5)). With a 5-class Quantile scale each class
+            // gets exactly one of these colours, as in the PDF.
+            Add(
+                new ColorPalette(
+                    "study_oranges5",
+                    "Oranges, 5 classes (2D study maps)",
+                    ColorPaletteKind.Sequential,
+                    "Study PDF",
+                    "#fbcaa9", "#f6a77a", "#eb6834", "#c4521f", "#9a3e15"
+                )
+            );
+
             // ---------------- Diverging ----------------
 
             Add(

@@ -59,6 +59,7 @@ namespace UrbanAnalytics.XR.Editor
             "VR mode · PC keys for the facilitator: 1–9 views   0: clear view   " +
             "Esc: deselect   C: copy to compare   F2: study panel   " +
             "[ ]: panel size   H: hide this line   F8: skip the VR tutorial   " +
+            "F5: next scenario   F9: participant's claim   " +
             "(the mouse works on these panels only)";
 
         /// <summary>UrbanContextManager.buildingHeightScale in the VR scene.</summary>
@@ -585,6 +586,15 @@ namespace UrbanAnalytics.XR.Editor
 
             XRTutorial tutorial =
                 vrUi.AddComponent<XRTutorial>();
+
+
+            // Study board: the scenario question word for word + one
+            // Next button (StudySession.Advance); where the tutorial card was.
+            SetFields(
+                vrUi.AddComponent<XRStudyBoard>(),
+                ("tabletopRig", tabletopRig),
+                ("viewCamera", xrCamera)
+            );
 
 
             SetFields(

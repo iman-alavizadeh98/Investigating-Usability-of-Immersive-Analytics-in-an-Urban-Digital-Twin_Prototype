@@ -141,6 +141,13 @@ namespace UrbanAnalytics.Visualization
                     .NoDataColor;
 
 
+            // Units without a value (legend: "No data").
+            var noDataUnits =
+                new HashSet<string>(
+                    StringComparer.Ordinal
+                );
+
+
             // Chunks are modified in place, one per frame. If this
             // render is cancelled or fails part-way, restore the
             // chunks already changed before rethrowing.
@@ -229,6 +236,12 @@ namespace UrbanAnalytics.Visualization
                                         normalized
                                     );
                         }
+                        else
+                        {
+                            noDataUnits.Add(
+                                range.UnitId
+                            );
+                        }
 
 
                         for (
@@ -289,6 +302,8 @@ namespace UrbanAnalytics.Visualization
                     scale
                 ).WithChannel(
                     "Area colour (" + spec.Target.LayerId + ")"
+                ).WithNoDataUnits(
+                    noDataUnits.Count
                 );
 
 

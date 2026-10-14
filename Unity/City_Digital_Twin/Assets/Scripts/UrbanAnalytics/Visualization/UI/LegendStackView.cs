@@ -297,6 +297,13 @@ namespace UrbanAnalytics.Visualization.UI
                     legend
                 );
             }
+            else if (IsClassedColour(legend))
+            {
+                BuildClasses(
+                    block,
+                    legend
+                );
+            }
             else
             {
                 BuildRamp(
@@ -307,6 +314,18 @@ namespace UrbanAnalytics.Visualization.UI
                 BuildRange(
                     block,
                     legend
+                );
+            }
+
+
+            if (!legend.IsHeight &&
+                legend.NoDataUnits > 0)
+            {
+                BuildSwatchRow(
+                    block,
+                    legend.NoDataColor,
+                    $"No data ({legend.NoDataUnits} areas)",
+                    RuntimeUi.MutedColor
                 );
             }
 
@@ -496,6 +515,123 @@ namespace UrbanAnalytics.Visualization.UI
                     1.0f
                 );
             }
+        }
+
+
+        private static bool IsClassedColour(
+            VisualizationLegendInfo legend
+        )
+        {
+            return !legend.IsHeight &&
+                   legend.ScaleType == ScaleType.Quantile &&
+                   legend.ClassBreaks != null &&
+                   legend.ClassBreaks.Count > 0 &&
+                   legend.Ramp != null &&
+                   legend.Ramp.Count > 0;
+        }
+
+
+        /// <summary>
+        /// Quantile colour scale: one row per class (swatch + value
+        /// range, lowest first), as on the 2D study maps. Each class
+        /// holds about the same number of areas.
+        /// </summary>
+        private void BuildClasses(
+            RectTransform block,
+            VisualizationLegendInfo legend
+        )
+        {
+            int classes =
+                legend.ClassBreaks.Count + 1;
+
+            string unit =
+                string.IsNullOrWhiteSpace(legend.Unit)
+                    ? string.Empty
+                    : " " + legend.Unit;
+
+            for (int i = 0; i < classes; i++)
+            {
+                double low =
+                    i == 0 ? legend.Minimum : legend.ClassBreaks[i - 1];
+
+                double high =
+                    i == classes - 1 ? legend.Maximum : legend.ClassBreaks[i];
+
+                // The ramp is sampled through the scale, so the middle
+                // of a class's stretch is that class's colour.
+                int sample =
+                    Mathf.Clamp(
+                        Mathf.FloorToInt((i + 0.5f) / classes * legend.Ramp.Count),
+                        0,
+                        legend.Ramp.Count - 1
+                    );
+
+                BuildSwatchRow(
+                    block,
+                    legend.Ramp[sample],
+                    $"{Format(low)} – {Format(high)}{unit}",
+                    RuntimeUi.TextColor
+                );
+            }
+
+            RuntimeUi.CreateText(
+                block,
+                "Each class holds about the same number of areas; darker = higher.",
+                RuntimeUi.SmallSize,
+                RuntimeUi.MutedColor
+            );
+        }
+
+
+        private static void BuildSwatchRow(
+            RectTransform block,
+            Color color,
+            string label,
+            Color textColor
+        )
+        {
+            RectTransform row =
+                RuntimeUi.CreateRect(
+                    "Class",
+                    block
+                );
+
+            RuntimeUi.Horizontal(
+                row.gameObject,
+                0,
+                6.0f
+            );
+
+            Image swatch =
+                RuntimeUi.CreatePanel(
+                    "Swatch",
+                    row,
+                    color
+                );
+
+            swatch.raycastTarget =
+                false;
+
+            RuntimeUi.Layout(
+                swatch.gameObject,
+                26.0f,
+                16.0f
+            );
+
+            TMP_Text text =
+                RuntimeUi.CreateText(
+                    row,
+                    label,
+                    RuntimeUi.SmallSize,
+                    textColor
+                );
+
+            RuntimeUi.Layout(
+                text.gameObject,
+                -1.0f,
+                -1.0f,
+                1.0f
+            );
         }
 
 

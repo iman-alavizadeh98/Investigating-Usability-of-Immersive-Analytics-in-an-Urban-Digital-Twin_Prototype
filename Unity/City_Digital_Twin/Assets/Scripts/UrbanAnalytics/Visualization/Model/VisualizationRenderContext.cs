@@ -150,6 +150,66 @@ namespace UrbanAnalytics.Visualization
                 CancellationToken cancellationToken
             )
         {
+            DataLayer layer =
+                await GetUnfilteredDataLayerAsync(
+                    dataLayerId,
+                    cancellationToken
+                );
+
+
+            // The layer being rendered may limit which units carry
+            // values (spec "unitFilter"); only data on its own spatial
+            // layer is filtered.
+            if (activeFilter == null ||
+                !activeFilter.IsActive ||
+                !string.Equals(layer.TargetSpatialLayerId, activeTargetLayerId, StringComparison.Ordinal))
+            {
+                return layer;
+            }
+
+
+            string key =
+                dataLayerId + "#" + activeFilter.Describe();
+
+            if (filteredLayers.TryGetValue(key, out DataLayer cached))
+            {
+                return cached;
+            }
+
+
+            DataLayer filterSource =
+                string.IsNullOrEmpty(activeFilter.VariableId)
+                    ? null
+                    : await GetUnfilteredDataLayerAsync(
+                        activeFilter.DataLayerId,
+                        cancellationToken
+                    );
+
+            UnitFilterSettings filter =
+                activeFilter;
+
+            DataLayer filtered =
+                layer.WithUnitFilter(
+                    unitId =>
+                        (string.IsNullOrEmpty(filter.UnitPrefix) ||
+                         unitId.StartsWith(filter.UnitPrefix, StringComparison.Ordinal)) &&
+                        (filterSource == null ||
+                         (filterSource.TryGetDouble(unitId, filter.VariableId, out double value) &&
+                          value >= filter.Minimum))
+                );
+
+            filteredLayers[key] =
+                filtered;
+
+            return filtered;
+        }
+
+
+        private async Task<DataLayer> GetUnfilteredDataLayerAsync(
+            string dataLayerId,
+            CancellationToken cancellationToken
+        )
+        {
             if (DataLayers.TryGetLayer(
                     dataLayerId,
                     out DataLayer existing
@@ -163,6 +223,39 @@ namespace UrbanAnalytics.Visualization
                 dataLayerId,
                 cancellationToken
             );
+        }
+
+
+        // ----- unit filter of the layer being rendered -----
+
+        private UnitFilterSettings activeFilter;
+
+        private string activeTargetLayerId;
+
+        private readonly Dictionary<string, DataLayer> filteredLayers =
+            new Dictionary<string, DataLayer>(StringComparer.Ordinal);
+
+
+        /// <summary>Called before a layer is rendered: its unit filter applies to data fetched until <see cref="EndLayer"/>.</summary>
+        public void BeginLayer(
+            VisualizationLayerSpec spec
+        )
+        {
+            activeFilter =
+                spec?.UnitFilter;
+
+            activeTargetLayerId =
+                spec?.Target?.LayerId;
+        }
+
+
+        public void EndLayer()
+        {
+            activeFilter =
+                null;
+
+            activeTargetLayerId =
+                null;
         }
 
 

@@ -16,6 +16,16 @@ using UrbanAnalytics.Visualization;
 
 namespace UrbanAnalytics.Study
 {
+    /// <summary>A study the facilitator can pick: its view catalog and scenario file.</summary>
+    [Serializable]
+    public sealed class StudyChoice
+    {
+        public string label;
+        public string catalogPath;
+        public string scenarioFile;
+    }
+
+
     /// <summary>
     /// Runs a guided evaluation session and logs it.
     ///
@@ -39,6 +49,14 @@ namespace UrbanAnalytics.Study
     /// seconds, interactions, view switches, final A/B ids); every applied
     /// visualization, hover change, selection and comparison change; the
     /// camera pose at `poseHz`. F2 hides/shows the panel.
+    ///
+    /// Several studies (own view catalog + scenario file) can be listed;
+    /// the facilitator picks one before Start. For timed think-aloud
+    /// studies (pattern study P1–P3): <see cref="Advance"/> is the single
+    /// action that starts, shows the next scenario and ends the current one
+    /// (F5 at the PC, Next on the VR board); F9 logs the participant's
+    /// claims (first_claim = time to first claim); scenario_end closes each
+    /// scenario with its time.
     /// </summary>
     public sealed class StudySession : MonoBehaviour
     {
@@ -50,9 +68,43 @@ namespace UrbanAnalytics.Study
         [SerializeField]
         private string condition = "desktop";
 
-        [Tooltip("Scenario file, relative to StreamingAssets.")]
+        [Tooltip(
+            "Studies the facilitator can pick before Start: each has its own view " +
+            "catalog and scenario file (paths relative to StreamingAssets)."
+        )]
+        [SerializeField]
+        private StudyChoice[] studies =
+        {
+            new StudyChoice
+            {
+                label = "Pattern study 2D/3D (P1–P3)",
+                catalogPath = "cities/helsingborg/visualizations/pattern/catalog.json",
+                scenarioFile = "cities/helsingborg/visualizations/pattern/scenarios.json"
+            },
+            new StudyChoice
+            {
+                label = "Evaluation E1–E5",
+                catalogPath = "cities/helsingborg/visualizations/catalog.json",
+                scenarioFile = "cities/helsingborg/visualizations/scenarios.json"
+            }
+        };
+
+        [Tooltip("Study selected at start (index into Studies).")]
+        [SerializeField]
+        private int selectedStudy;
+
+        [Tooltip("Scenario file used when no studies are listed (relative to StreamingAssets).")]
         [SerializeField]
         private string scenarioFile = "cities/helsingborg/visualizations/scenarios.json";
+
+        [Header("Facilitator keys (PC)")]
+        [Tooltip("One action: start / show the scenario / next scenario.")]
+        [SerializeField]
+        private Key advanceKey = Key.F5;
+
+        [Tooltip("Logs the participant's first claim about a pattern (time to first claim).")]
+        [SerializeField]
+        private Key claimKey = Key.F9;
 
         [SerializeField]
         [Range(0.0f, 30.0f)]
@@ -92,6 +144,10 @@ namespace UrbanAnalytics.Study
         private StudyAnswerKey.Evaluator evaluator;
         private Coroutine pairRoutine;
         private readonly Dictionary<string, string> answers = new Dictionary<string, string>(StringComparer.Ordinal);
+        private int claims;
+        private double firstClaimSeconds = -1.0;
+        private bool advancing;
+        private bool switchingStudy;
 
         // UI
         private Canvas canvas;
@@ -104,6 +160,10 @@ namespace UrbanAnalytics.Study
         private RectTransform partList;
         private RectTransform confidenceRow;
         private Button startButton;
+        private Button advanceButton;
+        private Button claimButton;
+        private RectTransform studyRow;
+        private readonly List<Button> studyButtons = new List<Button>();
         private Button showButton;
         private Button switchButton;
         private Button submitButton;
@@ -130,6 +190,213 @@ namespace UrbanAnalytics.Study
         public string Status => status;
 
         public string LogPath => log?.LogPath;
+
+        /// <summary>The studies the facilitator can pick (before Start).</summary>
+        public IReadOnlyList<StudyChoice> Studies => studies ?? Array.Empty<StudyChoice>();
+
+        public int SelectedStudy => selectedStudy;
+
+        private StudyChoice CurrentStudy =>
+            studies != null && selectedStudy >= 0 && selectedStudy < studies.Length ? studies[selectedStudy] : null;
+
+        private string ScenarioFilePath => CurrentStudy?.scenarioFile ?? scenarioFile;
+
+        /// <summary>Seconds since the current scenario's view was shown (0 before).</summary>
+        public double ScenarioSeconds => log != null && viewShown ? log.Elapsed - scenarioStart : 0.0;
+
+        /// <summary>
+        /// Position of the current scenario among the study scenarios (not
+        /// training, not optional): 1-based number and total.
+        /// </summary>
+        public (int Number, int Total) StudyPosition
+        {
+            get
+            {
+                int number = 0, total = 0;
+
+                for (int i = 0; i < scenarios.Length; i++)
+                {
+                    if (scenarios[i].training || scenarios[i].optional)
+                    {
+                        continue;
+                    }
+
+                    total++;
+
+                    if (i <= index)
+                    {
+                        number = total;
+                    }
+                }
+
+                return (number, total);
+            }
+        }
+
+        /// <summary>Number of training scenarios in the session.</summary>
+        public int TrainingCount => TrainingCountBefore(scenarios.Length);
+
+        /// <summary>Training scenarios before the given index.</summary>
+        public int TrainingCountBefore(int end)
+        {
+            int count = 0;
+
+            for (int i = 0; i < Math.Min(end, scenarios.Length); i++)
+            {
+                if (scenarios[i].training)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        /// <summary>Claims logged in the current scenario (F9).</summary>
+        public int Claims => claims;
+
+        /// <summary>What <see cref="Advance"/> does next, as a button label.</summary>
+        public string AdvanceLabel
+        {
+            get
+            {
+                if (log == null) return index < 0 ? "Start" : "Finished";
+                if (Current == null) return "Finished";
+                if (!viewShown) return "Show scenario";
+                return index >= scenarios.Length - 1 ? "Finish" : "Next scenario";
+            }
+        }
+
+
+        /// <summary>
+        /// Picks the study to run (before Start): loads its view catalog
+        /// into the VisualizationSwitcher and uses its scenario file.
+        /// </summary>
+        public async void SelectStudy(int study)
+        {
+            if (log != null || studies == null || study < 0 || study >= studies.Length || switchingStudy)
+            {
+                return;
+            }
+
+            selectedStudy = study;
+            switchingStudy = true;
+            status = $"Loading {studies[study].label}…";
+            Refresh();
+
+            try
+            {
+                if (visualizationSwitcher != null)
+                {
+                    await visualizationSwitcher.LoadCatalogAsync(studies[study].catalogPath);
+                }
+
+                status = $"{studies[study].label} selected.";
+            }
+            finally
+            {
+                switchingStudy = false;
+                Refresh();
+            }
+        }
+
+
+        /// <summary>
+        /// The single action of a timed session (F5, or Next on the VR
+        /// board): starts the session and shows the first scenario; shows a
+        /// scenario whose view is not shown yet; otherwise ends the current
+        /// scenario (Submit) and shows the next one. A scenario whose
+        /// questions still need answers (evaluation study) is not ended.
+        /// </summary>
+        public async void Advance()
+        {
+            if (advancing || switchingStudy)
+            {
+                return;
+            }
+
+            advancing = true;
+
+            try
+            {
+                if (log == null)
+                {
+                    if (index >= 0)
+                    {
+                        return;  // finished
+                    }
+
+                    await StartSessionAsync();
+
+                    if (log != null)
+                    {
+                        ShowCurrentView();
+                    }
+
+                    return;
+                }
+
+                if (Current == null)
+                {
+                    return;
+                }
+
+                if (!viewShown)
+                {
+                    ShowCurrentView();
+                    return;
+                }
+
+                int before = index;
+                Submit();
+
+                if (log != null && index != before && Current != null)
+                {
+                    ShowCurrentView();
+                }
+            }
+            finally
+            {
+                advancing = false;
+            }
+        }
+
+
+        /// <summary>
+        /// Facilitator key (F9): the participant states a pattern. The first
+        /// one in a scenario is logged as first_claim (time to first claim),
+        /// later ones as claim.
+        /// </summary>
+        public void MarkClaim()
+        {
+            StudyScenario scenario = Current;
+
+            if (log == null || scenario == null || !viewShown)
+            {
+                return;
+            }
+
+            claims++;
+            double seconds = log.Elapsed - scenarioStart;
+
+            if (claims == 1)
+            {
+                firstClaimSeconds = seconds;
+            }
+
+            log.Write(
+                claims == 1 ? "first_claim" : "claim",
+                ("scenario", scenario.id),
+                ("claim", claims),
+                ("seconds", seconds),
+                ("view", showingAlternate ? scenario.alternatePresetId : scenario.presetId)
+            );
+
+            status = claims == 1
+                ? $"{scenario.id}: first claim at {seconds:0.0} s."
+                : $"{scenario.id}: claim {claims} at {seconds:0.0} s.";
+            Refresh();
+        }
 
         public StudyScenario Current =>
             index >= 0 && index < scenarios.Length ? scenarios[index] : null;
@@ -256,6 +523,16 @@ namespace UrbanAnalytics.Study
                 panel.gameObject.SetActive(!panel.gameObject.activeSelf);
             }
 
+            if (keyboard != null && keyboard[advanceKey].wasPressedThisFrame)
+            {
+                Advance();
+            }
+
+            if (keyboard != null && keyboard[claimKey].wasPressedThisFrame)
+            {
+                MarkClaim();
+            }
+
             if (log == null || poseHz <= 0.0f || Time.unscaledTime < nextPoseTime)
             {
                 return;
@@ -310,6 +587,12 @@ namespace UrbanAnalytics.Study
 
         public async void StartSession()
         {
+            await StartSessionAsync();
+        }
+
+
+        private async Task StartSessionAsync()
+        {
             if (log != null)
             {
                 return;
@@ -317,6 +600,12 @@ namespace UrbanAnalytics.Study
 
             try
             {
+                // The selected study's views must be the ones offered.
+                if (CurrentStudy != null && visualizationSwitcher != null)
+                {
+                    await visualizationSwitcher.LoadCatalogAsync(CurrentStudy.catalogPath);
+                }
+
                 StudyScenarioFile file = await LoadScenariosAsync();
                 scenarios = file?.scenarios ?? Array.Empty<StudyScenario>();
                 studyId = file?.studyId;
@@ -348,7 +637,9 @@ namespace UrbanAnalytics.Study
                 ("unity", Application.unityVersion),
                 ("scene", gameObject.scene.name),
                 ("manifest", projectManager != null ? projectManager.ManifestPath : null),
-                ("scenarioFile", scenarioFile),
+                ("studyLabel", CurrentStudy?.label),
+                ("catalog", visualizationSwitcher != null ? visualizationSwitcher.CatalogPath : null),
+                ("scenarioFile", ScenarioFilePath),
                 ("scenarios", scenarios.Length),
                 ("screen", $"{Screen.width}x{Screen.height}")
             );
@@ -569,6 +860,7 @@ namespace UrbanAnalytics.Study
                 log.WriteAnswer(scenario.id, scenario.presetId, null, null, null, confidence, seconds, interactions);
             }
 
+            WriteScenarioEnd(scenario, "done", seconds);
             status = $"{scenario.id} logged ({seconds:0.0} s, {correctCount}/{scoredCount} scored parts correct).";
             Next();
         }
@@ -589,6 +881,7 @@ namespace UrbanAnalytics.Study
                 ("seconds", viewShown ? log.Elapsed - scenarioStart : 0.0)
             );
 
+            WriteScenarioEnd(scenario, "skip", viewShown ? log.Elapsed - scenarioStart : 0.0);
             status = $"{scenario.id} skipped.";
             Next();
         }
@@ -628,8 +921,26 @@ namespace UrbanAnalytics.Study
         }
 
 
+        /// <summary>Closes a scenario: its time and the participant's claims (time to first claim).</summary>
+        private void WriteScenarioEnd(StudyScenario scenario, string reason, double seconds)
+        {
+            log?.Write(
+                "scenario_end",
+                ("scenario", scenario.id),
+                ("reason", reason),
+                ("seconds", seconds),
+                ("claims", claims),
+                ("firstClaimSeconds", firstClaimSeconds >= 0.0 ? firstClaimSeconds : (double?)null),
+                ("interactions", interactions),
+                ("viewSwitches", viewSwitches)
+            );
+        }
+
+
         private void ResetScenarioState()
         {
+            claims = 0;
+            firstClaimSeconds = -1.0;
             viewShown = false;
             showingAlternate = false;
             confidence = 0;
@@ -768,7 +1079,7 @@ namespace UrbanAnalytics.Study
                 await projectManager.LoadTask;
             }
 
-            string json = await projectManager.AssetReader.ReadTextAsync(scenarioFile, default);
+            string json = await projectManager.AssetReader.ReadTextAsync(ScenarioFilePath, default);
             return JsonUtility.FromJson<StudyScenarioFile>(json);
         }
 
@@ -934,6 +1245,18 @@ namespace UrbanAnalytics.Study
             panel.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             header = RuntimeUi.CreateText(panel, "", RuntimeUi.HeadingSize, RuntimeUi.AccentColor, TextAnchor.MiddleLeft, FontStyles.Bold);
+
+            // Study choice (before Start).
+            studyRow = RuntimeUi.CreateRect("Studies", panel);
+            RuntimeUi.Horizontal(studyRow.gameObject, 0, 4.0f);
+
+            for (int i = 0; i < Studies.Count; i++)
+            {
+                int study = i;
+                studyButtons.Add(RuntimeUi.CreateButton(studyRow, Studies[i].label, () => SelectStudy(study), -1.0f, 26.0f, RuntimeUi.SmallSize));
+                RuntimeUi.Layout(studyButtons[i].gameObject, -1.0f, 26.0f, 1.0f);
+            }
+
             question = RuntimeUi.CreateText(panel, "", RuntimeUi.SmallSize, RuntimeUi.TextColor);
             dataText = RuntimeUi.CreateText(panel, "", RuntimeUi.SmallSize, RuntimeUi.MutedColor);
 
@@ -959,6 +1282,11 @@ namespace UrbanAnalytics.Study
             submitButton = RuntimeUi.CreateButton(actions, "Submit", Submit, 90.0f);
             skipButton = RuntimeUi.CreateButton(actions, "Skip", Skip, 60.0f);
 
+            RectTransform timed = RuntimeUi.CreateRect("Timed", panel);
+            RuntimeUi.Horizontal(timed.gameObject, 0, 6.0f);
+            advanceButton = RuntimeUi.CreateButton(timed, "Next (F5)", Advance, 200.0f);
+            claimButton = RuntimeUi.CreateButton(timed, "Claim (F9)", MarkClaim, 140.0f);
+
             statusText = RuntimeUi.CreateText(panel, "", RuntimeUi.SmallSize, RuntimeUi.MutedColor);
         }
 
@@ -978,6 +1306,20 @@ namespace UrbanAnalytics.Study
             switchButton.gameObject.SetActive(running && scenario != null && viewShown && scenario.HasAlternateView);
             submitButton.gameObject.SetActive(running && scenario != null && viewShown);
             skipButton.gameObject.SetActive(running && scenario != null);
+
+            studyRow.gameObject.SetActive(!running && index < 0 && Studies.Count > 1);
+
+            for (int i = 0; i < studyButtons.Count; i++)
+            {
+                RuntimeUi.SetButton(studyButtons[i], Studies[i].label,
+                    i == selectedStudy ? RuntimeUi.ActiveButtonColor : RuntimeUi.ButtonColor);
+                studyButtons[i].interactable = !switchingStudy;
+            }
+
+            advanceButton.gameObject.SetActive(!(index >= 0 && !running));
+            RuntimeUi.SetButton(advanceButton, AdvanceLabel + " (F5)", RuntimeUi.ActiveButtonColor);
+            claimButton.gameObject.SetActive(running && scenario != null && viewShown);
+            RuntimeUi.SetButton(claimButton, claims == 0 ? "First claim (F9)" : $"Claim {claims + 1} (F9)", RuntimeUi.ButtonColor);
 
             dataText.text = string.Empty;
 

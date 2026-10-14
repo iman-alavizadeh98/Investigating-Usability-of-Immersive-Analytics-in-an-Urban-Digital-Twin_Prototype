@@ -327,6 +327,13 @@ namespace UrbanAnalytics.Visualization
                 spec.Bidirectional;
 
 
+            // Units without a colour value (legend: "No data").
+            var noColorUnits =
+                new HashSet<string>(
+                    StringComparer.Ordinal
+                );
+
+
             UnitHeightColors ColorsOf(
                 SpatialMeshUnitRange range,
                 Color32[] sourceColors
@@ -335,12 +342,22 @@ namespace UrbanAnalytics.Visualization
                 if (colorDataLayer != null &&
                     colorScale.HasValue)
                 {
-                    Color32 dataColor =
+                    bool hasValue =
                         colorDataLayer.TryGetDouble(
                             range.UnitId,
                             colorVariable.VariableId,
                             out double value
-                        )
+                        );
+
+                    if (!hasValue)
+                    {
+                        noColorUnits.Add(
+                            range.UnitId
+                        );
+                    }
+
+                    Color32 dataColor =
+                        hasValue
                             ? colorEncoding.Color.Evaluate(
                                 colorScale.Value.Normalize(
                                     value
@@ -574,6 +591,8 @@ namespace UrbanAnalytics.Visualization
                         colorScale.Value
                     ).WithChannel(
                         "Column colour"
+                    ).WithNoDataUnits(
+                        noColorUnits.Count
                     )
                 );
             }

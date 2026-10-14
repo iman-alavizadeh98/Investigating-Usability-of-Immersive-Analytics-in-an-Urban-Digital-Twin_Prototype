@@ -63,6 +63,9 @@ namespace UrbanAnalytics.Study
 
         public bool training;
 
+        /// <summary>Optional, unscored free exploration at the end (e.g. the 3D showcase).</summary>
+        public bool optional;
+
         /// <summary>The question for a condition ("vr" uses <see cref="questionVr"/> when set).</summary>
         public string QuestionFor(string condition) =>
             condition == "vr" && !string.IsNullOrEmpty(questionVr) ? questionVr : question;

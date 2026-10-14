@@ -263,16 +263,25 @@ FarEdge/NearSide panels follow the user around the table with 50°
 hysteresis until carried by their Grab bar; **Reset panels** (wrist menu)
 returns them.
 
-**Tutorial** (`XRTutorial`, since 2026-10-09): starts once the table is placed
-and the head tracked. 13 steps: welcome (Next) · select · show data (View >)
-· panels (Next) · move the table (left grip) · size (stick / Bigger,
-Smaller) · copy (Copy tool + click) · grab the copy · compare (two areas) ·
-move a panel (Grab bar) · wrist menu (look at the wrist) · clear table ·
-ready (Finish). Action steps complete themselves ("Done!", 1 s pause).
-**Locked in:** `XRFeatureLock` allows only what has been taught (toolbar
-buttons greyed out; city clicks, grabbing, table grip, resize, wrist menu
-off). Facilitator: **F8** on the PC skips; wrist menu → Panels → Restart
-tutorial. Logged as `vr_tutorial`.
+**Tutorial** (`XRTutorial`): starts once the table is placed and the head
+tracked. **Since 2026-10-14 only 5 steps (target under 3 minutes):** welcome
+(Next) · point and select · read the view (legend + info; Next) · move the
+table (left grip) · ready (Finish). Copy, compare, grabbing, the wrist menu and
+clearing are no longer taught (still available afterwards; Help shows them),
+so participants get to the scenarios fast. (2026-10-09 – 10-13: 13 steps.)
+Action steps complete themselves ("Done!", 1 s pause). **Locked in:**
+`XRFeatureLock` allows only what has been taught until the last step.
+Facilitator: **F8** on the PC skips; wrist menu → Panels → Restart tutorial.
+Logged as `vr_tutorial`.
+
+**Study board** (`XRStudyBoard`, since 2026-10-14): in the tutorial card's
+place once the tutorial is done. Shows the current scenario's question word
+for word, the data lines (height/colour: variable · unit · spatial unit · year)
+and **one button** = `StudySession.Advance` (Start → Show scenario → Next
+scenario → Finish); **F5** at the PC does the same, **F9** logs a claim. Used
+by the pattern study P1–P3 (see `docs/EVALUATION_SESSION.md` → Pattern study).
+The legend lists colour **classes** (swatch + range) for quantile scales and a
+**"No data (n areas)"** row whenever shown units lack the colour variable.
 
 **Click tools** (`XRClickTools`, toolbar CLICK row): Select / Copy / Compare.
 Every trigger click on the city selects; Copy additionally makes a copy

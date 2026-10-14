@@ -18,7 +18,8 @@ Example (configs/cities/<city>.json):
   },
   "statistics": {                          optional: SCB grid + DeSO layers
     "population": "Raw_data/<city>/<SCB befolkning folder>",
-    "income": "Raw_data/<city>/<SCB inkomster folder>"
+    "income": "Raw_data/<city>/<SCB inkomster folder>",
+    "employment": "Raw_data/<city>/<SCB arbetsmarknad folder>"   optional: DeSO employment rate (table 9)
   },
   "election": {                            optional: voting districts
     "folder": "Raw_data/<city>/<folder with results .xlsx + districts>",
@@ -30,6 +31,10 @@ Example (configs/cities/<city>.json):
     "minCoveragePct": 99.0
   },
   "visualizations": "configs/visualizations/<set>"   optional: preset folder with catalog.json
+  "visualizationSets": {"<name>": "configs/visualizations/<other set>"}
+                                           optional: further preset folders (own catalog.json
+                                           + scenarios.json, e.g. a second study), copied to
+                                           <package>/visualizations/<name>/
 }
 
 Relative paths are resolved against the repository root.
@@ -68,6 +73,7 @@ class BuildingsSource:
 class StatisticsSource:
     population: Path
     income: Optional[Path] = None
+    employment: Optional[Path] = None   # SCB Arbetsmarknad delivery: DeSO employment rate (table 9)
 
 
 @dataclass
@@ -99,6 +105,7 @@ class CityConfig:
     election: Optional[ElectionSource] = None
     estimates: EstimateSettings = field(default_factory=EstimateSettings)
     visualizations: Optional[Path] = None
+    visualization_sets: Dict[str, Path] = field(default_factory=dict)
     config_path: Optional[Path] = None
     raw: Dict = field(default_factory=dict)
 
@@ -117,6 +124,13 @@ def _require(d: Dict, key: str, where: str):
     if key not in d or d[key] in (None, ""):
         raise ValueError(f"City config: '{where}{key}' is required")
     return d[key]
+
+
+def _visualization_sets(sets: Dict, resolve) -> Dict[str, Path]:
+    for name in sets:
+        if not ID_PATTERN.match(name):
+            raise ValueError(f"City config: visualizationSets name '{name}' must be lowercase letters, digits or '_'")
+    return {name: resolve(folder) for name, folder in sets.items()}
 
 
 def load_city_config(path: Path, repo_root: Path) -> CityConfig:
@@ -149,6 +163,7 @@ def load_city_config(path: Path, repo_root: Path) -> CityConfig:
         statistics = StatisticsSource(
             population=resolve(_require(s, "population", "statistics.")),
             income=resolve(s["income"]) if s.get("income") else None,
+            employment=resolve(s["employment"]) if s.get("employment") else None,
         )
 
     election = None
@@ -184,6 +199,7 @@ def load_city_config(path: Path, repo_root: Path) -> CityConfig:
         election=election,
         estimates=estimates,
         visualizations=resolve(raw["visualizations"]) if raw.get("visualizations") else None,
+        visualization_sets=_visualization_sets(raw.get("visualizationSets") or {}, resolve),
         config_path=path,
         raw=raw,
     )

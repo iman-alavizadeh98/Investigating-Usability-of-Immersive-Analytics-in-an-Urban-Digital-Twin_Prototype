@@ -1,0 +1,69 @@
+{
+  "studyId": "pattern_2d_3d",
+  "source": "configs/study/pattern_scenarios.json (questions copied word for word; checked by tests)",
+  "scenarios": [
+    {
+      "id": "T0",
+      "title": "Practice",
+      "presetId": "t0_practice",
+      "question": "Practice (about 1 minute). Look around the table. Point at a few areas and read their values. Say aloud what the height and the colour show.",
+      "data": [
+        "Height · Residents · persons · DeSO areas (SCB) · 2024",
+        "Colour · Share of residents aged 65+ · % · DeSO areas (SCB) · 2024 · 5 classes, about the same number of areas each"
+      ],
+      "parts": [],
+      "training": true
+    },
+    {
+      "id": "P1",
+      "title": "Neighbourhood development",
+      "presetId": "p1",
+      "question": "The municipality is choosing neighbourhoods for a targeted development programme and wants to understand how household income and employment relate across the city. Do you see a pattern between them?",
+      "data": [
+        "Height (A) · Median income · SEK · DeSO areas (SCB) · 2023",
+        "Colour (B) · Employment rate, ages 20–64 · % · DeSO areas (SCB) · 2023 · 5 classes, about the same number of areas each; grey = no data"
+      ],
+      "parts": [],
+      "training": false
+    },
+    {
+      "id": "P2",
+      "title": "Preschool and school planning",
+      "presetId": "p2",
+      "question": "The municipality is planning new preschool and school places. A colleague suggests families with children mostly live in the wealthier areas. Look at income and the share of children aged 0–15. Do you agree?",
+      "data": [
+        "Height (A) · Median income · SEK · DeSO areas (SCB) · 2023",
+        "Colour (B) · Share of residents aged 0–15 · % · DeSO areas (SCB) · 2024 · 5 classes, about the same number of areas each; grey = no data"
+      ],
+      "parts": [],
+      "training": false
+    },
+    {
+      "id": "P3",
+      "title": "Adult education and SFI",
+      "presetId": "p3",
+      "question": "The municipality is planning adult education and Swedish for immigrants (SFI) and wants to offer courses close to where people live. Is there a pattern between the share of residents born abroad and the share of residents with a higher education?",
+      "data": [
+        "Height (A) · Share of residents born abroad · % · 250 m grid cells with at least 50 residents · 2024",
+        "Colour (B) · Share with higher education (3+ years), ages 25–64 · % · 250 m grid cells with at least 50 residents · 2024 · 5 classes, about the same number of areas each; grey = no data"
+      ],
+      "parts": [],
+      "training": false
+    },
+    {
+      "id": "S",
+      "title": "Explore (optional)",
+      "presetId": "e3_grid_profile",
+      "question": "If there is time: explore freely. Two things the table can do that a map cannot. Copy: press Copy on the table toolbar (or A on the right controller) and click an area; a 3D copy pops up. Hold the grip with the ray on it to carry it and put it next to another area. Compare: press Compare and click two areas; the Compare panel shows A and B side by side with their differences.",
+      "data": [
+        "Height up · Population density · persons/km² · 250 m grid (SCB) · 2024",
+        "Height down · Residents aged 65+ · % · 250 m grid (SCB) · 2024",
+        "Colour · Mean income (economic standard) · SEK · 250 m grid (SCB) · 2023",
+        "Buildings · Turnout of the building's voting district · % · municipal election 2026"
+      ],
+      "parts": [],
+      "training": false,
+      "optional": true
+    }
+  ]
+}

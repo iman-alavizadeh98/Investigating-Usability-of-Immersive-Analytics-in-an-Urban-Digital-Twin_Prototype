@@ -403,6 +403,78 @@ namespace UrbanAnalytics.Interaction
         }
 
 
+        /// <summary>Catalog the options come from (relative to StreamingAssets).</summary>
+        public string CatalogPath =>
+            catalogPath;
+
+
+        /// <summary>
+        /// Replaces the options with another catalog (e.g. a second
+        /// study's views). The current view is cleared first. No-op
+        /// when that catalog is already loaded.
+        /// </summary>
+        public async Task LoadCatalogAsync(
+            string path
+        )
+        {
+            if (IsLoaded &&
+                string.Equals(path, catalogPath, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+
+            Clear();
+
+            catalogPath =
+                path;
+
+            IsLoaded =
+                false;
+
+            LastError =
+                null;
+
+            Changed?.Invoke();
+
+
+            try
+            {
+                await LoadOptionsAsync(
+                    lifetimeCancellation.Token
+                );
+
+                Debug.Log(
+                    $"VisualizationSwitcher: catalog '{path}' loaded ({options.Count} views).",
+                    this
+                );
+            }
+            catch (OperationCanceledException)
+            {
+                // Shutdown.
+            }
+            catch (Exception exception)
+            {
+                LastError =
+                    $"Visualization catalog: {exception.Message}";
+
+                Debug.LogException(
+                    exception,
+                    this
+                );
+            }
+            finally
+            {
+                IsLoaded =
+                    true;
+
+                SyncActiveIndex();
+
+                Changed?.Invoke();
+            }
+        }
+
+
         public void Clear()
         {
             if (visualizationManager == null ||

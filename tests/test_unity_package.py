@@ -201,6 +201,48 @@ def test_field_ids_unique():
     assert len(ids) == len(set(ids))
 
 
+def test_city_config_employment_and_visualization_sets():
+    """statistics.employment and visualizationSets are optional and resolved against the repo root."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        cfg = {
+            "city": {"id": "testby", "displayName": "Testby"},
+            "crs": "EPSG:3006",
+            "unity": {"streamingAssetsDirectory": "SA", "originInSourceCRS": {"easting": OE, "northing": ON},
+                      "metersToUnity": 0.001},
+            "statistics": {"population": "raw/pop", "employment": "raw/employment"},
+            "visualizations": "configs/visualizations/main",
+            "visualizationSets": {"pattern": "configs/visualizations/pattern"},
+        }
+        path = tmp / "testby.json"
+        path.write_text(json.dumps(cfg), encoding="utf-8")
+        city = load_city_config(path, repo_root=tmp)
+        assert city.statistics.employment == tmp / "raw/employment"
+        assert city.statistics.income is None
+        assert city.visualization_sets == {"pattern": tmp / "configs/visualizations/pattern"}
+
+        cfg["visualizationSets"] = {"Bad Name": "x"}
+        path.write_text(json.dumps(cfg), encoding="utf-8")
+        try:
+            load_city_config(path, repo_root=tmp)
+            raise AssertionError("an invalid set name must be rejected")
+        except ValueError as e:
+            assert "visualizationSets" in str(e)
+
+
+def test_pattern_study_questions_word_for_word():
+    """The Unity pattern scenarios repeat the study design's questions exactly (repo files, no data)."""
+    repo = Path(__file__).parent.parent
+    design = json.loads((repo / "configs/study/pattern_scenarios.json").read_text(encoding="utf-8"))
+    unity = json.loads((repo / "configs/visualizations/pattern/scenarios.json").read_text(encoding="utf-8"))
+    by_id = {s["id"]: s for s in unity["scenarios"]}
+    catalog = {e["id"] for e in json.loads((repo / "configs/visualizations/pattern/catalog.json").read_text(encoding="utf-8"))["visualizations"]}
+    for s in design["scenarios"]:
+        assert by_id[s["id"]]["question"] == s["question"], s["id"]
+        assert by_id[s["id"]]["presetId"] in catalog
+        assert not by_id[s["id"]].get("parts"), "no multiple-choice parts"
+
+
 if __name__ == "__main__":
     tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_") and callable(fn)]
     failed = 0

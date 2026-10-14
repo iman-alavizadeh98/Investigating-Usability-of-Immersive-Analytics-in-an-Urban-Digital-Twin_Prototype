@@ -23,7 +23,7 @@ from pipelines.unity_package.layer_files import write_spatial_layer, SpatialLaye
 from pipelines.unity_package.links import (  # noqa: E402
     assign, dasymetric, export_associations, export_district_estimates, grid_counts, statistics_extent,
 )
-from pipelines.unity_package.statistics import build_ruta_units, export_deso, export_ruta  # noqa: E402
+from pipelines.unity_package.statistics import build_ruta_units, export_deso, export_deso_employment, export_ruta  # noqa: E402
 
 E0, N0 = 500000, 6500000
 CRS = "EPSG:3006"
@@ -146,6 +146,28 @@ def test_assign_uses_point_inside_footprint():
     units = gpd.GeoDataFrame({"unit_id": ["u:1"]}, geometry=[box(E0, N0, E0 + 250, N0 + 250)], crs=CRS)
     linked = assign(pts, units)
     assert set(linked.index) == {"building:a", "building:b", "building:c"}
+
+
+def test_deso_employment_rate_and_missing_units():
+    """Rate = 100 x Sysselsatt / Totalt; a DeSO missing from table 9 (or with Totalt 0) has no value, never 0."""
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp) / "employment"
+        folder.mkdir()
+        gpd.GeoDataFrame({"DeSO_2031": ["9999C0001", "9999C0002", "9999C0099"],
+                          "Sysselsatt": [30, 0, 5], "EjSsyssels": [10, 0, 5], "Totalt": [40, 0, 10]},
+                         geometry=[box(E0, N0, E0 + 1000, N0 + 1000)] * 3, crs=CRS).to_file(folder / "Tab9_DeSO_2030.shp")
+        tables = load_scb_tables(folder)
+        pkg = Path(tmp) / "pkg"
+        ids = pd.Index(["deso:9999C0001", "deso:9999C0002", "deso:9999C0003"])
+        report = export_deso_employment(pkg, tables, ids)
+        values = json.loads((pkg / "data_layers" / "deso_employment" / "values.json").read_text(encoding="utf-8"))
+        rate = next(c for c in values["columns"] if c["variableId"] == "employment_rate_20_64")
+        assert values["unitIds"] == list(ids) and values["targetSpatialLayerId"] == "deso"
+        assert rate["floatValues"][0] == 75.0 and rate["valid"][0] is True
+        assert rate["valid"][1] is False                                  # Totalt 0: no rate
+        assert rate["valid"][2] is False                                  # not in the table: no value (D4)
+        assert report["missing_from_table"] == ["deso:9999C0003"]
+        assert report["table_rows_not_in_layer"] == ["deso:9999C0099"]
 
 
 if __name__ == "__main__":

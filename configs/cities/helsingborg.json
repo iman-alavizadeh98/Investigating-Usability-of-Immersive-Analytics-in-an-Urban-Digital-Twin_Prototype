@@ -20,7 +20,8 @@
   },
   "statistics": {
     "population": "Raw_data/1-Helsingborig/befolkningShp_helsingborg",
-    "income": "Raw_data/1-Helsingborig/inkomsterShp_helsingborg"
+    "income": "Raw_data/1-Helsingborig/inkomsterShp_helsingborg",
+    "employment": "Raw_data/1-Helsingborig/employment"
   },
   "election": {
     "folder": "Raw_data/1-Helsingborig/election",
@@ -32,6 +33,9 @@
     "minCoveragePct": 99.0
   },
   "visualizations": "configs/visualizations/evaluation",
+  "visualizationSets": {
+    "pattern": "configs/visualizations/pattern"
+  },
   "dataReport": {
     "buildingsRaw": "Raw_data/1-Helsingborig/byggnad_gpkg_helsingborg",
     "employment": "Raw_data/1-Helsingborig/employment",
