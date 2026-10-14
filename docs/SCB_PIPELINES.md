@@ -1,8 +1,8 @@
-# SCB pipelines (population, income) — preprocess stage
+# SCB pipelines (population, income, employment) — preprocess stage
 
 **Status (2026-10-07):** load, check, profile and view only. No processing rules yet: the tables appear in the views exactly as delivered. The processing (which tables, how to handle the mixed grid, aliases, derived values, target unit, export) is decided later and goes in each dataset's `preprocessor.py`.
 
-Population and income are both *Statistik på ruta och DeSO från SCB* deliveries, in the same shapefile format. They share one core (`Src/pipelines/scb/`). Each dataset only adds its table catalog, its field dictionary and its preprocessor. The election data is a different format; see [ELECTION_PIPELINE.md](ELECTION_PIPELINE.md).
+Population, income and employment (added 2026-10-13) are all *Statistik på ruta och DeSO från SCB* deliveries, in the same shapefile format. They share one core (`Src/pipelines/scb/`). Each dataset only adds its table catalog, its field dictionary and its preprocessor. The election data is a different format; see [ELECTION_PIPELINE.md](ELECTION_PIPELINE.md).
 
 ## Datasets
 
@@ -10,6 +10,7 @@ Population and income are both *Statistik på ruta och DeSO från SCB* deliverie
 |---|---|---|---|
 | `population` | *Befolkning* | Population | `Raw_data/1-Helsingborig/befolkningShp_helsingborg/` |
 | `income` | *Inkomster* | Income | `Raw_data/1-Helsingborig/inkomsterShp_helsingborg/` |
+| `employment` | *Arbetsmarknad – Utbildning* | Labour market – Education | `Raw_data/1-Helsingborig/employment/` |
 
 - **Source:** SCB, delivered through SLU GET.
 - **Licence:** FUK (research, education, culture). **Not publishable.** The HTML views contain the data, so write them under `Processed_data/` (ignored by git), never `reports/` or `docs/`.
@@ -27,6 +28,10 @@ Population and income are both *Statistik på ruta och DeSO från SCB* deliverie
 | population | 6 | Totalbefolkning på 100 m ruta | Total population, 100 m cells | `Totalt` | |
 | population | 10 | Befolkning 25–64 år efter utbildningsnivå | Population 25–64 by education | `Totbef` | |
 | income | 11 | Hushåll 20+ år efter ekonomisk standard | Households (20+) by economic standard, in quartiles | `Totalt` (households) | `Tot_CDISP0` (SEK sum, grid), `MedianInk` (SEK median, DeSO) |
+| employment | 7 | Förvärvsarbetande nattbefolkning (16+ år) efter sektor | Employed persons (16+) by sector, at **place of residence** | `Totalt` | |
+| employment | 8 | Förvärvsarbetande dagbefolkning (16+ år) efter sektor | Employed persons (16+) by sector, at **place of work** | `Totalt` | |
+| employment | 9 | Befolkning 20–64 år efter sysselsättning | Population 20–64 by employment status | `Totalt` | |
+| employment | 10 | (same as population Tab10) | Population 25–64 by education | `Totbef` | |
 
 A table number missing from the catalog still loads; it is reported as an issue.
 
@@ -40,6 +45,10 @@ python Src/Scripts/run_population_pipeline.py --input "Raw_data/1-Helsingborig/b
 
 ```bash
 python Src/Scripts/run_income_pipeline.py --input "Raw_data/1-Helsingborig/inkomsterShp_helsingborg" --output "Processed_data/Helsingborg_Final"
+```
+
+```bash
+python Src/Scripts/run_employment_pipeline.py --input "Raw_data/1-Helsingborig/employment" --output "Processed_data/Helsingborg_Final"
 ```
 
 `--tables Tab1_Ruta Tab2` loads only the files whose name starts with one of these. Open the printed `index.html`.
@@ -77,8 +86,9 @@ profiles/<table>_profile.html/.md       DataFrameProfiler report
 | `Src/pipelines/scb/cli.py` | shared `--input/--output/--tables` command line |
 | `Src/pipelines/population/` | `config.py` (`POPULATION`: catalog + fields), `preprocessor.py` (empty), `pipeline.py` |
 | `Src/pipelines/income/` | `config.py` (`INCOME`), `preprocessor.py` (empty), `pipeline.py` |
+| `Src/pipelines/employment/` | `config.py` (`EMPLOYMENT`; Tab10 is reused from `POPULATION`), `preprocessor.py` (empty), `pipeline.py` |
 
-**To add another SCB delivery** (e.g. employment): create a package with a `config.py` defining an `ScbDataset`, plus a `pipeline.py` that subclasses `ScbTablesPipeline`, and a run script that calls `run_cli`.
+**To add another SCB delivery:** create a package with a `config.py` defining an `ScbDataset`, plus a `pipeline.py` that subclasses `ScbTablesPipeline`, and a run script that calls `run_cli`.
 
 Shared utilities: `Src/utils/dataframe_html.py` (HTML viewer for any DataFrame) and `Src/utils/data_profiler.py`.
 
@@ -113,7 +123,10 @@ Ruta positions come from the ID (`RutID_SW` or `Ruta`: 6-digit easting + 7-digit
 - **The variable PDF in the deliveries is older than the data.** Each field records whether its meaning is stated there (`pdf`) or read from the abbreviation (`inferred`).
   - The population Tab5 fields are all inferred.
   - So are the income quartiles and `MedianInk`. Where the quartile boundaries come from (national or local) is not stated.
-- **Encoding.** Population Tab3's `.cpg` says UTF-8, but its field names are cp1252. The loader retries with the encodings in `ENCODING_FALLBACKS`.
+- **Encoding.** Population Tab3's `.cpg` says UTF-8, but its field names are cp1252. The same applies to employment Tab7 and Tab8 Ruta. The loader retries with the encodings in `ENCODING_FALLBACKS`.
+- **Workplace ID columns** (employment Tab8) have an `Ast`/`ast` prefix: `AstRutID_S`, `AstRutstor`, and `astDeSO_20`. The last is cut at 10 characters, so the DeSO edition year is lost. `UNIT_RULES` matches them.
+- **Sector spellings differ across tables:** `Näringsli`/`Naringsliv` and `Ovrigt`/`Övrigt`. Each pair has one English alias in the field dictionary.
+- **Residence vs workplace:** employment Tab7 counts employed people where they live, Tab8 where they work. Never add or mix them.
 - **Names cut to 10 characters:** `Alder_16_1` is age 16–19, `Alder_20_2` 20–24, `Alder_25_4` 25–44, `Alder_45_6` 45–64.
 - **A unit missing from a table means no data, not 0.**
 - **SCB perturbs small counts,** so sub-groups rarely add up exactly to the total, and an income sum can appear on a cell with 0 households.
@@ -131,6 +144,13 @@ Ruta positions come from the ID (`RutID_SW` or `Ruta`: 6-digit easting + 7-digit
 - Grid: 494 cells (480 × 250 m + 14 × 1,000 m), 55,064 households; 21 cut cells; 7 coarse cells overlap 250 m cells.
 - **30 cells have 0 households but a positive income sum.**
 - DeSO: 59,791 households; median income 198,693–411,400 SEK.
+
+**Employment (checked 2026-10-13):**
+- 6 tables, 4 issues: the cp1252 fallback in Tab7/Tab8 Ruta, and 1 null DeSO geometry (`1283A0010`) in each of Tab8/Tab9_DeSO. 0 unknown columns.
+- **Larger extent than population/income** (cut to the study box): 569–674 grid cells per table, 73 DeSO areas.
+- Totals: 57,748 employed residents (Tab7), 67,691 jobs on the grid (Tab8; 70,266 per DeSO), 69,814 persons aged 20–64 (Tab9).
+- Tab10 is identical to the population delivery's on the 483 cells they share, and has 89 more cells.
+- Report: `docs/data-analysis/2026-10-13_helsingborg_scb-employment_profiling.md`.
 
 ## Failure cases
 

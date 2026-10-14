@@ -1,0 +1,99 @@
+{
+  "studyId": "pattern_2d_3d",
+  "description": "Three open pattern-finding scenarios, asked first on 2D maps and then on the 3D table. Facilitator records think-aloud answers. Numbers (rho, n, named areas) are computed by Src/Scripts/build_study_materials.py; nothing here is a measured result.",
+  "scenarios": [
+    {
+      "id": "P1",
+      "title": "Neighbourhood development",
+      "expected": "strong, same direction",
+      "question": "The municipality is choosing neighbourhoods for a targeted development programme and wants to understand how household income and employment relate across the city. Do you see a pattern between them?",
+      "unitLayer": "deso",
+      "unitLabel": "DeSO areas",
+      "a": {
+        "source": "package",
+        "dataLayerId": "deso_income",
+        "variableId": "median_income",
+        "label": "Median income",
+        "unit": "SEK",
+        "year": "2023",
+        "sourceText": "SCB Inkomster (Tab11, DeSO): median economic standard per household"
+      },
+      "b": {
+        "source": "employment_rate_deso",
+        "label": "Employment rate, ages 20–64",
+        "unit": "%",
+        "year": "2023",
+        "sourceText": "SCB Arbetsmarknad (Tab9, DeSO): employed / all residents aged 20–64"
+      },
+      "answer": "Areas with higher income also have a higher share of residents in work.",
+      "planning": "Targeted neighbourhood programmes (områdesutveckling) usually pick areas where low income and low employment coincide. This scenario checks whether participants can see that they do.",
+      "tests": "Whether they find a clear relationship, and how fast.",
+      "notes": []
+    },
+    {
+      "id": "P2",
+      "title": "Preschool and school planning",
+      "expected": "none",
+      "question": "The municipality is planning new preschool and school places. A colleague suggests families with children mostly live in the wealthier areas. Look at income and the share of children aged 0–15. Do you agree?",
+      "unitLayer": "deso",
+      "unitLabel": "DeSO areas",
+      "a": {
+        "source": "package",
+        "dataLayerId": "deso_income",
+        "variableId": "median_income",
+        "label": "Median income",
+        "unit": "SEK",
+        "year": "2023",
+        "sourceText": "SCB Inkomster (Tab11, DeSO): median economic standard per household"
+      },
+      "b": {
+        "source": "package",
+        "dataLayerId": "deso_population",
+        "variableId": "share_children_0_15",
+        "label": "Share of residents aged 0–15",
+        "unit": "%",
+        "year": "2024",
+        "sourceText": "SCB Befolkning (Tab1, DeSO): residents 0–15 / all residents"
+      },
+      "answer": "Children live in areas at every income level, so school planning has to follow where the children are, not income. The colleague is wrong.",
+      "planning": "A plausible assumption that the data does not support. The colleague's claim raises the bar on purpose: it tests whether the view makes people confirm a pattern they were told to expect.",
+      "tests": "Whether participants report a pattern that is not there (a false positive).",
+      "notes": [
+        "Comes straight after P1, so participants are primed to look for a pattern. That is intended."
+      ]
+    },
+    {
+      "id": "P3",
+      "title": "Citizen dialogue",
+      "expected": "strong, opposite directions",
+      "question": "The municipality is planning citizen dialogues for a new comprehensive plan and wants to reach the residents it usually doesn't hear from. Is there a pattern between voter turnout and the share of residents born abroad?",
+      "unitLayer": "valdistrikt",
+      "unitLabel": "voting districts",
+      "a": {
+        "source": "package",
+        "dataLayerId": "valdistrikt_election",
+        "variableId": "turnout",
+        "label": "Voter turnout",
+        "unit": "%",
+        "year": "2026",
+        "sourceText": "Valmyndigheten: votes cast / eligible voters, municipal election 2026"
+      },
+      "b": {
+        "source": "package",
+        "dataLayerId": "valdistrikt_estimates",
+        "variableId": "share_born_abroad_est",
+        "label": "Share of residents born abroad (estimate)",
+        "unit": "%",
+        "year": "2024",
+        "sourceText": "SCB Befolkning (Tab4, grid) spread over residential buildings and summed per district"
+      },
+      "answer": "Districts with a higher share of residents born abroad have lower turnout.",
+      "planning": "Low-turnout areas with many residents born abroad call for other dialogue methods: other languages, and meeting people where they are.",
+      "tests": "A relationship in opposite directions, on a different kind of area (voting districts) and in a different domain (democracy and participation).",
+      "notes": [
+        "Only districts inside the statistics area have the born-abroad estimate. The outer districts show turnout but 'no data' for the second variable: tell participants to focus on the city.",
+        "The born-abroad value is an estimate (dasymetric), not an SCB count per district."
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tests for the SCB delivery pipelines (population, income), their shared core and the DataFrame HTML viewer.
+Tests for the SCB delivery pipelines (population, income, employment), their shared core and the DataFrame HTML viewer.
 
 Synthetic SCB-style shapefiles for an invented city; no project data is read.
 Run: python tests/test_scb_pipelines.py   (pytest also collects the test_* functions)
@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "Src"))
 
 from pipelines.population import PopulationPipeline  # noqa: E402
 from pipelines.income import IncomePipeline  # noqa: E402
+from pipelines.employment import EmploymentPipeline  # noqa: E402
+from pipelines.employment.config import EMPLOYMENT  # noqa: E402
 from pipelines.income.config import INCOME  # noqa: E402
 from pipelines.population.config import POPULATION  # noqa: E402
 from pipelines.scb.loader import load_scb_tables, parse_file_name  # noqa: E402
@@ -237,6 +239,61 @@ def test_income_values_are_not_counted_as_parts():
         index = (out / "index.html").read_text(encoding="utf-8")
         assert "Income preprocess" in index and "MedianInk" in index
         assert "UNKNOWN" not in index
+
+
+def _write_employment_delivery(folder: Path) -> None:
+    """Workplace table with the `Ast`/`ast` ID columns and both sector spellings, as in the real delivery."""
+    folder.mkdir(parents=True, exist_ok=True)
+    specs = [(E0, N0, 250), (E0 + 250, N0, 250), (E0, N0, 1000)]
+    tab8 = gpd.GeoDataFrame({
+        "AstRutstor": [s[2] for s in specs],
+        "AstRutID_S": [_rid(s[0], s[1]) for s in specs],
+        "Näringsli": [40, 3, 0], "Staten": [1, 0, 0], "Kommun": [5, 0, 0], "Region": [2, 0, 0], "Övrigt": [1, 0, 0],
+        "Totalt": [49, 3, 0],
+    }, geometry=_cells(specs), crs=CRS)
+    tab8.to_file(folder / "Tab8_Ruta_2030.shp", encoding="cp1252")
+    (folder / "Tab8_Ruta_2030.cpg").write_text("UTF-8", encoding="ascii")
+    gpd.GeoDataFrame({
+        "astDeSO_20": ["9999C0001", "9999C0002"],
+        "Naringsliv": [300, 50], "Staten": [10, 0], "Kommun": [40, 5], "Region": [9, 1], "Ovrigt": [1, 0],
+        "Totalt": [360, 56],
+    }, geometry=[box(E0, N0, E0 + 1000, N0 + 1000), box(E0 + 1000, N0, E0 + 3000, N0 + 1000)],
+        crs=CRS).to_file(folder / "Tab8_DeSO_2030.shp")
+    gpd.GeoDataFrame({
+        "DeSO_2031": ["9999C0001", "9999C0002"],
+        "Sysselsatt": [700, 400], "EjSsyssels": [200, 101],
+        "Totalt": [900, 500],                # second row: 501 vs 500 (SCB perturbation)
+    }, geometry=[box(E0, N0, E0 + 1000, N0 + 1000), box(E0 + 1000, N0, E0 + 3000, N0 + 1000)],
+        crs=CRS).to_file(folder / "Tab9_DeSO_2030.shp")
+
+
+def test_employment_workplace_ids_and_sector_spellings():
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp) / "employment"
+        _write_employment_delivery(folder)
+        tables = load_scb_tables(folder)
+        ruta, deso = tables["Tab8_Ruta_2030"], tables["Tab8_DeSO_2030"]
+        assert (ruta.id_column, ruta.size_column) == ("AstRutID_S", "AstRutstor")
+        assert deso.id_column == "astDeSO_20"
+        assert "Näringsli" in ruta.data.columns and ruta.encoding_used == "cp1252"
+
+        report = validate_tables(tables, EMPLOYMENT)
+        for key in ("Tab8_Ruta_2030", "Tab8_DeSO_2030", "Tab9_DeSO_2030"):
+            assert report["tables"][key]["unknown_columns"] == [], key
+        r = report["tables"]["Tab8_Ruta_2030"]
+        assert r["ids_bad_format"] == 0 and r["cell_sizes_m"] == {250: 2, 1000: 1}
+        assert r["parts_vs_total"]["rows_where_parts_differ_from_total"] == 0
+        assert report["tables"]["Tab8_DeSO_2030"]["ids_bad_format"] == 0
+        assert report["tables"]["Tab9_DeSO_2030"]["parts_vs_total"]["rows_where_parts_differ_from_total"] == 1
+        # Spelling variants share one alias; a cut DeSO column name does not invent an edition year.
+        assert EMPLOYMENT.describe_field("Näringsli").alias_en == EMPLOYMENT.describe_field("Naringsliv").alias_en
+        assert EMPLOYMENT.describe_field("Ovrigt").alias_en == EMPLOYMENT.describe_field("Övrigt").alias_en
+        assert "edition unknown" in EMPLOYMENT.describe_field("astDeSO_20").description_en
+
+        out = Path(tmp) / "out"
+        result = EmploymentPipeline(config={"input_dir": str(folder)}, verbose=False).run(output_dir=out)
+        assert result["status"] == "success", result
+        assert (out / "employment_preprocess_report.json").exists()
 
 
 def test_same_files_unknown_to_another_dataset_are_flagged():

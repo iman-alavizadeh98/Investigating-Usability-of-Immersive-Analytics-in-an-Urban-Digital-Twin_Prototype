@@ -31,5 +31,14 @@
     "storeyHeightM": 3.0,
     "minCoveragePct": 99.0
   },
-  "visualizations": "configs/visualizations/evaluation"
+  "visualizations": "configs/visualizations/evaluation",
+  "dataReport": {
+    "buildingsRaw": "Raw_data/1-Helsingborig/byggnad_gpkg_helsingborg",
+    "employment": "Raw_data/1-Helsingborig/employment",
+    "lidarTiles": "Raw_data/1-Helsingborig/laserdata_nh_helsingborg",
+    "surfaceModel": "Raw_data/1-Helsingborig/ytmodell_050_helsingborg",
+    "roadMap": "Raw_data/1-Helsingborig/vagkartaVektorShp_helsingborg",
+    "propertyMap": "Raw_data/1-Helsingborig/fastighetKommunikation_helsingborg",
+    "output": "Processed_data/Helsingborg_Final/reports"
+  }
 }

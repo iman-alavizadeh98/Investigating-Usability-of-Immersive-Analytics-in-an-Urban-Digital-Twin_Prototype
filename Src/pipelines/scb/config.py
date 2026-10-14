@@ -17,6 +17,10 @@ NAMING HAZARDS SEEN IN THE DATA (CLAUDE.md §7)
   population Tab3), so the declared encoding fails; see ENCODING_FALLBACKS.
 - The Ruta ID column is `RutID_SW` in most tables but `Ruta` in some; the DeSO ID
   column carries the DeSO edition year (`DeSO_2025`). Both are matched by rule.
+- Tables counted at the workplace (*arbetsställe*, employment Tab8) prefix the
+  ID columns with `Ast`/`ast`: `AstRutID_S` (cut from `AstRutID_SW`),
+  `AstRutstor`, and `astDeSO_20` (cut at 10 characters, so the edition year is
+  lost). They are matched by the same rules.
 - The variable PDF in the deliveries is older than the data, so field meanings
   record where they come from: "pdf" (stated there, possibly under an older
   column name) or "inferred" (read from the abbreviation, not confirmed by SCB).
@@ -52,13 +56,14 @@ EXPECTED_CRS = "EPSG:3006"
 #: statistical areas).
 UNIT_RULES = {
     "Ruta": {
-        "id_columns": ("RutID_SW", "Ruta"),
+        "id_columns": ("RutID_SW", "Ruta", "AstRutID_S"),
         "size_columns": ("Rutstorl", "AstRutstor", "astRutstor"),
         # 6-digit easting + 7-digit northing of the cell's south-west corner.
         "id_value_pattern": r"^\d{13}$",
     },
     "DeSO": {
-        "id_column_pattern": r"^DeSO(_\d{4})?$",
+        # DeSO, DeSO_2025, astDeSO_20 (workplace table, name cut at 10 characters)
+        "id_column_pattern": r"^(?:[Aa]st)?DeSO(?:_\d{2,4})?$",
         "size_columns": (),
         # County+municipality (4 digits), area type A/B/C, 4-digit number: 1283C1400
         "id_value_pattern": r"^\d{4}[ABC]\d{4}$",
@@ -116,6 +121,10 @@ COMMON_FIELDS: Dict[str, FieldInfo] = {
         "inferred", "id",
     ),
     "Ruta": FieldInfo("cell_id", "Ruta cell ID (Rutidentitet), same format as RutID_SW", "pdf", "id"),
+    "AstRutID_S": FieldInfo(
+        "cell_id", "Ruta cell ID of the workplace cell (arbetsställe), same format as RutID_SW; name cut from AstRutID_SW",
+        "inferred", "id",
+    ),
     "Rutstorl": FieldInfo("cell_size_m", "Cell side length (Rutstorlek)", "pdf", "size", "m"),
     "AstRutstor": FieldInfo("cell_size_m", "Cell side length (spelling variant)", "pdf", "size", "m"),
     "astRutstor": FieldInfo("cell_size_m", "Cell side length (spelling variant)", "pdf", "size", "m"),
@@ -144,8 +153,13 @@ class ScbDataset:
         if name in COMMON_FIELDS:
             return COMMON_FIELDS[name]
         if _DESO_ID.match(name):
-            year = name.split("_", 1)[1] if "_" in name else "unknown"
-            return FieldInfo(
-                "deso_code", f"DeSO area code; the column name gives the DeSO edition ({year})", "inferred", "id",
-            )
+            year = name.split("_", 1)[1] if "_" in name else ""
+            if len(year) == 4:
+                edition = f"the column name gives the DeSO edition ({year})"
+            elif year:
+                edition = f"DeSO edition unknown (column name cut at 10 characters: '{year}')"
+            else:
+                edition = "DeSO edition not stated"
+            where = " of the workplace (arbetsställe)" if name.lower().startswith("ast") else ""
+            return FieldInfo("deso_code", f"DeSO area code{where}; {edition}", "inferred", "id")
         return None
